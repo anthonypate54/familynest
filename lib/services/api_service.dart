@@ -9,8 +9,8 @@ class ApiService {
   // Use different base URLs based on the platform
   final String baseUrl =
       Platform.isAndroid
-          ? "http://10.0.0.81:3000" // Android emulator
-          : "http://localhost:3000"; // iOS simulator or physical device
+          ? "http://10.0.0.81:8080" // Android emulator
+          : "http://localhost:8080"; // iOS simulator or physical device
 
   final http.Client client;
   String? _token;
@@ -25,7 +25,7 @@ class ApiService {
       debugPrint('''
 ❌ Connection test failed with error: $e
 Network connection error. Please check:
-1. Is the backend server running? (http://localhost:8080/api/users/test)
+1. Is the backend server running? ($baseUrl/api/users/test)
 2. Are you using the correct IP address?
    - Android Emulator: 10.0.2.2
    - iOS Simulator: localhost
@@ -69,7 +69,7 @@ Network connection error. Please check:
 Network connection error. Please check:
 1. Is the backend server running? ($baseUrl/api/users/test)
 2. Are you using the correct IP address?
-   - Android Emulator: ${Platform.isAndroid ? "10.0.0.81" : "localhost"}
+   - Android Emulator: 10.0.2.2
    - iOS Simulator: localhost
    - Physical Device: Your computer's local IP
 3. Is your device/emulator connected to the same network?
@@ -103,16 +103,13 @@ Network connection error. Please check:
     debugPrint('Cleared token from storage');
   }
 
-  Future<Map<String, dynamic>> loginUser(
-    String username,
-    String password,
-  ) async {
+  Future<Map<String, dynamic>> loginUser(String email, String password) async {
     try {
-      debugPrint('Attempting to login with username: $username');
+      debugPrint('Attempting to login with email: $email');
       final response = await client.post(
         Uri.parse('$baseUrl/api/users/login'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
+        body: jsonEncode({'email': email, 'password': password}),
       );
       debugPrint(
         'Login response: statusCode=${response.statusCode}, body=${response.body}',
@@ -183,9 +180,11 @@ Network connection error. Please check:
 
   Future<Map<String, dynamic>> registerUser({
     required String username,
+    required String email,
     required String password,
     required String firstName,
     required String lastName,
+    String role = 'USER',
     File? photo,
   }) async {
     await initialize();
@@ -195,12 +194,13 @@ Network connection error. Please check:
         'POST',
         Uri.parse('$baseUrl/api/users'),
       );
-      // Remove manual Content-Type setting; http.MultipartRequest handles this automatically
       request.fields['userData'] = jsonEncode({
         'username': username,
+        'email': email,
         'password': password,
         'firstName': firstName,
         'lastName': lastName,
+        'role': role,
       });
       if (photo != null) {
         request.files.add(
@@ -292,11 +292,18 @@ Network connection error. Please check:
     final headers = {'Content-Type': 'application/json'};
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
+      debugPrint('Posting message with token: $_token');
+    } else {
+      debugPrint('No token available for posting message');
     }
+    debugPrint('Posting message for user $userId with content: $content');
     final response = await client.post(
       Uri.parse('$baseUrl/api/users/$userId/messages'),
       headers: headers,
       body: jsonEncode({'content': content}),
+    );
+    debugPrint(
+      'Message post response: status=${response.statusCode}, body=${response.body}',
     );
     if (response.statusCode != 201) {
       throw Exception('Failed to post message: ${response.body}');
@@ -307,10 +314,17 @@ Network connection error. Please check:
     final headers = {'Content-Type': 'application/json'};
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
+      debugPrint('Getting messages with token: $_token');
+    } else {
+      debugPrint('No token available for getting messages');
     }
+    debugPrint('Getting messages for user $userId');
     final response = await client.get(
       Uri.parse('$baseUrl/api/users/$userId/messages'),
       headers: headers,
+    );
+    debugPrint(
+      'Get messages response: status=${response.statusCode}, body=${response.body}',
     );
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
