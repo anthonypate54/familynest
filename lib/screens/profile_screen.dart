@@ -22,8 +22,30 @@ class ProfileScreen extends StatefulWidget {
   ProfileScreenState createState() => ProfileScreenState();
 }
 
-class ProfileScreenState extends State<ProfileScreen> {
+class ProfileScreenState extends State<ProfileScreen>
+    with SingleTickerProviderStateMixin {
   final ImagePicker _picker = ImagePicker();
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    );
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
 
   Future<Map<String, dynamic>?> _loadUser() async {
     try {
@@ -45,13 +67,19 @@ class ProfileScreenState extends State<ProfileScreen> {
         setState(() {}); // Trigger FutureBuilder to reload user
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Photo updated successfully!')),
+          const SnackBar(
+            content: Text('Photo updated successfully!'),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error updating photo: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating photo: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }
@@ -71,170 +99,290 @@ class ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.message),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => HomeScreen(
-                        apiService: widget.apiService,
-                        userId: widget.userId,
-                      ),
-                ),
-              );
-            },
-            tooltip: 'Go to Messages',
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Theme.of(context).colorScheme.primary,
+              Theme.of(context).colorScheme.secondary,
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-            tooltip: 'Logout',
-          ),
-        ],
-      ),
-      body: FutureBuilder<Map<String, dynamic>?>(
-        future: _loadUser(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError || snapshot.data == null) {
-            // Redirect to LoginScreen if user data fails to load
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => LoginScreen(apiService: widget.apiService),
-                ),
-                (route) => false,
-              );
-            });
-            return const Center(child: CircularProgressIndicator());
-          }
-          final user = snapshot.data!;
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                if (user['photo'] != null)
-                  Builder(
-                    builder: (context) {
-                      final photoUrl =
-                          '${widget.apiService.baseUrl}${user['photo']}';
-                      debugPrint(
-                        'Attempting to load photo from URL: $photoUrl',
-                      );
-                      return Image.network(
-                        photoUrl,
-                        height: 150,
-                        width: 150,
-                        errorBuilder: (context, error, stackTrace) {
-                          debugPrint('Error loading photo: $error');
-                          return const Icon(
-                            Icons.error,
-                            size: 150,
-                            color: Colors.red,
-                          );
-                        },
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          debugPrint(
-                            'Loading progress: ${loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : 'unknown'}',
-                          );
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        },
-                      );
-                    },
-                  )
-                else
-                  const Icon(Icons.person, size: 150, color: Colors.grey),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: _updatePhoto,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
+        ),
+        child: SafeArea(
+          child: FutureBuilder<Map<String, dynamic>?>(
+            future: _loadUser(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError || snapshot.data == null) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (context) =>
+                              LoginScreen(apiService: widget.apiService),
                     ),
-                  ),
-                  child: const Text(
-                    'Update Photo',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder:
-                            (context) => FamilyManagementScreen(
-                              apiService: widget.apiService,
-                              userId: widget.userId,
+                    (route) => false,
+                  );
+                });
+                return const Center(child: CircularProgressIndicator());
+              }
+              final user = snapshot.data!;
+              return FadeTransition(
+                opacity: _fadeAnimation,
+                child: CustomScrollView(
+                  slivers: [
+                    SliverAppBar(
+                      expandedHeight: 200,
+                      floating: false,
+                      pinned: true,
+                      backgroundColor: Colors.transparent,
+                      flexibleSpace: FlexibleSpaceBar(
+                        background: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Theme.of(
+                                  context,
+                                ).colorScheme.primary.withOpacity(0.8),
+                                Theme.of(
+                                  context,
+                                ).colorScheme.secondary.withOpacity(0.8),
+                              ],
                             ),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
-                    ),
-                  ),
-                  child: const Text(
-                    'Manage Family',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Card(
-                  elevation: 4,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Username: ${user['username']}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'First Name: ${user['firstName']}',
-                          style: const TextStyle(fontSize: 18),
+                      ),
+                      actions: [
+                        IconButton(
+                          icon: const Icon(Icons.message),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (context) => HomeScreen(
+                                      apiService: widget.apiService,
+                                      userId: widget.userId,
+                                    ),
+                              ),
+                            );
+                          },
+                          tooltip: 'Go to Messages',
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Last Name: ${user['lastName']}',
-                          style: const TextStyle(fontSize: 18),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Role: ${widget.role ?? 'Unknown'}',
-                          style: const TextStyle(fontSize: 18),
+                        IconButton(
+                          icon: const Icon(Icons.logout),
+                          onPressed: _logout,
+                          tooltip: 'Logout',
                         ),
                       ],
                     ),
-                  ),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            Stack(
+                              alignment: Alignment.bottomRight,
+                              children: [
+                                Container(
+                                  width: 120,
+                                  height: 120,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 4,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 5),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipOval(
+                                    child:
+                                        user['photo'] != null
+                                            ? Image.network(
+                                              '${widget.apiService.baseUrl}${user['photo']}',
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (
+                                                context,
+                                                error,
+                                                stackTrace,
+                                              ) {
+                                                return const Icon(
+                                                  Icons.person,
+                                                  size: 50,
+                                                  color: Colors.grey,
+                                                );
+                                              },
+                                              loadingBuilder: (
+                                                context,
+                                                child,
+                                                loadingProgress,
+                                              ) {
+                                                if (loadingProgress == null)
+                                                  return child;
+                                                return const Center(
+                                                  child:
+                                                      CircularProgressIndicator(),
+                                                );
+                                              },
+                                            )
+                                            : const Icon(
+                                              Icons.person,
+                                              size: 50,
+                                              color: Colors.grey,
+                                            ),
+                                  ),
+                                ),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 5,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(
+                                      Icons.camera_alt,
+                                      color: Colors.white,
+                                    ),
+                                    onPressed: _updatePhoto,
+                                    tooltip: 'Update Photo',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            Card(
+                              elevation: 8,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildInfoRow(
+                                      Icons.person,
+                                      'Username',
+                                      user['username'],
+                                    ),
+                                    const Divider(),
+                                    _buildInfoRow(
+                                      Icons.person_outline,
+                                      'First Name',
+                                      user['firstName'],
+                                    ),
+                                    const Divider(),
+                                    _buildInfoRow(
+                                      Icons.person_outline,
+                                      'Last Name',
+                                      user['lastName'],
+                                    ),
+                                    const Divider(),
+                                    _buildInfoRow(
+                                      Icons.verified_user,
+                                      'Role',
+                                      widget.role ?? 'Unknown',
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (context) => FamilyManagementScreen(
+                                          apiService: widget.apiService,
+                                          userId: widget.userId,
+                                        ),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                    Theme.of(context).colorScheme.primary,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.family_restroom),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Manage Family',
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          );
-        },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Icon(icon, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
