@@ -27,7 +27,7 @@ class ApiService {
 Network connection error. Please check:
 1. Is the backend server running? ($baseUrl/api/users/test)
 2. Are you using the correct IP address?
-   - Android Emulator: 10.0.2.2
+   - Android Emulator: 10.0.0.81
    - iOS Simulator: localhost
    - Physical Device: Your computer's local IP
 3. Is your device/emulator connected to the same network?
@@ -69,7 +69,7 @@ Network connection error. Please check:
 Network connection error. Please check:
 1. Is the backend server running? ($baseUrl/api/users/test)
 2. Are you using the correct IP address?
-   - Android Emulator: 10.0.2.2
+   - Android Emulator: 10.0.0.81
    - iOS Simulator: localhost
    - Physical Device: Your computer's local IP
 3. Is your device/emulator connected to the same network?
