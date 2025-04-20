@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'profile_screen.dart';
 import '../services/api_service.dart';
 import 'home_screen.dart';
@@ -21,7 +21,7 @@ class LoginScreenState extends State<LoginScreen> {
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
-  File? _photoFile;
+  XFile? _photoFile;
   bool _isLoading = false;
   bool _isRegistering = false;
   final String _selectedRole = 'USER';
@@ -66,7 +66,7 @@ class LoginScreenState extends State<LoginScreen> {
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
       setState(() {
-        _photoFile = File(pickedFile.path);
+        _photoFile = pickedFile;
       });
     }
   }
@@ -124,7 +124,7 @@ class LoginScreenState extends State<LoginScreen> {
         firstName: _firstNameController.text,
         lastName: _lastNameController.text,
         role: _selectedRole,
-        photo: _photoFile,
+        photoPath: kIsWeb ? null : _photoFile?.path,
       );
       debugPrint('Registration successful, userId: ${result['userId']}');
       if (!mounted) return;

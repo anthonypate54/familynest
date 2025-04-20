@@ -1,18 +1,21 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
+import 'dart:io' show Platform, File;
 
 class ApiService {
-  // Use different base URLs based on the platform
-  final String baseUrl =
-      kIsWeb
-          ? "http://localhost:8080" // Web
-          : Platform.isAndroid
-          ? "http://10.0.0.81:8080" // Android emulator
-          : "http://localhost:8080"; // iOS simulator or physical device
+  // Dynamic baseUrl based on platform
+  String get baseUrl {
+    if (kIsWeb) {
+      return "http://localhost:8080"; // Web
+    } else if (Platform.isAndroid) {
+      return "http://10.0.2.2:8080"; // Android emulator (pointing to host machine)
+    } else {
+      return "http://localhost:8080"; // iOS and others
+    }
+  }
 
   final http.Client client;
   String? _token;
@@ -66,8 +69,7 @@ Network connection error. Please check:
       }
     } catch (e) {
       debugPrint('❌ Connection test failed with error: $e');
-      if (e is SocketException) {
-        debugPrint('''
+      debugPrint('''
 Network connection error. Please check:
 1. Is the backend server running? ($baseUrl/api/users/test)
 2. Are you using the correct IP address?
@@ -77,7 +79,6 @@ Network connection error. Please check:
 3. Is your device/emulator connected to the same network?
 4. Are there any firewall settings blocking the connection?
 ''');
-      }
       rethrow;
     }
   }
@@ -187,7 +188,7 @@ Network connection error. Please check:
     required String firstName,
     required String lastName,
     String role = 'USER',
-    File? photo,
+    String? photoPath,
   }) async {
     await initialize();
     try {
@@ -204,11 +205,13 @@ Network connection error. Please check:
         'lastName': lastName,
         'role': role,
       });
-      if (photo != null) {
+
+      if (photoPath != null && !kIsWeb) {
         request.files.add(
-          await http.MultipartFile.fromPath('photo', photo.path),
+          await http.MultipartFile.fromPath('photo', photoPath),
         );
       }
+
       final response = await request.send();
       final responseBody = await response.stream.bytesToString();
       debugPrint(
@@ -293,10 +296,13 @@ Network connection error. Please check:
   Future<void> postMessage(
     int userId,
     String content, {
-    File? media,
+    String? mediaPath,
     String? mediaType,
   }) async {
     try {
+      debugPrint(
+        'Posting message with mediaPath: $mediaPath, mediaType: $mediaType',
+      );
       var request = http.MultipartRequest(
         'POST',
         Uri.parse('$baseUrl/api/users/$userId/messages'),
@@ -310,17 +316,54 @@ Network connection error. Please check:
         request.fields['content'] = content;
       }
 
-      if (media != null && mediaType != null) {
+      if (mediaPath != null && mediaType != null && !kIsWeb) {
+        debugPrint('Adding media to message: $mediaPath, type: $mediaType');
+
+        // Check if file exists
+        final file = File(mediaPath);
+        if (!await file.exists()) {
+          debugPrint('Error: File does not exist at path: $mediaPath');
+          throw Exception('File does not exist at path: $mediaPath');
+        }
+
+        debugPrint('File exists, size: ${await file.length()} bytes');
         request.fields['mediaType'] = mediaType;
-        request.files.add(
-          await http.MultipartFile.fromPath('media', media.path),
-        );
+
+        try {
+          final mediaFile = await http.MultipartFile.fromPath(
+            'media',
+            mediaPath,
+          );
+          debugPrint(
+            'Created MultipartFile: ${mediaFile.filename}, length: ${mediaFile.length}',
+          );
+          request.files.add(mediaFile);
+          debugPrint('Media file added to request successfully');
+        } catch (e) {
+          debugPrint('Error adding media to request: $e');
+          rethrow;
+        }
+      }
+
+      debugPrint('Sending message request with fields: ${request.fields}');
+      if (request.files.isNotEmpty) {
+        debugPrint('Request contains ${request.files.length} files');
+        for (var file in request.files) {
+          debugPrint(
+            'File: ${file.field} - ${file.filename} (${file.length} bytes)',
+          );
+        }
       }
 
       final response = await request.send();
+      debugPrint('Message post response status: ${response.statusCode}');
+      final responseBody = await response.stream.bytesToString();
+
       if (response.statusCode != 201) {
-        final responseBody = await response.stream.bytesToString();
+        debugPrint('Error posting message: $responseBody');
         throw Exception('Failed to post message: $responseBody');
+      } else {
+        debugPrint('Message posted successfully: $responseBody');
       }
     } catch (e) {
       debugPrint('Error posting message: $e');
@@ -345,13 +388,31 @@ Network connection error. Please check:
       'Get messages response: status=${response.statusCode}, body=${response.body}',
     );
     if (response.statusCode == 200) {
-      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+      final messages =
+          (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+
+      // Enhanced logging for media content
+      for (var message in messages) {
+        if (message.containsKey('mediaUrl') && message['mediaUrl'] != null) {
+          debugPrint(
+            'Message with media: ${message['mediaType']} - ${message['mediaUrl']}',
+          );
+          debugPrint('Full media URL: $baseUrl${message['mediaUrl']}');
+        }
+      }
+
+      return messages;
     } else {
       throw Exception('Failed to get messages: ${response.body}');
     }
   }
 
-  Future<void> updatePhoto(int userId, File photoFile) async {
+  Future<void> updatePhoto(int userId, String photoPath) async {
+    if (kIsWeb) {
+      debugPrint('Web file upload not fully implemented for updatePhoto');
+      return; // Skip on web for now
+    }
+
     var request = http.MultipartRequest(
       'POST',
       Uri.parse('$baseUrl/api/users/$userId/update-photo'),
@@ -360,9 +421,9 @@ Network connection error. Please check:
       request.headers['Authorization'] = 'Bearer $_token';
     }
     request.headers['Content-Type'] = 'multipart/form-data';
-    request.files.add(
-      await http.MultipartFile.fromPath('photo', photoFile.path),
-    );
+
+    request.files.add(await http.MultipartFile.fromPath('photo', photoPath));
+
     var response = await request.send();
     if (response.statusCode != 200) {
       throw Exception('Failed to update photo: ${response.reasonPhrase}');

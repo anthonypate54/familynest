@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/api_service.dart';
 import 'home_screen.dart';
 import 'family_management_screen.dart';
@@ -27,13 +27,14 @@ class ProfileScreenState extends State<ProfileScreen>
   final ImagePicker _picker = ImagePicker();
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+  XFile? _photoFile;
 
   @override
   void initState() {
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 800),
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
@@ -58,26 +59,27 @@ class ProfileScreenState extends State<ProfileScreen>
     }
   }
 
-  Future<void> _updatePhoto() async {
+  Future<void> _pickPhoto() async {
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
-      File photoFile = File(pickedFile.path);
+      setState(() {
+        _photoFile = pickedFile;
+      });
       try {
-        await widget.apiService.updatePhoto(widget.userId, photoFile);
-        setState(() {}); // Trigger FutureBuilder to reload user
+        // Skip photo upload on web for now
+        if (!kIsWeb) {
+          await widget.apiService.updatePhoto(widget.userId, pickedFile.path);
+        }
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Photo updated successfully!'),
-            behavior: SnackBarBehavior.floating,
-          ),
+          const SnackBar(content: Text('Profile photo updated successfully!')),
         );
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error updating photo: $e'),
-            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
           ),
         );
       }
@@ -263,7 +265,7 @@ class ProfileScreenState extends State<ProfileScreen>
                                       Icons.camera_alt,
                                       color: Colors.white,
                                     ),
-                                    onPressed: _updatePhoto,
+                                    onPressed: _pickPhoto,
                                     tooltip: 'Update Photo',
                                   ),
                                 ),
