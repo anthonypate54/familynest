@@ -24,7 +24,7 @@ class LoginScreenState extends State<LoginScreen> {
   File? _photoFile;
   bool _isLoading = false;
   bool _isRegistering = false;
-  String _selectedRole = 'USER';
+  final String _selectedRole = 'USER';
   String? _errorMessage;
 
   @override

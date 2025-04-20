@@ -8,7 +8,9 @@ import 'dart:async';
 class ApiService {
   // Use different base URLs based on the platform
   final String baseUrl =
-      Platform.isAndroid
+      kIsWeb
+          ? "http://localhost:8080" // Web
+          : Platform.isAndroid
           ? "http://10.0.0.81:8080" // Android emulator
           : "http://localhost:8080"; // iOS simulator or physical device
 
@@ -288,25 +290,41 @@ Network connection error. Please check:
     }
   }
 
-  Future<void> postMessage(int userId, String content) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-      debugPrint('Posting message with token: $_token');
-    } else {
-      debugPrint('No token available for posting message');
-    }
-    debugPrint('Posting message for user $userId with content: $content');
-    final response = await client.post(
-      Uri.parse('$baseUrl/api/users/$userId/messages'),
-      headers: headers,
-      body: jsonEncode({'content': content}),
-    );
-    debugPrint(
-      'Message post response: status=${response.statusCode}, body=${response.body}',
-    );
-    if (response.statusCode != 201) {
-      throw Exception('Failed to post message: ${response.body}');
+  Future<void> postMessage(
+    int userId,
+    String content, {
+    File? media,
+    String? mediaType,
+  }) async {
+    try {
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/api/users/$userId/messages'),
+      );
+
+      if (_token != null) {
+        request.headers['Authorization'] = 'Bearer $_token';
+      }
+
+      if (content.isNotEmpty) {
+        request.fields['content'] = content;
+      }
+
+      if (media != null && mediaType != null) {
+        request.fields['mediaType'] = mediaType;
+        request.files.add(
+          await http.MultipartFile.fromPath('media', media.path),
+        );
+      }
+
+      final response = await request.send();
+      if (response.statusCode != 201) {
+        final responseBody = await response.stream.bytesToString();
+        throw Exception('Failed to post message: $responseBody');
+      }
+    } catch (e) {
+      debugPrint('Error posting message: $e');
+      rethrow;
     }
   }
 

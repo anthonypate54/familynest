@@ -140,9 +140,19 @@ void main() {
         ),
       ).thenAnswer(
         (_) async => http.Response(
-          '[{"content":"Test message","senderUsername":"testuser","timestamp":"2025-04-17T12:00:00"}]',
+          '[{"content":"Test message","senderUsername":"testuser","senderId":2,"timestamp":"2025-04-17T12:00:00"}]',
           200,
         ),
+      );
+
+      // Mock getUserById response for profile photo
+      when(
+        mockClient.get(
+          Uri.parse('$baseUrl/api/users/2'),
+          headers: anyNamed('headers'),
+        ),
+      ).thenAnswer(
+        (_) async => http.Response('{"username":"testuser","photo":null}', 200),
       );
 
       await tester.pumpWidget(
@@ -158,12 +168,27 @@ void main() {
       await tester.tap(find.byIcon(Icons.send));
       await tester.pumpAndSettle();
 
-      // Verify the message appears
-      expect(find.text('Test message'), findsOneWidget);
-      expect(
-        find.text('From: testuser at 2025-04-17T12:00:00'),
-        findsOneWidget,
+      // Clear the text field
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
+
+      // Find the Card widget containing the message
+      final messageCard = find.ancestor(
+        of: find.text('Test message'),
+        matching: find.byType(Card),
       );
+      expect(messageCard, findsOneWidget);
+
+      // Verify the message content within the Card
+      final cardWidget = find.descendant(
+        of: messageCard,
+        matching: find.text('Test message'),
+      );
+      expect(cardWidget, findsOneWidget);
+
+      // Verify sender and timestamp
+      expect(find.text('testuser'), findsOneWidget);
+      expect(find.text('2025-04-17T12:00:00'), findsOneWidget);
     });
 
     testWidgets('HomeScreen logout navigates to LoginScreen', (
