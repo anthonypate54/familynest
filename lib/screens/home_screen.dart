@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
 import '../services/api_service.dart';
 import 'profile_screen.dart';
+import 'login_screen.dart';
+import '../components/bottom_navigation.dart';
 
 class HomeScreen extends StatefulWidget {
   final ApiService apiService;
@@ -621,26 +623,31 @@ class HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Messages'),
-        backgroundColor: Colors.blue,
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.person),
+            icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () {
-              Navigator.push(
+              widget.apiService.logout();
+              Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(
                   builder:
-                      (context) => ProfileScreen(
-                        apiService: widget.apiService,
-                        userId: widget.userId,
-                        role: null,
-                      ),
+                      (context) => LoginScreen(apiService: widget.apiService),
                 ),
+                (route) => false,
               );
             },
-            tooltip: 'Go to Profile',
+            tooltip: 'Logout',
           ),
         ],
+      ),
+      bottomNavigationBar: BottomNavigation(
+        currentIndex: 0, // Messages tab
+        apiService: widget.apiService,
+        userId: widget.userId,
+        onSendInvitation: (_) => _sendInvitation(),
       ),
       body: Column(
         children: [
@@ -1110,6 +1117,51 @@ class HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+    );
+  }
+
+  Future<void> _sendInvitation() async {
+    final TextEditingController emailController = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Send Invitation'),
+          content: TextField(
+            controller: emailController,
+            decoration: const InputDecoration(labelText: 'Email'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                try {
+                  await widget.apiService.inviteUser(
+                    widget.userId,
+                    emailController.text,
+                  );
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Invitation sent successfully!'),
+                    ),
+                  );
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error sending invitation: $e')),
+                  );
+                }
+                Navigator.pop(context);
+              },
+              child: const Text('Send'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

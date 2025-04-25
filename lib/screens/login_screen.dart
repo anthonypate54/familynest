@@ -18,6 +18,7 @@ class LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
@@ -37,6 +38,7 @@ class LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _usernameController.dispose();
     _firstNameController.dispose();
     _lastNameController.dispose();
     super.dispose();
@@ -118,7 +120,7 @@ class LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     try {
       final result = await widget.apiService.registerUser(
-        username: _emailController.text,
+        username: _usernameController.text,
         email: _emailController.text,
         password: _passwordController.text,
         firstName: _firstNameController.text,
@@ -142,6 +144,7 @@ class LoginScreenState extends State<LoginScreen> {
                     setState(() {
                       _isRegistering = false;
                       _photoFile = null;
+                      _usernameController.clear();
                       _firstNameController.clear();
                       _lastNameController.clear();
                     });
@@ -202,45 +205,84 @@ class LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
-                          Icons.family_restroom,
-                          size: 80,
-                          color: Colors.blue,
-                        ),
-                        const SizedBox(height: 24),
                         Text(
-                          'Welcome to FamilyNest',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.headlineMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.primary,
+                          _isRegistering ? 'Register' : 'Login',
+                          style: const TextStyle(
+                            fontSize: 28,
                             fontWeight: FontWeight.bold,
                           ),
-                          textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Connect with your family',
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(color: Colors.grey[600]),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 24),
+                        if (_errorMessage != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        if (_isRegistering)
+                          TextFormField(
+                            controller: _usernameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Username',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter a username';
+                              }
+                              if (value.length < 3) {
+                                return 'Username must be at least 3 characters';
+                              }
+                              return null;
+                            },
+                          ),
+                        if (_isRegistering) const SizedBox(height: 16),
+                        if (_isRegistering)
+                          TextFormField(
+                            controller: _firstNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'First Name',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter your first name';
+                              }
+                              return null;
+                            },
+                          ),
+                        if (_isRegistering) const SizedBox(height: 16),
+                        if (_isRegistering)
+                          TextFormField(
+                            controller: _lastNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Last Name',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter your last name';
+                              }
+                              return null;
+                            },
+                          ),
+                        if (_isRegistering) const SizedBox(height: 16),
                         TextFormField(
                           controller: _emailController,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Email',
-                            prefixIcon: const Icon(Icons.email),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey[50],
+                            border: OutlineInputBorder(),
                           ),
-                          keyboardType: TextInputType.emailAddress,
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'Please enter your email';
+                            }
+                            if (!RegExp(
+                              r'^[^@]+@[^@]+\.[^@]+',
+                            ).hasMatch(value)) {
+                              return 'Please enter a valid email address';
                             }
                             return null;
                           },
@@ -248,76 +290,89 @@ class LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 16),
                         TextFormField(
                           controller: _passwordController,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Password',
-                            prefixIcon: const Icon(Icons.lock),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey[50],
+                            border: OutlineInputBorder(),
                           ),
                           obscureText: true,
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'Please enter your password';
                             }
+                            if (_isRegistering && value.length < 6) {
+                              return 'Password must be at least 6 characters long';
+                            }
                             return null;
                           },
                         ),
-                        if (_errorMessage != null) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.red[50],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.error_outline,
-                                  color: Colors.red,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    _errorMessage!,
-                                    style: const TextStyle(color: Colors.red),
+                        if (_isRegistering) const SizedBox(height: 16),
+                        if (_isRegistering && !kIsWeb)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_photoFile != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: CircleAvatar(
+                                    backgroundImage: AssetImage(
+                                      _photoFile!.path,
+                                    ),
+                                    radius: 30,
                                   ),
                                 ),
-                              ],
-                            ),
+                              ElevatedButton.icon(
+                                onPressed: _pickPhoto,
+                                icon: const Icon(Icons.camera_alt),
+                                label: const Text('Add Photo'),
+                              ),
+                            ],
                           ),
-                        ],
                         const SizedBox(height: 24),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _login,
-                            style: ElevatedButton.styleFrom(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                        _isLoading
+                            ? const CircularProgressIndicator()
+                            : ElevatedButton(
+                              onPressed: _isRegistering ? _register : _login,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                    Theme.of(context).colorScheme.primary,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 48,
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: Text(
+                                _isRegistering ? 'Create Account' : 'Login',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
-                            child:
-                                _isLoading
-                                    ? const SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              Colors.white,
-                                            ),
-                                      ),
-                                    )
-                                    : const Text(
-                                      'Login',
-                                      style: TextStyle(fontSize: 16),
-                                    ),
+                        const SizedBox(height: 16),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _isRegistering = !_isRegistering;
+                              _errorMessage = null;
+                              _emailController.clear();
+                              _passwordController.clear();
+                              _usernameController.clear();
+                              if (!_isRegistering) {
+                                _firstNameController.clear();
+                                _lastNameController.clear();
+                              }
+                            });
+                          },
+                          child: Text(
+                            _isRegistering
+                                ? 'Already have an account? Login'
+                                : 'Don\'t have an account? Register',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                           ),
                         ),
                       ],

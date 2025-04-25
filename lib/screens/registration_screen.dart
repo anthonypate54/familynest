@@ -18,6 +18,7 @@ class RegistrationScreen extends StatefulWidget {
 class RegistrationScreenState extends State<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   String? _username;
+  String? _email;
   String? _firstName;
   String? _lastName;
   String? _password;
@@ -37,29 +38,14 @@ class RegistrationScreenState extends State<RegistrationScreen> {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
       try {
-        var request = http.MultipartRequest(
-          'POST',
-          Uri.parse('http://10.0.2.2:8080/api/users'),
+        final userId = await widget.apiService.registerUser(
+          username: _username!,
+          email: _email!,
+          password: _password!,
+          firstName: _firstName!,
+          lastName: _lastName!,
+          photoPath: _photoFile?.path,
         );
-        request.headers['Content-Type'] = 'multipart/form-data';
-        request.fields['userData'] = jsonEncode({
-          "username": _username,
-          "firstName": _firstName,
-          "lastName": _lastName,
-          "password": _password,
-        });
-        if (_photoFile != null) {
-          request.files.add(
-            await http.MultipartFile.fromPath('photo', _photoFile!.path),
-          );
-        }
-        var response = await request.send();
-        if (response.statusCode != 201) {
-          throw Exception('Failed to register user: ${response.reasonPhrase}');
-        }
-        final responseBody = await response.stream.bytesToString();
-        final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
-        int userId = (responseData['userId'] as num).toInt();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Registration successful!')),
@@ -68,8 +54,10 @@ class RegistrationScreenState extends State<RegistrationScreen> {
           context,
           MaterialPageRoute(
             builder:
-                (context) =>
-                    FamilyScreen(apiService: widget.apiService, userId: userId),
+                (context) => FamilyScreen(
+                  apiService: widget.apiService,
+                  userId: userId['userId'],
+                ),
           ),
         );
       } catch (e) {
@@ -97,6 +85,13 @@ class RegistrationScreenState extends State<RegistrationScreen> {
                   validator:
                       (value) => value!.isEmpty ? 'Username is required' : null,
                   onSaved: (value) => _username = value,
+                ),
+                TextFormField(
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  validator:
+                      (value) => value!.isEmpty ? 'Email is required' : null,
+                  onSaved: (value) => _email = value,
+                  keyboardType: TextInputType.emailAddress,
                 ),
                 TextFormField(
                   decoration: const InputDecoration(labelText: 'First Name'),

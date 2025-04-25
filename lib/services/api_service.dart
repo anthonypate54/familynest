@@ -461,4 +461,121 @@ Network connection error. Please check:
       throw Exception('Failed to leave family: ${response.body}');
     }
   }
+
+  Future<Map<String, dynamic>> inviteUser(int userId, String email) async {
+    if (_token == null) {
+      throw Exception('No authentication token available');
+    }
+    try {
+      debugPrint('Sending invitation from user ID: $userId to email: $email');
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/users/$userId/invite'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+        body: jsonEncode({'email': email}),
+      );
+      debugPrint(
+        'Invite response: statusCode=${response.statusCode}, body=${response.body}',
+      );
+      if (response.statusCode == 201) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception(
+          'Failed to send invitation: statusCode=${response.statusCode}, body=${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error sending invitation: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getInvitations() async {
+    if (_token == null) {
+      throw Exception('No authentication token available');
+    }
+    try {
+      debugPrint('Fetching invitations');
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/users/invitations'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+      );
+      debugPrint(
+        'Get invitations response: statusCode=${response.statusCode}, body=${response.body}',
+      );
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+      } else {
+        throw Exception(
+          'Failed to fetch invitations: statusCode=${response.statusCode}, body=${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error fetching invitations: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> acceptInvitation(int invitationId) async {
+    if (_token == null) {
+      throw Exception('No authentication token available');
+    }
+    try {
+      debugPrint('Accepting invitation ID: $invitationId');
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/users/invitations/$invitationId/accept'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+      );
+      debugPrint(
+        'Accept invitation response: statusCode=${response.statusCode}, body=${response.body}',
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception(
+          'Failed to accept invitation: statusCode=${response.statusCode}, body=${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error accepting invitation: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> rejectInvitation(int invitationId) async {
+    if (_token == null) {
+      throw Exception('No authentication token available');
+    }
+    try {
+      debugPrint('Rejecting invitation ID: $invitationId');
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/users/invitations/$invitationId/reject'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+      );
+      debugPrint(
+        'Reject invitation response: statusCode=${response.statusCode}, body=${response.body}',
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception(
+          'Failed to reject invitation: statusCode=${response.statusCode}, body=${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error rejecting invitation: $e');
+      rethrow;
+    }
+  }
 }
