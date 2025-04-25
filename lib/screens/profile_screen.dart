@@ -129,13 +129,20 @@ class ProfileScreenState extends State<ProfileScreen>
                       content: Text('Invitation sent successfully!'),
                     ),
                   );
+                  Navigator.pop(context);
                 } catch (e) {
                   if (!mounted) return;
+                  // Show a more detailed error message
+                  debugPrint('Error sending invitation: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error sending invitation: $e')),
+                    SnackBar(
+                      content: Text('Error: ${e.toString()}'),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 5),
+                    ),
                   );
+                  // Keep the dialog open so they can fix the email
                 }
-                Navigator.pop(context);
               },
               child: const Text('Send'),
             ),

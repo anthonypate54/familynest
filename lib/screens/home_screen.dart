@@ -7,6 +7,10 @@ import '../services/api_service.dart';
 import 'profile_screen.dart';
 import 'login_screen.dart';
 import '../components/bottom_navigation.dart';
+import 'invitations_screen.dart';
+import 'dart:async';
+import 'package:familynest/theme/app_theme.dart';
+import 'package:familynest/theme/app_styles.dart';
 
 class HomeScreen extends StatefulWidget {
   final ApiService apiService;
@@ -25,37 +29,143 @@ class HomeScreenState extends State<HomeScreen> {
   XFile? _selectedMediaFile;
   String? _selectedMediaType;
   VideoPlayerController? _videoController;
+  String _lastRefreshed = "";
+  int _lastMessageCount = 0;
+  final ScrollController _scrollController = ScrollController();
+  bool _isFirstLoad = true;
+  Future<List<Map<String, dynamic>>>? _messagesFuture;
+  Timer? _refreshTimer;
+  // Store previous invitations to compare for new ones
+  List<int> _previousInvitationIds = [];
+  Set<int> _userFamilyIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // Initial load of messages
+    _loadInitialMessages();
+    // Check for invitations when the screen loads
+    _checkForInvitations();
+
+    // Set up a timer to periodically check for new invitations
+    _refreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) {
+        _checkForInvitations();
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // This will run when the screen becomes visible again (e.g., after returning from another screen)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _checkForInvitations();
+      }
+    });
+  }
+
+  void _loadInitialMessages() {
+    _messagesFuture = _loadMessages();
+    _messagesFuture!.then((messages) {
+      if (!mounted) return;
+      setState(() {
+        _lastMessageCount = messages.length;
+        if (messages.isNotEmpty) {
+          _updateRefreshTimestamp();
+        }
+      });
+
+      // On first load only, scroll to bottom after a delay
+      if (_isFirstLoad) {
+        _isFirstLoad = false;
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _scrollToBottom();
+          }
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
     _videoController?.dispose();
+    _scrollController.dispose();
+    if (_refreshTimer != null) {
+      _refreshTimer!.cancel();
+    }
     super.dispose();
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      try {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      } catch (e) {
+        debugPrint("Error scrolling to bottom: $e");
+      }
+    }
+  }
+
+  Future<void> _refreshMessages({bool shouldScrollToBottom = false}) async {
+    if (!mounted) return;
+
+    final messages = await _loadMessages();
+    if (!mounted) return;
+
+    final hasNewMessages = messages.length > _lastMessageCount;
+
+    setState(() {
+      _messagesFuture = Future.value(messages);
+      if (hasNewMessages) {
+        _lastMessageCount = messages.length;
+        _updateRefreshTimestamp();
+      }
+    });
+
+    if (shouldScrollToBottom || hasNewMessages) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _scrollToBottom();
+        }
+      });
+    }
   }
 
   Future<List<Map<String, dynamic>>> _loadMessages() async {
     try {
-      final messages = await widget.apiService.getMessages(widget.userId);
-      debugPrint('Received messages: $messages');
-      for (var message in messages) {
-        debugPrint('Message data: $message');
-        final senderId = message['senderId'] as int?;
-        debugPrint('SenderId: $senderId');
-        if (senderId != null) {
+      final response = await widget.apiService.getMessages(widget.userId);
+      final List<dynamic> data = response;
+      final List<Map<String, dynamic>> messages =
+          List<Map<String, dynamic>>.from(data);
+
+      // Fetch user photos for messages
+      for (final message in messages) {
+        final userId = message['senderId'];
+        if (userId != null && !_userPhotos.containsKey(userId)) {
           try {
-            final user = await widget.apiService.getUserById(senderId);
-            debugPrint('User data for $senderId: $user');
-            if (user['photo'] != null) {
-              _userPhotos[senderId] = user['photo'];
+            final userResponse = await widget.apiService.getUserById(userId);
+            if (userResponse['photoUrl'] != null) {
+              setState(() {
+                _userPhotos[userId] = userResponse['photoUrl'];
+              });
             }
           } catch (e) {
-            debugPrint('Error fetching photo for user $senderId: $e');
+            debugPrint('Error fetching user photo: $e');
           }
         }
       }
+
       return messages;
     } catch (e) {
       debugPrint('Error loading messages: $e');
-      rethrow;
+      return [];
     }
   }
 
@@ -527,6 +637,10 @@ class HomeScreenState extends State<HomeScreen> {
         _videoController?.dispose();
         _videoController = null;
       });
+
+      // After posting your own message, refresh the list and scroll to bottom
+      await _refreshMessages(shouldScrollToBottom: true);
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Message posted successfully!')),
@@ -620,315 +734,393 @@ class HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Messages'),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () {
-              widget.apiService.logout();
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => LoginScreen(apiService: widget.apiService),
-                ),
-                (route) => false,
-              );
-            },
-            tooltip: 'Logout',
-          ),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigation(
-        currentIndex: 0, // Messages tab
-        apiService: widget.apiService,
-        userId: widget.userId,
-        onSendInvitation: (_) => _sendInvitation(),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _loadMessages(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text(
-                          'Failed to load messages',
-                          style: TextStyle(fontSize: 18, color: Colors.red),
-                        ),
-                        const SizedBox(height: 10),
-                        ElevatedButton(
-                          onPressed: () => setState(() {}),
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                final messages = snapshot.data ?? [];
-                if (messages.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'No messages yet',
-                      style: TextStyle(fontSize: 18, color: Colors.grey),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final message = messages[index];
-                    final senderId = message['senderId'] as int?;
-                    final photoUrl = message['senderPhoto'] as String?;
-                    final mediaType = message['mediaType'];
-                    final mediaUrl = message['mediaUrl'];
+    return WillPopScope(
+      onWillPop: () async => false,
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: AppTheme.primaryColor,
+          elevation: 0,
+          title: Text('Messages', style: AppStyles.appBarTitleStyle),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: () {
+                _refreshMessages();
+              },
+              tooltip: 'Check for New Messages',
+            ),
+            IconButton(
+              icon: const Icon(Icons.exit_to_app, color: Colors.white),
+              onPressed: () async {
+                await widget.apiService.logout();
+                if (!mounted) return;
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (context) => LoginScreen(apiService: widget.apiService),
+                  ),
+                );
+              },
+              tooltip: 'Logout',
+            ),
+          ],
+        ),
+        bottomNavigationBar: BottomNavigation(
+          currentIndex: 0, // Messages tab
+          apiService: widget.apiService,
+          userId: widget.userId,
+          onSendInvitation: (_) => _sendInvitation(),
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  await _refreshMessages();
+                },
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _messagesFuture ?? _loadMessages(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                        vertical: 8,
-                        horizontal: 16,
-                      ),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
+                    if (snapshot.hasError) {
+                      return Center(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Profile Photo
-                                Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.blue,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  child: ClipOval(
-                                    child:
-                                        photoUrl != null
-                                            ? Image.network(
-                                              '${widget.apiService.baseUrl}$photoUrl',
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (
-                                                context,
-                                                error,
-                                                stackTrace,
-                                              ) {
-                                                return const Icon(
-                                                  Icons.person,
-                                                  color: Colors.blue,
-                                                );
-                                              },
-                                            )
-                                            : const Icon(
-                                              Icons.person,
-                                              color: Colors.blue,
-                                            ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                // Message Content
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        message['senderUsername'],
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                      if (message['content'].isNotEmpty) ...[
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          message['content'],
-                                          style: const TextStyle(fontSize: 14),
-                                        ),
-                                      ],
-                                      if (mediaUrl != null) ...[
-                                        const SizedBox(height: 8),
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                          child:
-                                              mediaType == 'photo'
-                                                  ? Image.network(
-                                                    '${widget.apiService.baseUrl}$mediaUrl',
-                                                    fit: BoxFit.cover,
-                                                    width: double.infinity,
-                                                    height: 200,
-                                                    errorBuilder: (
-                                                      context,
-                                                      error,
-                                                      stackTrace,
-                                                    ) {
-                                                      debugPrint(
-                                                        'Error loading image: $error',
-                                                      );
-                                                      return Container(
-                                                        width: double.infinity,
-                                                        height: 200,
-                                                        color: Colors.grey[300],
-                                                        child: const Icon(
-                                                          Icons.broken_image,
-                                                          color: Colors.grey,
-                                                          size: 50,
-                                                        ),
-                                                      );
-                                                    },
-                                                  )
-                                                  : Builder(
-                                                    builder: (context) {
-                                                      final videoUrl =
-                                                          '${widget.apiService.baseUrl}$mediaUrl';
-                                                      debugPrint(
-                                                        'Loading video from: $videoUrl',
-                                                      );
-                                                      return GestureDetector(
-                                                        onTap: () {
-                                                          _playMessageVideo(
-                                                            videoUrl,
-                                                            context,
-                                                          );
-                                                        },
-                                                        child: Stack(
-                                                          alignment:
-                                                              Alignment.center,
-                                                          children: [
-                                                            Container(
-                                                              height: 200,
-                                                              width:
-                                                                  double
-                                                                      .infinity,
-                                                              color:
-                                                                  Colors.black,
-                                                              child: const Center(
-                                                                child: Text(
-                                                                  'Video',
-                                                                  style: TextStyle(
-                                                                    color:
-                                                                        Colors
-                                                                            .white,
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                            const Icon(
-                                                              Icons
-                                                                  .play_circle_fill,
-                                                              size: 50,
-                                                              color:
-                                                                  Colors.white,
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      );
-                                                    },
-                                                  ),
-                                        ),
-                                      ],
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        message['timestamp'],
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                            const Text(
+                              'Failed to load messages',
+                              style: TextStyle(fontSize: 18, color: Colors.red),
+                            ),
+                            const SizedBox(height: 10),
+                            ElevatedButton(
+                              onPressed: () {
+                                setState(() {
+                                  _messagesFuture = _loadMessages();
+                                });
+                              },
+                              child: const Text('Retry'),
                             ),
                           ],
                         ),
+                      );
+                    }
+
+                    final messages = snapshot.data ?? [];
+
+                    if (messages.isEmpty) {
+                      return RefreshIndicator(
+                        onRefresh: () async {
+                          await _refreshMessages();
+                        },
+                        child: ListView(
+                          children: [
+                            const SizedBox(height: 100),
+                            const Center(
+                              child: Text(
+                                'No messages yet',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return RefreshIndicator(
+                      onRefresh: () async {
+                        await _refreshMessages();
+                      },
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount:
+                            messages.length +
+                            (_lastRefreshed.isNotEmpty ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          // Show actual message items
+                          if (index < messages.length) {
+                            final message = messages[index];
+                            final senderId = message['senderId'] as int?;
+                            final photoUrl = message['senderPhoto'] as String?;
+                            final mediaType = message['mediaType'];
+                            final mediaUrl = message['mediaUrl'];
+
+                            return Card(
+                              margin: const EdgeInsets.symmetric(
+                                vertical: 8,
+                                horizontal: 16,
+                              ),
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // Profile Photo
+                                        Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: Colors.blue,
+                                              width: 2,
+                                            ),
+                                          ),
+                                          child: ClipOval(
+                                            child:
+                                                photoUrl != null
+                                                    ? Image.network(
+                                                      '${widget.apiService.baseUrl}$photoUrl',
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder: (
+                                                        context,
+                                                        error,
+                                                        stackTrace,
+                                                      ) {
+                                                        return const Icon(
+                                                          Icons.person,
+                                                          color: Colors.blue,
+                                                        );
+                                                      },
+                                                    )
+                                                    : const Icon(
+                                                      Icons.person,
+                                                      color: Colors.blue,
+                                                    ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        // Message Content
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                message['senderUsername'],
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
+                                              if (message['content']
+                                                  .isNotEmpty) ...[
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  message['content'],
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                              ],
+                                              if (mediaUrl != null) ...[
+                                                const SizedBox(height: 8),
+                                                ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  child:
+                                                      mediaType == 'photo'
+                                                          ? Image.network(
+                                                            '${widget.apiService.baseUrl}$mediaUrl',
+                                                            fit: BoxFit.cover,
+                                                            width:
+                                                                double.infinity,
+                                                            height: 200,
+                                                            errorBuilder: (
+                                                              context,
+                                                              error,
+                                                              stackTrace,
+                                                            ) {
+                                                              debugPrint(
+                                                                'Error loading image: $error',
+                                                              );
+                                                              return Container(
+                                                                width:
+                                                                    double
+                                                                        .infinity,
+                                                                height: 200,
+                                                                color:
+                                                                    Colors
+                                                                        .grey[300],
+                                                                child: const Icon(
+                                                                  Icons
+                                                                      .broken_image,
+                                                                  color:
+                                                                      Colors
+                                                                          .grey,
+                                                                  size: 50,
+                                                                ),
+                                                              );
+                                                            },
+                                                          )
+                                                          : Builder(
+                                                            builder: (context) {
+                                                              final videoUrl =
+                                                                  '${widget.apiService.baseUrl}$mediaUrl';
+                                                              debugPrint(
+                                                                'Loading video from: $videoUrl',
+                                                              );
+                                                              return GestureDetector(
+                                                                onTap: () {
+                                                                  _playMessageVideo(
+                                                                    videoUrl,
+                                                                    context,
+                                                                  );
+                                                                },
+                                                                child: Stack(
+                                                                  alignment:
+                                                                      Alignment
+                                                                          .center,
+                                                                  children: [
+                                                                    Container(
+                                                                      height:
+                                                                          200,
+                                                                      width:
+                                                                          double
+                                                                              .infinity,
+                                                                      color:
+                                                                          Colors
+                                                                              .black,
+                                                                      child: const Center(
+                                                                        child: Text(
+                                                                          'Video',
+                                                                          style: TextStyle(
+                                                                            color:
+                                                                                Colors.white,
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                    const Icon(
+                                                                      Icons
+                                                                          .play_circle_fill,
+                                                                      size: 50,
+                                                                      color:
+                                                                          Colors
+                                                                              .white,
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              );
+                                                            },
+                                                          ),
+                                                ),
+                                              ],
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                message['timestamp'],
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+                          // Show timestamp at the bottom after all messages
+                          else if (_lastRefreshed.isNotEmpty) {
+                            return Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                'Last new message: $_lastRefreshed',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            );
+                          }
+
+                          return const SizedBox.shrink();
+                        },
                       ),
                     );
                   },
-                );
-              },
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(8.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.2),
-                  spreadRadius: 1,
-                  blurRadius: 3,
-                  offset: const Offset(0, -1),
                 ),
-              ],
+              ),
             ),
-            child: Column(
-              children: [
-                _buildMediaPreview(),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.add_circle_outline),
-                      onPressed: _showMediaPicker,
-                      tooltip: 'Add Media',
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _messageController,
-                        decoration: InputDecoration(
-                          hintText: 'Enter your message',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[100],
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
+            Container(
+              padding: const EdgeInsets.all(8.0),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.2),
+                    spreadRadius: 1,
+                    blurRadius: 3,
+                    offset: const Offset(0, -1),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  _buildMediaPreview(),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline),
+                        onPressed: _showMediaPicker,
+                        tooltip: 'Add Media',
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: _messageController,
+                          decoration: InputDecoration(
+                            hintText: 'Enter your message',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[100],
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.blue,
-                        borderRadius: BorderRadius.circular(20),
+                      const SizedBox(width: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blue,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.send, color: Colors.white),
+                          onPressed: _postMessage,
+                          tooltip: 'Send Message',
+                        ),
                       ),
-                      child: IconButton(
-                        icon: const Icon(Icons.send, color: Colors.white),
-                        onPressed: _postMessage,
-                        tooltip: 'Send Message',
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1149,13 +1341,20 @@ class HomeScreenState extends State<HomeScreen> {
                       content: Text('Invitation sent successfully!'),
                     ),
                   );
+                  Navigator.pop(context);
                 } catch (e) {
                   if (!mounted) return;
+                  // Show a more detailed error message
+                  debugPrint('Error sending invitation: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error sending invitation: $e')),
+                    SnackBar(
+                      content: Text('Error: ${e.toString()}'),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 5),
+                    ),
                   );
+                  // Keep the dialog open so they can fix the email
                 }
-                Navigator.pop(context);
               },
               child: const Text('Send'),
             ),
@@ -1163,5 +1362,93 @@ class HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+  }
+
+  Future<void> _checkForInvitations() async {
+    try {
+      // First, determine which families the user belongs to
+      final userData = await widget.apiService.getUserById(widget.userId);
+      if (userData['familyId'] != null) {
+        _userFamilyIds.add(userData['familyId']);
+      }
+
+      final response = await widget.apiService.getInvitations();
+      if (!mounted) return;
+
+      // Filter to only show pending invitations that aren't for families the user is already in
+      final pendingInvitations =
+          response
+              .where(
+                (inv) =>
+                    inv['status'] == 'PENDING' &&
+                    !_userFamilyIds.contains(inv['familyId']),
+              )
+              .toList();
+
+      if (pendingInvitations.isNotEmpty) {
+        // Extract the IDs of the current pending invitations
+        final currentInvitationIds =
+            pendingInvitations.map<int>((inv) => inv['id'] as int).toList();
+
+        // Find new invitations (those that weren't in the previous list)
+        final newInvitationIds =
+            currentInvitationIds
+                .where((id) => !_previousInvitationIds.contains(id))
+                .toList();
+
+        // Update the stored IDs for next comparison
+        _previousInvitationIds = currentInvitationIds;
+
+        // If there are new invitations, show a notification
+        if (newInvitationIds.isNotEmpty && mounted) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (!mounted) return;
+
+            final newCount = newInvitationIds.length;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'You have ${newCount == 1 ? 'a new' : '$newCount new'} invitation${newCount > 1 ? 's' : ''}',
+                ),
+                backgroundColor: Colors.green,
+                action: SnackBarAction(
+                  label: 'View',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) => InvitationsScreen(
+                              apiService: widget.apiService,
+                              userId: widget.userId,
+                            ),
+                      ),
+                    );
+                  },
+                ),
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          });
+        }
+        // If there are any pending invitations (but no new ones), show a counter in the UI
+        else if (currentInvitationIds.isNotEmpty) {
+          // You could update a badge count or subtle UI indicator here
+          debugPrint('${currentInvitationIds.length} pending invitations');
+        }
+      } else {
+        // No pending invitations, reset the stored list
+        _previousInvitationIds = [];
+      }
+    } catch (e) {
+      debugPrint('Error checking for invitations: $e');
+    }
+  }
+
+  void _updateRefreshTimestamp() {
+    final now = DateTime.now();
+    _lastRefreshed =
+        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
   }
 }

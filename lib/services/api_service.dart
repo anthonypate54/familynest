@@ -11,7 +11,7 @@ class ApiService {
     if (kIsWeb) {
       return "http://localhost:8080"; // Web
     } else if (Platform.isAndroid) {
-      return "http://10.0.2.2:8080"; // Android emulator (pointing to host machine)
+      return "http://10.0.0.81:8080"; // Android emulator (pointing to host machine)
     } else {
       return "http://localhost:8080"; // iOS and others
     }
@@ -231,9 +231,9 @@ Network connection error. Please check:
     }
   }
 
-  void logout() {
+  Future<void> logout() async {
     debugPrint('Logging out, clearing token');
-    _clearToken();
+    await _clearToken();
   }
 
   Future<Map<String, dynamic>> getUserById(int id) async {
@@ -269,7 +269,7 @@ Network connection error. Please check:
     final response = await client.post(
       Uri.parse('$baseUrl/api/users/$userId/create-family'),
       headers: headers,
-      body: jsonEncode({'name': familyName}),
+      body: jsonEncode({'name': familyName, 'leaveCurrentFamily': true}),
     );
     if (response.statusCode == 201) {
       final responseBody = jsonDecode(response.body) as Map<String, dynamic>;
@@ -462,7 +462,7 @@ Network connection error. Please check:
     }
   }
 
-  Future<Map<String, dynamic>> inviteUser(int userId, String email) async {
+  Future<void> inviteUser(int userId, String email) async {
     if (_token == null) {
       throw Exception('No authentication token available');
     }
@@ -479,12 +479,20 @@ Network connection error. Please check:
       debugPrint(
         'Invite response: statusCode=${response.statusCode}, body=${response.body}',
       );
-      if (response.statusCode == 201) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception(
-          'Failed to send invitation: statusCode=${response.statusCode}, body=${response.body}',
-        );
+      if (response.statusCode != 200) {
+        // Try to parse the error message from the response
+        try {
+          final errorBody = jsonDecode(response.body);
+          if (errorBody is String) {
+            throw errorBody;
+          } else if (errorBody is Map && errorBody.containsKey('error')) {
+            throw errorBody['error'];
+          }
+        } catch (e) {
+          // If we can't parse the response, just use the raw body
+          throw response.body;
+        }
+        throw 'Failed to send invitation: ${response.statusCode}';
       }
     } catch (e) {
       debugPrint('Error sending invitation: $e');
@@ -509,7 +517,18 @@ Network connection error. Please check:
         'Get invitations response: statusCode=${response.statusCode}, body=${response.body}',
       );
       if (response.statusCode == 200) {
-        return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+        final invitations = List<Map<String, dynamic>>.from(
+          jsonDecode(response.body),
+        );
+
+        // Log each invitation for debugging
+        for (var inv in invitations) {
+          debugPrint(
+            'Invitation: id=${inv['id']}, status=${inv['status']}, familyId=${inv['familyId']}',
+          );
+        }
+
+        return invitations;
       } else {
         throw Exception(
           'Failed to fetch invitations: statusCode=${response.statusCode}, body=${response.body}',
