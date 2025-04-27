@@ -7,6 +7,10 @@ import 'family_management_screen.dart';
 import 'login_screen.dart';
 import 'invitations_screen.dart';
 import '../components/bottom_navigation.dart';
+import 'package:intl/intl.dart';
+import 'dart:io';
+import 'dart:math';
+import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ApiService apiService;
@@ -30,6 +34,9 @@ class ProfileScreenState extends State<ProfileScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   XFile? _photoFile;
+  Future<Map<String, dynamic>?>? _userDataFuture;
+  final _profileKey = GlobalKey<State>();
+  final _navigationController = BottomNavigationController();
 
   @override
   void initState() {
@@ -42,6 +49,8 @@ class ProfileScreenState extends State<ProfileScreen>
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
     _animationController.forward();
+
+    _userDataFuture = _loadUser();
   }
 
   @override
@@ -62,33 +71,195 @@ class ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _pickPhoto() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _photoFile = pickedFile;
-      });
-      try {
-        // Skip photo upload on web for now
-        if (!kIsWeb) {
-          await widget.apiService.updatePhoto(widget.userId, pickedFile.path);
+    try {
+      final pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 30, // Compress image to 30% quality
+        maxWidth: 500, // Limit width to 500 pixels
+        maxHeight: 500, // Limit height to 500 pixels
+      );
+
+      if (pickedFile != null) {
+        // Show loading indicator
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder:
+              (context) => const AlertDialog(
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Processing image...'),
+                  ],
+                ),
+              ),
+        );
+
+        // Get file size and validate
+        final file = File(pickedFile.path);
+        final int fileSize = await file.length();
+        final int fileSizeKB = fileSize ~/ 1024;
+
+        debugPrint('Selected photo size: $fileSizeKB KB');
+
+        if (fileSizeKB > 800) {
+          // Close the progress dialog
+          if (!mounted) return;
+          Navigator.of(context).pop();
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Image is too large ($fileSizeKB KB). Please choose a smaller image.',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+          return;
         }
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile photo updated successfully!')),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error updating photo: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+
+        setState(() {
+          _photoFile = pickedFile;
+        });
+
+        // Attempt upload
+        try {
+          if (!kIsWeb) {
+            await widget.apiService.updatePhoto(widget.userId, pickedFile.path);
+
+            // Refresh the user data after successful upload
+            setState(() {
+              _userDataFuture = _loadUser();
+            });
+          }
+
+          // Close the progress dialog
+          if (!mounted) return;
+          Navigator.of(context).pop();
+
+          // Show success animation
+          showDialog(
+            context: context,
+            builder:
+                (context) => Dialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                          size: 64,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Photo Updated!',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Your profile photo has been updated successfully.',
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size(200, 45),
+                          ),
+                          child: const Text('Great!'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          );
+        } catch (e) {
+          // Close the progress dialog
+          if (!mounted) return;
+          Navigator.of(context).pop();
+
+          // Create a user-friendly error message
+          String errorMessage = 'Unable to update profile photo';
+
+          if (e.toString().contains('413')) {
+            errorMessage =
+                'The server rejected the image. Please try a smaller or more compressed image.';
+          } else if (e.toString().contains('network')) {
+            errorMessage =
+                'Network error. Please check your connection and try again.';
+          } else {
+            errorMessage = 'Error updating photo: $e';
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'OK',
+                textColor: Colors.white,
+                onPressed: () {},
+              ),
+            ),
+          );
+        }
       }
+    } catch (e) {
+      debugPrint('Error picking image: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error selecting image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   Future<void> _logout() async {
+    // Show confirmation dialog
+    bool confirmLogout =
+        await showDialog(
+          context: context,
+          builder:
+              (context) => AlertDialog(
+                title: const Text('Confirm Logout'),
+                content: const Text('Are you sure you want to log out?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Logout'),
+                  ),
+                ],
+              ),
+        ) ??
+        false;
+
+    if (!confirmLogout) return;
+
     widget.apiService.logout();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
@@ -101,54 +272,449 @@ class ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _sendInvitation() async {
-    final TextEditingController emailController = TextEditingController();
+    try {
+      // First check if user has a family
+      final userData = await widget.apiService.getUserById(widget.userId);
+      final familyId = userData['familyId'];
+
+      if (familyId == null) {
+        _showCreateFamilyFirstDialog();
+        return;
+      }
+
+      // User has a family, proceed with invitation
+      final TextEditingController emailController = TextEditingController();
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Send Invitation'),
+            content: TextField(
+              controller: emailController,
+              decoration: const InputDecoration(labelText: 'Email'),
+              keyboardType: TextInputType.emailAddress,
+              autofocus: true,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context); // Close the dialog immediately
+
+                  // Show a loading indicator
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Sending invitation...'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+
+                  try {
+                    await widget.apiService.inviteUser(
+                      widget.userId,
+                      emailController.text,
+                    );
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Invitation sent successfully!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    debugPrint('Error sending invitation: $e');
+
+                    String errorMessage = e.toString();
+
+                    // Check if it's the database error we fixed
+                    if (errorMessage.contains('invitee_email') ||
+                        errorMessage.contains('constraint') ||
+                        errorMessage.contains('null value in column')) {
+                      // Show a specific message that's more helpful
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Error sending invitation: ${emailController.text}. Please try a different email.',
+                          ),
+                          backgroundColor: Colors.red,
+                          duration: Duration(seconds: 5),
+                        ),
+                      );
+                    } else if (errorMessage.contains(
+                      'already in your family',
+                    )) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'This person is already in your family!',
+                          ),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    } else if (errorMessage.contains('already pending')) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'There is already a pending invitation for this email.',
+                          ),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    } else if (errorMessage.contains('Server error') ||
+                        errorMessage.contains('500')) {
+                      // Only show the backend error dialog for server errors
+                      _showInvitationBackendError();
+                    } else {
+                      // For other errors, show a snackbar with the message
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error: $errorMessage'),
+                          backgroundColor: Colors.red,
+                          duration: Duration(seconds: 5),
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Send'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('Error checking user family status: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // Update demographics information
+  Future<void> _updateDemographics(Map<String, dynamic> data) async {
+    try {
+      await widget.apiService.updateDemographics(widget.userId, data);
+
+      // Refresh the user data
+      setState(() {
+        _userDataFuture = _loadUser();
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Demographics updated successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error updating demographics: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
+  // Show dialog to edit demographics
+  Future<void> _showDemographicsDialog(Map<String, dynamic> user) async {
+    final TextEditingController phoneController = TextEditingController(
+      text: user['phoneNumber'] as String? ?? '+1 ',
+    );
+    final TextEditingController addressController = TextEditingController(
+      text: user['address'] as String? ?? '',
+    );
+    final TextEditingController cityController = TextEditingController(
+      text: user['city'] as String? ?? '',
+    );
+    final TextEditingController stateController = TextEditingController(
+      text: user['state'] as String? ?? '',
+    );
+    final TextEditingController zipController = TextEditingController(
+      text: user['zipCode'] as String? ?? '',
+    );
+    final TextEditingController countryController = TextEditingController(
+      text: user['country'] as String? ?? '',
+    );
+    final TextEditingController birthDateController = TextEditingController(
+      text: user['birthDate'] as String? ?? '',
+    );
+    final TextEditingController bioController = TextEditingController(
+      text: user['bio'] as String? ?? '',
+    );
+
+    // Phone number formatter
+    final phoneFormatter = MaskTextInputFormatter(
+      mask: '+# (###) ###-####',
+      filter: {"#": RegExp(r'[0-9]')},
+      type: MaskAutoCompletionType.lazy,
+    );
+
+    // If phone number already exists, try to set the formatter value
+    if (phoneController.text.isNotEmpty) {
+      try {
+        phoneFormatter.formatEditUpdate(
+          TextEditingValue.empty,
+          TextEditingValue(text: phoneController.text),
+        );
+      } catch (e) {
+        // If formatting fails, keep the original text
+        debugPrint('Could not format existing phone number: $e');
+      }
+    }
+
+    // Format for date input and display
+    final DateFormat dateFormat = DateFormat('yyyy-MM-dd');
+
+    Future<void> _selectDate(BuildContext context) async {
+      // Parse existing date or use current date
+      DateTime initialDate;
+      try {
+        initialDate =
+            birthDateController.text.isNotEmpty
+                ? dateFormat.parse(birthDateController.text)
+                : DateTime.now().subtract(
+                  const Duration(days: 365 * 70),
+                ); // Default to 70 years ago
+      } catch (e) {
+        initialDate = DateTime.now().subtract(const Duration(days: 365 * 70));
+      }
+
+      final DateTime? picked = await showDatePicker(
+        context: context,
+        initialDate: initialDate,
+        firstDate: DateTime(1900),
+        lastDate: DateTime.now(),
+        initialDatePickerMode:
+            DatePickerMode.year, // Start with year view for easier navigation
+        builder: (BuildContext context, Widget? child) {
+          return Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: ColorScheme.light(
+                primary: Theme.of(context).colorScheme.primary,
+                onPrimary: Colors.white,
+                surface: Colors.white,
+                onSurface: Colors.black,
+              ),
+              dialogBackgroundColor: Colors.white,
+            ),
+            child: child!,
+          );
+        },
+      );
+
+      if (picked != null) {
+        birthDateController.text = dateFormat.format(picked);
+      }
+    }
+
     await showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Send Invitation'),
-          content: TextField(
-            controller: emailController,
-            decoration: const InputDecoration(labelText: 'Email'),
+          title: const Center(child: Text('Edit Info')),
+          titlePadding: const EdgeInsets.only(top: 20, bottom: 10),
+          contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                TextField(
+                  controller: phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number',
+                    icon: Icon(Icons.phone),
+                    helperText: 'Format: +1 (123) 456-7890',
+                  ),
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [phoneFormatter],
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: addressController,
+                  decoration: const InputDecoration(
+                    labelText: 'Address',
+                    icon: Icon(Icons.home),
+                    helperText: 'Enter your street address',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: cityController,
+                  decoration: const InputDecoration(
+                    labelText: 'City',
+                    icon: Icon(Icons.location_city),
+                    helperText: 'City you currently live in',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: stateController,
+                  decoration: const InputDecoration(
+                    labelText: 'State/Province',
+                    icon: Icon(Icons.map),
+                    helperText: 'State or province of residence',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: zipController,
+                  decoration: const InputDecoration(
+                    labelText: 'Zip/Postal Code',
+                    icon: Icon(Icons.pin),
+                    helperText: '5-digit postal code',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: countryController,
+                  decoration: const InputDecoration(
+                    labelText: 'Country',
+                    icon: Icon(Icons.public),
+                    helperText: 'Country of residence',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: birthDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Birth Date',
+                    icon: Icon(Icons.cake),
+                    suffixIcon: Icon(Icons.calendar_today),
+                    helperText: 'Click to select from calendar',
+                  ),
+                  readOnly: true,
+                  onTap: () => _selectDate(context),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: bioController,
+                  decoration: const InputDecoration(
+                    labelText: 'Bio',
+                    icon: Icon(Icons.info),
+                    helperText: 'Tell us about yourself in a few sentences',
+                  ),
+                  maxLines: 3,
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),
-            TextButton(
-              onPressed: () async {
-                try {
-                  await widget.apiService.inviteUser(
-                    widget.userId,
-                    emailController.text,
-                  );
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Invitation sent successfully!'),
-                    ),
-                  );
-                  Navigator.pop(context);
-                } catch (e) {
-                  if (!mounted) return;
-                  // Show a more detailed error message
-                  debugPrint('Error sending invitation: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error: ${e.toString()}'),
-                      backgroundColor: Colors.red,
-                      duration: const Duration(seconds: 5),
-                    ),
-                  );
-                  // Keep the dialog open so they can fix the email
-                }
+            ElevatedButton(
+              onPressed: () {
+                final Map<String, dynamic> data = {
+                  'phoneNumber':
+                      phoneController.text.isEmpty
+                          ? null
+                          : phoneFormatter.getMaskedText(),
+                  'address':
+                      addressController.text.isEmpty
+                          ? null
+                          : addressController.text,
+                  'city':
+                      cityController.text.isEmpty ? null : cityController.text,
+                  'state':
+                      stateController.text.isEmpty
+                          ? null
+                          : stateController.text,
+                  'zipCode':
+                      zipController.text.isEmpty ? null : zipController.text,
+                  'country':
+                      countryController.text.isEmpty
+                          ? null
+                          : countryController.text,
+                  'birthDate':
+                      birthDateController.text.isEmpty
+                          ? null
+                          : birthDateController.text,
+                  'bio': bioController.text.isEmpty ? null : bioController.text,
+                };
+
+                _updateDemographics(data);
+                Navigator.pop(context);
               },
-              child: const Text('Send'),
+              child: const Text('Save'),
             ),
           ],
         );
       },
+    );
+  }
+
+  // Add a method to handle the case when user doesn't have a family
+  void _showCreateFamilyFirstDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Create a Family First'),
+            content: const Text(
+              'You need to create a family before you can invite others. Would you like to create a family now?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Not Now'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (context) => FamilyManagementScreen(
+                            apiService: widget.apiService,
+                            userId: widget.userId,
+                            navigationController: _navigationController,
+                          ),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                ),
+                child: const Text('Create Family'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Show a message about the invitation backend issue
+  void _showInvitationBackendError() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Invitation System Unavailable'),
+            content: const Text(
+              'We\'re sorry, but the invitation system is currently experiencing technical issues.\n\n'
+              'Our team has been notified and is working on a fix. In the meantime, you can still use '
+              'the app and enjoy your family connections.\n\n'
+              'Please try again later or contact support if the issue persists.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
     );
   }
 
@@ -159,6 +725,7 @@ class ProfileScreenState extends State<ProfileScreen>
     final double screenWidth = MediaQuery.of(context).size.width;
     final double contentWidth =
         screenWidth > maxWidth + 40 ? maxWidth : screenWidth - 40;
+    final bool isSmallScreen = screenWidth < 360;
 
     return Scaffold(
       appBar: AppBar(
@@ -182,6 +749,7 @@ class ProfileScreenState extends State<ProfileScreen>
         userId: widget.userId,
         userRole: widget.role,
         onSendInvitation: (_) => _sendInvitation(),
+        controller: _navigationController,
       ),
       body: Container(
         width: double.infinity,
@@ -197,8 +765,9 @@ class ProfileScreenState extends State<ProfileScreen>
           ),
         ),
         child: SafeArea(
+          key: _profileKey,
           child: FutureBuilder<Map<String, dynamic>?>(
-            future: _loadUser(),
+            future: _userDataFuture ?? _loadUser(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -224,80 +793,125 @@ class ProfileScreenState extends State<ProfileScreen>
                 opacity: _fadeAnimation,
                 child: Center(
                   child: Container(
-                    constraints: BoxConstraints(
-                      maxWidth: contentWidth,
-                      minHeight:
-                          MediaQuery.of(context).size.height -
-                          kToolbarHeight -
-                          MediaQuery.of(context).padding.top -
-                          MediaQuery.of(context).padding.bottom,
-                    ),
+                    constraints: BoxConstraints(maxWidth: contentWidth),
                     child: Column(
-                      mainAxisAlignment:
-                          MainAxisAlignment.start, // Start from the top
+                      mainAxisAlignment: MainAxisAlignment.start,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 20),
+                        SizedBox(height: isSmallScreen ? 10 : 15),
 
-                        // Profile photo
+                        // Profile photo - smaller on small screens
                         ProfilePhoto(
                           photoUrl:
                               user['photo'] != null
-                                  ? '${widget.apiService.baseUrl}${user['photo']}'
+                                  ? '${widget.apiService.baseUrl}${user['photo']}?t=${DateTime.now().millisecondsSinceEpoch}'
                                   : null,
                           onTap: _pickPhoto,
+                          size: isSmallScreen ? 90 : 110,
                         ),
 
-                        const SizedBox(height: 20),
+                        SizedBox(height: isSmallScreen ? 5 : 10),
 
-                        // Profile info card
-                        Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(bottom: 16),
-                          child: Card(
-                            elevation: 4,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: ProfileInfo(
-                                username: user['username'] ?? '',
-                                firstName: user['firstName'] ?? '',
-                                lastName: user['lastName'] ?? '',
-                                email: user['email'] ?? 'Not available',
-                                role: widget.role ?? 'Unknown',
+                        // Edit Info Button
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: SizedBox(
+                            width: 200,
+                            height: 50,
+                            child: ElevatedButton.icon(
+                              icon: Icon(Icons.edit, size: 24),
+                              label: Text(
+                                'EDIT INFO',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              onPressed: () => _showDemographicsDialog(user),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                  horizontal: 20,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                elevation: 5,
                               ),
                             ),
                           ),
                         ),
 
-                        // Manage family button
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            icon: const Icon(Icons.family_restroom),
-                            label: const Text('Manage Family'),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (context) => FamilyManagementScreen(
-                                        apiService: widget.apiService,
-                                        userId: widget.userId,
+                        // Profile info card
+                        Expanded(
+                          child: SingleChildScrollView(
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  margin: EdgeInsets.only(
+                                    bottom: isSmallScreen ? 8 : 12,
+                                  ),
+                                  child: Card(
+                                    elevation: 4,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Padding(
+                                      padding: EdgeInsets.all(
+                                        isSmallScreen ? 12 : 16,
                                       ),
+                                      child: ProfileInfo(
+                                        username: user['username'] ?? '',
+                                        firstName: user['firstName'] ?? '',
+                                        lastName: user['lastName'] ?? '',
+                                        email: user['email'] ?? 'Not available',
+                                        role: widget.role ?? 'Unknown',
+                                        isSmallScreen: isSmallScreen,
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.primary,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
+
+                                // Manage family button
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(Icons.family_restroom),
+                                    label: const Text('Manage Family'),
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder:
+                                              (context) =>
+                                                  FamilyManagementScreen(
+                                                    apiService:
+                                                        widget.apiService,
+                                                    userId: widget.userId,
+                                                    navigationController:
+                                                        _navigationController,
+                                                  ),
+                                        ),
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          Theme.of(context).colorScheme.primary,
+                                      foregroundColor: Colors.white,
+                                      padding: EdgeInsets.symmetric(
+                                        vertical: isSmallScreen ? 10 : 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(height: isSmallScreen ? 10 : 20),
+                              ],
                             ),
                           ),
                         ),
@@ -317,17 +931,25 @@ class ProfileScreenState extends State<ProfileScreen>
 class ProfilePhoto extends StatelessWidget {
   final String? photoUrl;
   final VoidCallback onTap;
+  final double size;
 
-  const ProfilePhoto({super.key, this.photoUrl, required this.onTap});
+  const ProfilePhoto({
+    super.key,
+    this.photoUrl,
+    required this.onTap,
+    required this.size,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final bool isSmallScreen = size < 100;
+
     return Stack(
       alignment: Alignment.bottomRight,
       children: [
         Container(
-          width: 120,
-          height: 120,
+          width: size,
+          height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 4),
@@ -345,10 +967,14 @@ class ProfilePhoto extends StatelessWidget {
                     ? Image.network(
                       photoUrl!,
                       fit: BoxFit.cover,
+                      cacheWidth: (size * 2).toInt(),
+                      cacheHeight: (size * 2).toInt(),
+                      headers: const {'Cache-Control': 'no-cache'},
+                      key: ValueKey(photoUrl),
                       errorBuilder: (context, error, stackTrace) {
-                        return const Icon(
+                        return Icon(
                           Icons.person,
-                          size: 60,
+                          size: size * 0.5,
                           color: Colors.grey,
                         );
                       },
@@ -357,7 +983,7 @@ class ProfilePhoto extends StatelessWidget {
                         return const Center(child: CircularProgressIndicator());
                       },
                     )
-                    : const Icon(Icons.person, size: 60, color: Colors.grey),
+                    : Icon(Icons.person, size: size * 0.5, color: Colors.grey),
           ),
         ),
         Container(
@@ -373,9 +999,14 @@ class ProfilePhoto extends StatelessWidget {
             ],
           ),
           child: IconButton(
-            icon: const Icon(Icons.camera_alt, color: Colors.white),
+            icon: Icon(
+              Icons.camera_alt,
+              color: Colors.white,
+              size: isSmallScreen ? 16 : 20,
+            ),
             onPressed: onTap,
             tooltip: 'Update Photo',
+            padding: EdgeInsets.all(isSmallScreen ? 4 : 8),
           ),
         ),
       ],
@@ -389,6 +1020,7 @@ class ProfileInfo extends StatelessWidget {
   final String lastName;
   final String email;
   final String role;
+  final bool isSmallScreen;
 
   const ProfileInfo({
     super.key,
@@ -397,6 +1029,7 @@ class ProfileInfo extends StatelessWidget {
     required this.lastName,
     required this.email,
     required this.role,
+    required this.isSmallScreen,
   });
 
   @override
@@ -404,46 +1037,81 @@ class ProfileInfo extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildInfoRow(context, Icons.person, 'Username', username),
+        _buildInfoRow(
+          context,
+          Icons.person,
+          'Username',
+          username,
+          isSmallScreen,
+        ),
         const Divider(height: 24),
-        _buildInfoRow(context, Icons.person_outline, 'First Name', firstName),
+        _buildInfoRow(
+          context,
+          Icons.person_outline,
+          'First Name',
+          firstName,
+          isSmallScreen,
+        ),
         const Divider(height: 24),
-        _buildInfoRow(context, Icons.person_outline, 'Last Name', lastName),
+        _buildInfoRow(
+          context,
+          Icons.person_outline,
+          'Last Name',
+          lastName,
+          isSmallScreen,
+        ),
         const Divider(height: 24),
-        _buildInfoRow(context, Icons.email, 'Email', email),
+        _buildInfoRow(context, Icons.email, 'Email', email, isSmallScreen),
         const Divider(height: 24),
-        _buildInfoRow(context, Icons.verified_user, 'Role', role),
+        _buildInfoRow(
+          context,
+          Icons.verified_user,
+          'Role',
+          role,
+          isSmallScreen,
+        ),
       ],
     );
   }
 
-  Widget _buildInfoRow(
+  static Widget _buildInfoRow(
     BuildContext context,
     IconData icon,
     String label,
     String value,
+    bool isSmallScreen,
   ) {
     return Row(
       children: [
-        Icon(icon, color: Theme.of(context).colorScheme.primary, size: 28),
-        const SizedBox(width: 16),
+        Icon(
+          icon,
+          color: Theme.of(context).colorScheme.primary,
+          size: isSmallScreen ? 22 : 28,
+        ),
+        SizedBox(width: isSmallScreen ? 12 : 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
-                style: const TextStyle(fontSize: 14, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 12 : 14,
+                  color: Colors.grey,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
-              const SizedBox(height: 4),
+              SizedBox(height: isSmallScreen ? 2 : 4),
               Text(
                 value,
-                style: const TextStyle(
-                  fontSize: 16,
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 14 : 16,
                   fontWeight: FontWeight.bold,
                 ),
                 overflow: TextOverflow.ellipsis,
-                maxLines: 2,
+                maxLines: 3,
+                softWrap: true,
               ),
             ],
           ),

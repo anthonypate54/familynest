@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'dart:async';
 import 'dart:io' show Platform, File;
 
@@ -189,29 +190,79 @@ Network connection error. Please check:
     required String lastName,
     String role = 'USER',
     String? photoPath,
+    Map<String, dynamic>? demographics,
   }) async {
     await initialize();
     try {
       debugPrint('Attempting to register user: $username');
+
+      // Check photo size before attempting to upload
+      if (photoPath != null && !kIsWeb) {
+        final file = File(photoPath);
+        if (await file.exists()) {
+          final fileSize = await file.length();
+          final fileSizeKB = fileSize ~/ 1024;
+          debugPrint('Photo file size: $fileSizeKB KB');
+
+          // If file is larger than 1MB, throw an error
+          if (fileSize > 1 * 1024 * 1024) {
+            debugPrint('File size too large: $fileSizeKB KB (max 1MB)');
+            throw Exception(
+              'Profile photo is too large (${fileSizeKB}KB). Please select a smaller image or use the photo with compression.',
+            );
+          }
+        } else {
+          debugPrint('Photo file does not exist at path: $photoPath');
+          photoPath = null; // Reset path if file doesn't exist
+        }
+      }
+
       var request = http.MultipartRequest(
         'POST',
         Uri.parse('$baseUrl/api/users'),
       );
-      request.fields['userData'] = jsonEncode({
+
+      // Combine basic user data with demographic data
+      final userData = {
         'username': username,
         'email': email,
         'password': password,
         'firstName': firstName,
         'lastName': lastName,
         'role': role,
-      });
+      };
 
-      if (photoPath != null && !kIsWeb) {
-        request.files.add(
-          await http.MultipartFile.fromPath('photo', photoPath),
-        );
+      // Add demographics data if provided
+      if (demographics != null) {
+        userData.addAll({
+          'phoneNumber': demographics['phoneNumber'],
+          'address': demographics['address'],
+          'city': demographics['city'],
+          'state': demographics['state'],
+          'zipCode': demographics['zipCode'],
+          'country': demographics['country'],
+          'birthDate': demographics['birthDate'],
+          'bio': demographics['bio'],
+          'showDemographics': demographics['showDemographics'],
+        });
       }
 
+      request.fields['userData'] = jsonEncode(userData);
+
+      if (photoPath != null && !kIsWeb) {
+        try {
+          debugPrint('Adding photo to request: $photoPath');
+          request.files.add(
+            await http.MultipartFile.fromPath('photo', photoPath),
+          );
+          debugPrint('Successfully added photo to request');
+        } catch (e) {
+          debugPrint('Error adding photo to request: $e');
+          // Continue without photo if there's an error
+        }
+      }
+
+      debugPrint('Sending registration request to: ${request.url}');
       final response = await request.send();
       final responseBody = await response.stream.bytesToString();
       debugPrint(
@@ -236,8 +287,45 @@ Network connection error. Please check:
     await _clearToken();
   }
 
+  Future<Map<String, dynamic>> updateDemographics(
+    int userId,
+    Map<String, dynamic> demographicsData,
+  ) async {
+    final headers = {'Content-Type': 'application/json'};
+
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    }
+
+    debugPrint(
+      'Updating demographics for user ID: $userId with data: $demographicsData',
+    );
+
+    try {
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/users/$userId/demographics'),
+        headers: headers,
+        body: jsonEncode(demographicsData),
+      );
+
+      debugPrint(
+        'Update demographics response: statusCode=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to update demographics: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error updating demographics: $e');
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> getUserById(int id) async {
     final headers = {'Content-Type': 'application/json'};
+    debugPrint('getUserById: Getting user with ID: $id');
     debugPrint('Token in getUserById: $_token');
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
@@ -245,19 +333,34 @@ Network connection error. Please check:
     } else {
       debugPrint('No token available, Authorization header not set');
     }
-    final response = await client.get(
-      Uri.parse('$baseUrl/api/users/$id'),
-      headers: headers,
-    );
-    debugPrint(
-      'Get user response: statusCode=${response.statusCode}, body=${response.body}',
-    );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
-    } else {
-      throw Exception(
-        'Failed to get user details: statusCode=${response.statusCode}, body=${response.body}',
+
+    try {
+      debugPrint('Sending request to $baseUrl/api/users/$id');
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/users/$id'),
+        headers: headers,
       );
+      debugPrint(
+        'Get user response: statusCode=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        final userData = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint('User data successfully retrieved: $userData');
+
+        // Explicitly log the familyId for debugging
+        debugPrint('Family ID for user $id: ${userData['familyId']}');
+
+        return userData;
+      } else {
+        debugPrint('Error getting user: ${response.statusCode}');
+        throw Exception(
+          'Failed to get user details: statusCode=${response.statusCode}, body=${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Exception in getUserById: $e');
+      rethrow;
     }
   }
 
@@ -284,12 +387,51 @@ Network connection error. Please check:
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
     }
-    final response = await client.post(
-      Uri.parse('$baseUrl/api/users/$userId/join-family/$familyId'),
-      headers: headers,
+
+    debugPrint(
+      'Attempting to join family: User ID: $userId, Family ID: $familyId',
     );
-    if (response.statusCode != 200) {
-      throw Exception('Failed to join family: ${response.body}');
+
+    try {
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/users/$userId/join-family/$familyId'),
+        headers: headers,
+      );
+
+      debugPrint(
+        'Join family response: statusCode=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode != 200) {
+        String errorMessage = 'Failed to join family';
+
+        // Try to parse the error message from the response body
+        if (response.body.isNotEmpty) {
+          try {
+            final responseBody = jsonDecode(response.body);
+            if (responseBody is Map && responseBody.containsKey('error')) {
+              errorMessage = responseBody['error'];
+            }
+          } catch (e) {
+            // If parsing fails, just use the raw body
+            debugPrint('Error parsing response body: $e');
+            errorMessage = response.body;
+          }
+        }
+
+        // Add specific error messages based on the response or known conditions
+        if (errorMessage.contains('already belongs to a family')) {
+          errorMessage = 'User already belongs to a family';
+        } else if (response.statusCode == 404 ||
+            errorMessage.contains('not found')) {
+          errorMessage = 'Family not found';
+        }
+
+        throw Exception(errorMessage);
+      }
+    } catch (e) {
+      debugPrint('Error joining family: $e');
+      rethrow;
     }
   }
 
@@ -300,20 +442,47 @@ Network connection error. Please check:
     String? mediaType,
   }) async {
     try {
+      debugPrint('Starting postMessage for userId: $userId');
+      debugPrint('Content: "$content"');
+      debugPrint('Media path: $mediaPath, media type: $mediaType');
+
+      // First verify user has a family
+      debugPrint('Fetching user data to check family membership...');
+      final userData = await getUserById(userId);
+      debugPrint('User data received: $userData');
+
+      final familyId = userData['familyId'];
+      debugPrint('Family ID from userData: $familyId');
+
+      if (familyId == null) {
+        debugPrint('Error: User has no family ID');
+        throw Exception(
+          'You need to be part of a family to post messages. Please create or join a family first.',
+        );
+      }
+
+      debugPrint('User belongs to family: $familyId, proceeding with message');
       debugPrint(
-        'Posting message with mediaPath: $mediaPath, mediaType: $mediaType',
+        'Creating MultipartRequest for POST to $baseUrl/api/users/$userId/messages',
       );
+
       var request = http.MultipartRequest(
         'POST',
         Uri.parse('$baseUrl/api/users/$userId/messages'),
       );
 
       if (_token != null) {
+        debugPrint('Adding authorization token to request');
         request.headers['Authorization'] = 'Bearer $_token';
+      } else {
+        debugPrint('Warning: No token available for message posting');
       }
 
       if (content.isNotEmpty) {
+        debugPrint('Adding content field: $content');
         request.fields['content'] = content;
+      } else {
+        debugPrint('No content provided for message');
       }
 
       if (mediaPath != null && mediaType != null && !kIsWeb) {
@@ -330,6 +499,7 @@ Network connection error. Please check:
         request.fields['mediaType'] = mediaType;
 
         try {
+          debugPrint('Creating MultipartFile from path: $mediaPath');
           final mediaFile = await http.MultipartFile.fromPath(
             'media',
             mediaPath,
@@ -345,7 +515,8 @@ Network connection error. Please check:
         }
       }
 
-      debugPrint('Sending message request with fields: ${request.fields}');
+      debugPrint('Request headers: ${request.headers}');
+      debugPrint('Request fields: ${request.fields}');
       if (request.files.isNotEmpty) {
         debugPrint('Request contains ${request.files.length} files');
         for (var file in request.files) {
@@ -355,13 +526,32 @@ Network connection error. Please check:
         }
       }
 
+      debugPrint('Sending request...');
       final response = await request.send();
       debugPrint('Message post response status: ${response.statusCode}');
       final responseBody = await response.stream.bytesToString();
+      debugPrint('Response body: $responseBody');
 
       if (response.statusCode != 201) {
         debugPrint('Error posting message: $responseBody');
-        throw Exception('Failed to post message: $responseBody');
+
+        // Try to parse the error message if available
+        String errorMessage = 'Failed to post message';
+        if (responseBody.isNotEmpty) {
+          try {
+            final jsonResponse = jsonDecode(responseBody);
+            debugPrint('Parsed error response: $jsonResponse');
+            if (jsonResponse is Map && jsonResponse.containsKey('error')) {
+              errorMessage = jsonResponse['error'];
+            } else if (jsonResponse is String) {
+              errorMessage = jsonResponse;
+            }
+          } catch (e) {
+            debugPrint('Error parsing response body: $e');
+          }
+        }
+
+        throw Exception('$errorMessage: $responseBody');
       } else {
         debugPrint('Message posted successfully: $responseBody');
       }
@@ -413,20 +603,86 @@ Network connection error. Please check:
       return; // Skip on web for now
     }
 
-    var request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$baseUrl/api/users/$userId/update-photo'),
-    );
-    if (_token != null) {
-      request.headers['Authorization'] = 'Bearer $_token';
-    }
-    request.headers['Content-Type'] = 'multipart/form-data';
+    debugPrint('Updating photo from path: $photoPath');
 
-    request.files.add(await http.MultipartFile.fromPath('photo', photoPath));
+    try {
+      // Check file size before uploading
+      final file = File(photoPath);
+      final fileSize = await file.length();
+      final fileSizeKB = fileSize ~/ 1024;
+      debugPrint('Photo file size: $fileSizeKB KB');
 
-    var response = await request.send();
-    if (response.statusCode != 200) {
-      throw Exception('Failed to update photo: ${response.reasonPhrase}');
+      if (fileSize > 1 * 1024 * 1024) {
+        // 1MB limit
+        throw Exception(
+          'File size exceeds 1MB limit (${fileSizeKB}KB). Please select a smaller image.',
+        );
+      }
+
+      // Create a multipart request
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/api/users/$userId/update-photo'),
+      );
+
+      // Add authorization header if token exists
+      if (_token != null) {
+        request.headers['Authorization'] = 'Bearer $_token';
+      }
+
+      // Add the file to the request
+      final photoFile = await http.MultipartFile.fromPath('photo', photoPath);
+      request.files.add(photoFile);
+      debugPrint('Adding file with length: ${photoFile.length} bytes');
+
+      // Send the request
+      debugPrint('Sending photo upload request to: ${request.url}');
+      final streamedResponse = await request.send();
+
+      // Get the response body
+      final response = await http.Response.fromStream(streamedResponse);
+      debugPrint('Upload photo response status: ${response.statusCode}');
+      debugPrint('Response headers: ${response.headers}');
+
+      // Try to parse the response body, but handle if it's empty
+      String responseBody = 'Empty response';
+      if (response.body.isNotEmpty) {
+        responseBody = response.body;
+        debugPrint('Response body: $responseBody');
+        try {
+          final jsonResponse = jsonDecode(responseBody);
+          debugPrint('Parsed JSON response: $jsonResponse');
+        } catch (e) {
+          debugPrint('Not JSON response: $e');
+        }
+      }
+
+      if (response.statusCode != 200) {
+        if (response.statusCode == 413) {
+          throw Exception(
+            'File size too large for server. Please use a smaller image.',
+          );
+        }
+        throw Exception(
+          'Failed to update photo: status code ${response.statusCode}, ${response.reasonPhrase}, $responseBody',
+        );
+      }
+
+      // Clear any cached photo data that might be in memory
+      try {
+        if (PaintingBinding.instance != null) {
+          PaintingBinding.instance.imageCache.clear();
+          PaintingBinding.instance.imageCache.clearLiveImages();
+        }
+      } catch (e) {
+        debugPrint('Error clearing image cache: $e');
+        // Continue anyway since this is just a cleanup step
+      }
+
+      debugPrint('Photo updated successfully');
+    } catch (e) {
+      debugPrint('Error updating photo: $e');
+      rethrow;
     }
   }
 
@@ -468,6 +724,17 @@ Network connection error. Please check:
     }
     try {
       debugPrint('Sending invitation from user ID: $userId to email: $email');
+
+      // First verify user has a family
+      final userData = await getUserById(userId);
+      final familyId = userData['familyId'];
+
+      if (familyId == null) {
+        throw 'User does not have a family. Please create or join a family first.';
+      }
+
+      debugPrint('User has family ID: $familyId, proceeding with invitation');
+
       final response = await client.post(
         Uri.parse('$baseUrl/api/users/$userId/invite'),
         headers: {
@@ -479,20 +746,58 @@ Network connection error. Please check:
       debugPrint(
         'Invite response: statusCode=${response.statusCode}, body=${response.body}',
       );
+
       if (response.statusCode != 200) {
-        // Try to parse the error message from the response
-        try {
-          final errorBody = jsonDecode(response.body);
-          if (errorBody is String) {
-            throw errorBody;
-          } else if (errorBody is Map && errorBody.containsKey('error')) {
-            throw errorBody['error'];
+        String errorMessage =
+            'Failed to send invitation: ${response.statusCode}';
+
+        // Check for specific error conditions
+        if (response.statusCode == 500) {
+          debugPrint(
+            'Received 500 error when sending invitation. Response body: ${response.body}',
+          );
+
+          try {
+            final errorBody = jsonDecode(response.body);
+            debugPrint('Parsed error body: $errorBody');
+
+            if (errorBody is Map) {
+              if (errorBody.containsKey('error')) {
+                errorMessage = errorBody['error'];
+              } else if (errorBody.containsKey('message')) {
+                errorMessage = errorBody['message'];
+              }
+            }
+          } catch (e) {
+            debugPrint('Error parsing response body: $e');
           }
-        } catch (e) {
-          // If we can't parse the response, just use the raw body
-          throw response.body;
+
+          // If we still have a generic error, provide a more helpful message
+          if (errorMessage.contains('500') ||
+              errorMessage.contains('Internal Server Error')) {
+            errorMessage = 'Server error occurred. Please try again later.';
+          }
+        } else if (response.statusCode == 400) {
+          // Try to parse the error message from the response
+          try {
+            final errorBody = jsonDecode(response.body);
+            if (errorBody is String) {
+              errorMessage = errorBody;
+            } else if (errorBody is Map && errorBody.containsKey('error')) {
+              errorMessage = errorBody['error'];
+            }
+          } catch (e) {
+            // If we can't parse the response, use the raw body
+            errorMessage =
+                response.body.isNotEmpty
+                    ? response.body
+                    : 'Invalid request parameters';
+          }
+        } else if (response.statusCode == 404) {
+          errorMessage = 'User or resource not found';
         }
-        throw 'Failed to send invitation: ${response.statusCode}';
+
+        throw errorMessage;
       }
     } catch (e) {
       debugPrint('Error sending invitation: $e');

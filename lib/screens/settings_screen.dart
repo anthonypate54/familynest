@@ -70,50 +70,187 @@ class SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _sendInvitation() async {
-    final TextEditingController emailController = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Send Invitation'),
-          content: TextField(
-            controller: emailController,
-            decoration: const InputDecoration(labelText: 'Email'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+    try {
+      // First check if user has a family
+      final userData = await widget.apiService.getUserById(widget.userId);
+      final familyId = userData['familyId'];
+
+      if (familyId == null) {
+        _showCreateFamilyFirstDialog();
+        return;
+      }
+
+      // User has a family, proceed with invitation
+      final TextEditingController emailController = TextEditingController();
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Send Invitation'),
+            content: TextField(
+              controller: emailController,
+              decoration: const InputDecoration(labelText: 'Email'),
+              keyboardType: TextInputType.emailAddress,
+              autofocus: true,
             ),
-            TextButton(
-              onPressed: () async {
-                try {
-                  await widget.apiService.inviteUser(
-                    widget.userId,
-                    emailController.text,
-                  );
-                  if (!mounted) return;
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context); // Close the dialog immediately
+
+                  // Show a loading indicator
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Invitation sent successfully!'),
+                      content: Text('Sending invitation...'),
+                      duration: Duration(seconds: 1),
                     ),
                   );
-                  Navigator.pop(context);
-                } catch (e) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error: ${e.toString()}'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Send'),
+
+                  try {
+                    await widget.apiService.inviteUser(
+                      widget.userId,
+                      emailController.text,
+                    );
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Invitation sent successfully!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    debugPrint('Error sending invitation: $e');
+
+                    String errorMessage = e.toString();
+
+                    // Check if it's the database error we fixed
+                    if (errorMessage.contains('invitee_email') ||
+                        errorMessage.contains('constraint') ||
+                        errorMessage.contains('null value in column')) {
+                      // Show a specific message that's more helpful
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Error sending invitation: ${emailController.text}. Please try a different email.',
+                          ),
+                          backgroundColor: Colors.red,
+                          duration: Duration(seconds: 5),
+                        ),
+                      );
+                    } else if (errorMessage.contains(
+                      'already in your family',
+                    )) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'This person is already in your family!',
+                          ),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    } else if (errorMessage.contains('already pending')) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'There is already a pending invitation for this email.',
+                          ),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    } else if (errorMessage.contains('Server error') ||
+                        errorMessage.contains('500')) {
+                      // Only show the backend error dialog for server errors
+                      _showInvitationBackendError();
+                    } else {
+                      // For other errors, show a snackbar with the message
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error: $errorMessage'),
+                          backgroundColor: Colors.red,
+                          duration: Duration(seconds: 5),
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Send'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('Error checking user family status: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // Add a method to handle the case when user doesn't have a family
+  void _showCreateFamilyFirstDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Create a Family First'),
+            content: const Text(
+              'You need to create a family before you can invite others. Would you like to create a family now?',
             ),
-          ],
-        );
-      },
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Not Now'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  // Navigate to family management screen
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Navigate to family management (not implemented)',
+                      ),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                ),
+                child: const Text('Create Family'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Show a message about the invitation backend issue
+  void _showInvitationBackendError() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Invitation System Unavailable'),
+            content: const Text(
+              'We\'re sorry, but the invitation system is currently experiencing technical issues.\n\n'
+              'Our team has been notified and is working on a fix. In the meantime, you can still use '
+              'the app and enjoy your family connections.\n\n'
+              'Please try again later or contact support if the issue persists.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
     );
   }
 

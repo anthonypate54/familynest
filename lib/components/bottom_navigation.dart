@@ -6,12 +6,30 @@ import '../screens/invitations_screen.dart';
 import 'dart:async';
 import '../models/invitation.dart';
 
+// Create a class to handle the bottom navigation state access
+class BottomNavigationController {
+  _BottomNavigationState? _state;
+
+  void registerState(_BottomNavigationState state) {
+    _state = state;
+  }
+
+  void unregisterState() {
+    _state = null;
+  }
+
+  void refreshUserFamilies() {
+    _state?._getUserFamilies();
+  }
+}
+
 class BottomNavigation extends StatefulWidget {
   final int currentIndex;
   final ApiService apiService;
   final int userId;
   final String? userRole;
   final Function(int) onSendInvitation;
+  final BottomNavigationController? controller;
 
   const BottomNavigation({
     super.key,
@@ -20,6 +38,7 @@ class BottomNavigation extends StatefulWidget {
     required this.userId,
     this.userRole,
     required this.onSendInvitation,
+    this.controller,
   });
 
   @override
@@ -34,6 +53,9 @@ class _BottomNavigationState extends State<BottomNavigation> {
   @override
   void initState() {
     super.initState();
+    if (widget.controller != null) {
+      widget.controller!.registerState(this);
+    }
     _getUserFamilies();
     _checkForInvitations();
     // Set up a timer to periodically check for invitations (every 15 seconds)
@@ -44,6 +66,9 @@ class _BottomNavigationState extends State<BottomNavigation> {
 
   @override
   void dispose() {
+    if (widget.controller != null) {
+      widget.controller!.unregisterState();
+    }
     _invitationCheckTimer?.cancel();
     super.dispose();
   }
@@ -52,11 +77,19 @@ class _BottomNavigationState extends State<BottomNavigation> {
   Future<void> _getUserFamilies() async {
     try {
       final userData = await widget.apiService.getUserById(widget.userId);
+
+      // Clear existing family IDs first to ensure we have the latest state
+      setState(() {
+        _userFamilyIds.clear();
+      });
+
       if (userData['familyId'] != null) {
         setState(() {
           _userFamilyIds.add(userData['familyId']);
         });
         debugPrint('User belongs to family: ${userData['familyId']}');
+      } else {
+        debugPrint('User does not belong to any family');
       }
     } catch (e) {
       debugPrint('Error getting user family data: $e');
@@ -109,57 +142,62 @@ class _BottomNavigationState extends State<BottomNavigation> {
     }
   }
 
+  // Add a method to refresh user families status
+  void refreshUserFamilies() {
+    _getUserFamilies();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Always include all navigation items
+    final List<BottomNavigationBarItem> items = [
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.message),
+        label: 'Messages',
+      ),
+      const BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.person_add),
+        label: 'Invite',
+      ),
+      BottomNavigationBarItem(
+        icon: Stack(
+          children: [
+            const Icon(Icons.mail),
+            if (_hasPendingInvitations)
+              Positioned(
+                right: 0,
+                top: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(1),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 12,
+                    minHeight: 12,
+                  ),
+                  child: const Text(
+                    '',
+                    style: TextStyle(color: Colors.white, fontSize: 8),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        label: 'Invitations',
+      ),
+    ];
+
     return BottomNavigationBar(
       type: BottomNavigationBarType.fixed,
       backgroundColor: Theme.of(context).colorScheme.primary,
       selectedItemColor: Colors.white,
       unselectedItemColor: Colors.white70,
       currentIndex: widget.currentIndex,
-      items: [
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.message),
-          label: 'Messages',
-        ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.person),
-          label: 'Profile',
-        ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.person_add),
-          label: 'Invite',
-        ),
-        BottomNavigationBarItem(
-          icon: Stack(
-            children: [
-              const Icon(Icons.mail),
-              if (_hasPendingInvitations)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(1),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 12,
-                      minHeight: 12,
-                    ),
-                    child: const Text(
-                      '',
-                      style: TextStyle(color: Colors.white, fontSize: 8),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          label: 'Invitations',
-        ),
-      ],
+      items: items,
       onTap: (index) {
         if (index == widget.currentIndex) return;
 
@@ -190,7 +228,19 @@ class _BottomNavigationState extends State<BottomNavigation> {
             );
             break;
           case 2: // Invite
-            widget.onSendInvitation(index);
+            if (_userFamilyIds.isNotEmpty) {
+              widget.onSendInvitation(index);
+            } else {
+              // Show a message if user doesn't have a family yet
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Create a family first by clicking Manage Family',
+                  ),
+                  duration: Duration(seconds: 4),
+                ),
+              );
+            }
             break;
           case 3: // Invitations
             Navigator.pushReplacement(

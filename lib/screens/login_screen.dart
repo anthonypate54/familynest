@@ -21,8 +21,6 @@ class LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
-  final ImagePicker _picker = ImagePicker();
-  XFile? _photoFile;
   bool _isLoading = false;
   bool _isRegistering = false;
   final String _selectedRole = 'USER';
@@ -61,15 +59,6 @@ class LoginScreenState extends State<LoginScreen> {
               ),
         ),
       );
-    }
-  }
-
-  Future<void> _pickPhoto() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _photoFile = pickedFile;
-      });
     }
   }
 
@@ -126,7 +115,7 @@ class LoginScreenState extends State<LoginScreen> {
         firstName: _firstNameController.text,
         lastName: _lastNameController.text,
         role: _selectedRole,
-        photoPath: kIsWeb ? null : _photoFile?.path,
+        photoPath: null, // No photo upload
       );
       debugPrint('Registration successful, userId: ${result['userId']}');
       if (!mounted) return;
@@ -143,7 +132,6 @@ class LoginScreenState extends State<LoginScreen> {
                     Navigator.pop(context);
                     setState(() {
                       _isRegistering = false;
-                      _photoFile = null;
                       _usernameController.clear();
                       _firstNameController.clear();
                       _lastNameController.clear();
@@ -305,28 +293,6 @@ class LoginScreenState extends State<LoginScreen> {
                             return null;
                           },
                         ),
-                        if (_isRegistering) const SizedBox(height: 16),
-                        if (_isRegistering && !kIsWeb)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if (_photoFile != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 8.0),
-                                  child: CircleAvatar(
-                                    backgroundImage: AssetImage(
-                                      _photoFile!.path,
-                                    ),
-                                    radius: 30,
-                                  ),
-                                ),
-                              ElevatedButton.icon(
-                                onPressed: _pickPhoto,
-                                icon: const Icon(Icons.camera_alt),
-                                label: const Text('Add Photo'),
-                              ),
-                            ],
-                          ),
                         const SizedBox(height: 24),
                         _isLoading
                             ? const CircularProgressIndicator()

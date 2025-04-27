@@ -648,12 +648,32 @@ class HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       debugPrint('Error posting message: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error posting message: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+
+      String errorMessage = e.toString();
+
+      // Check for specific error cases and provide better messages
+      if (errorMessage.contains('part of a family')) {
+        _showCreateFamilyFirstDialog(
+          'You need to join or create a family before you can post messages.',
+        );
+        return;
+      } else if (errorMessage.contains('not found')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('User not found. Please try logging in again.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error posting message: $e'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
     }
   }
 
@@ -1450,5 +1470,25 @@ class HomeScreenState extends State<HomeScreen> {
     final now = DateTime.now();
     _lastRefreshed =
         "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
+  }
+
+  void _showCreateFamilyFirstDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Create Family First'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
