@@ -303,18 +303,12 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
       // If user has a family, add it to the appropriate list
       if (currentFamilyId != null) {
-        // Get the family name from the API or use a default
-        String familyName = "Family $currentFamilyId"; // Default name
-        try {
-          // You might need to add an API method to get family details
-          // For now, use a placeholder
-          familyName =
-              members.isNotEmpty && members[0].containsKey('familyName')
-                  ? members[0]['familyName']
-                  : "Smith Family";
-        } catch (e) {
-          debugPrint('Error getting family name: $e');
-        }
+        // Get the family name - use a simple default naming convention
+        String familyName =
+            "Family #$currentFamilyId"; // Default name based on ID
+
+        // In the future, we could add a family name field to the database
+        // and retrieve it from the API
 
         // Determine if user is the owner (you might need proper logic here)
         // For now, we'll assume the first user (ID 1) is the owner of family 1
