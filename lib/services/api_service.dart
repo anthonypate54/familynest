@@ -704,6 +704,31 @@ Network connection error. Please check:
     }
   }
 
+  Future<Map<String, dynamic>> getFamily(int familyId) async {
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    }
+    debugPrint('Getting family details for ID: $familyId');
+
+    final response = await client.get(
+      Uri.parse('$baseUrl/api/users/families/$familyId'),
+      headers: headers,
+    );
+
+    debugPrint(
+      'Get family response: statusCode=${response.statusCode}, body=${response.body}',
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else if (response.statusCode == 404) {
+      throw Exception('Family not found');
+    } else {
+      throw Exception('Failed to get family details: ${response.body}');
+    }
+  }
+
   Future<void> leaveFamily(int userId) async {
     final headers = {'Content-Type': 'application/json'};
     if (_token != null) {

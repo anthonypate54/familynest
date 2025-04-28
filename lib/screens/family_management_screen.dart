@@ -303,12 +303,21 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
       // If user has a family, add it to the appropriate list
       if (currentFamilyId != null) {
-        // Get the family name - use a simple default naming convention
-        String familyName =
-            "Family #$currentFamilyId"; // Default name based on ID
+        // Get the actual family name from the database
+        Map<String, dynamic> familyData;
+        String familyName;
 
-        // In the future, we could add a family name field to the database
-        // and retrieve it from the API
+        try {
+          familyData = await widget.apiService.getFamily(currentFamilyId);
+          familyName = familyData['name'];
+          debugPrint(
+            'Loaded family name: $familyName for family ID: $currentFamilyId',
+          );
+        } catch (e) {
+          debugPrint('Error loading family details: $e');
+          // Fallback to a generic name if we can't load the actual name
+          familyName = "Family #$currentFamilyId";
+        }
 
         // Determine if user is the owner (you might need proper logic here)
         // For now, we'll assume the first user (ID 1) is the owner of family 1
@@ -870,6 +879,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
   String _getFamilyName(int? familyId) {
     if (familyId == null) return 'No Family';
 
+    // First check our cached family data
     if (_ownedFamily != null && familyId == _ownedFamily!['familyId']) {
       return _ownedFamily!['familyName'];
     }
@@ -880,7 +890,20 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       }
     }
 
-    return 'Family $familyId';
+    // If we can't find the family name, use a standard format
+    // We don't fetch from API here to avoid async issues in UI rendering
+    return 'Family #$familyId';
+  }
+
+  // Helper to load a family name asynchronously for cases where we need it
+  Future<String> _loadFamilyName(int familyId) async {
+    try {
+      final familyData = await widget.apiService.getFamily(familyId);
+      return familyData['name'];
+    } catch (e) {
+      debugPrint('Error fetching family name: $e');
+      return 'Family #$familyId';
+    }
   }
 
   // Load members from all families the user belongs to
