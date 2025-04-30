@@ -755,7 +755,33 @@ class HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: () async => false,
+      onWillPop: () async {
+        // Show a confirmation dialog before exiting
+        final shouldExit =
+            await showDialog<bool>(
+              context: context,
+              builder:
+                  (context) => AlertDialog(
+                    title: const Text('Exit App?'),
+                    content: const Text(
+                      'Are you sure you want to exit the app?',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text('No'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: const Text('Yes'),
+                      ),
+                    ],
+                  ),
+            ) ??
+            false;
+
+        return shouldExit;
+      },
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: AppTheme.primaryColor,
@@ -770,17 +796,27 @@ class HomeScreenState extends State<HomeScreen> {
               tooltip: 'Check for New Messages',
             ),
             IconButton(
-              icon: const Icon(Icons.exit_to_app, color: Colors.white),
+              icon: const Icon(Icons.logout, color: Colors.white),
               onPressed: () async {
-                await widget.apiService.logout();
-                if (!mounted) return;
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder:
-                        (context) => LoginScreen(apiService: widget.apiService),
-                  ),
-                );
+                try {
+                  await widget.apiService.logout();
+                  if (!mounted) return;
+
+                  // Use Navigator.pushAndRemoveUntil to clear the navigation stack
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                      builder:
+                          (context) =>
+                              LoginScreen(apiService: widget.apiService),
+                    ),
+                    (route) => false, // This removes all previous routes
+                  );
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error logging out: $e')),
+                  );
+                }
               },
               tooltip: 'Logout',
             ),

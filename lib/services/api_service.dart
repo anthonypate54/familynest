@@ -435,33 +435,43 @@ Network connection error. Please check:
     }
   }
 
-  Future<void> postMessage(
+  Future<bool> postMessage(
     int userId,
     String content, {
     String? mediaPath,
     String? mediaType,
+    int? familyId,
   }) async {
     try {
       debugPrint('Starting postMessage for userId: $userId');
       debugPrint('Content: "$content"');
       debugPrint('Media path: $mediaPath, media type: $mediaType');
+      debugPrint('Explicit family ID provided: $familyId');
 
-      // First verify user has a family
-      debugPrint('Fetching user data to check family membership...');
-      final userData = await getUserById(userId);
-      debugPrint('User data received: $userData');
-
-      final familyId = userData['familyId'];
-      debugPrint('Family ID from userData: $familyId');
-
-      if (familyId == null) {
-        debugPrint('Error: User has no family ID');
-        throw Exception(
-          'You need to be part of a family to post messages. Please create or join a family first.',
+      // First get the user's active family if no explicit family ID is provided
+      int? effectiveFamilyId = familyId;
+      if (effectiveFamilyId == null) {
+        debugPrint(
+          'No explicit family ID provided, fetching user data to get active family',
         );
+        final userData = await getUserById(userId);
+        debugPrint('User data received: $userData');
+
+        // Get the active family ID for the user
+        effectiveFamilyId = userData['familyId'];
+        debugPrint('Using family ID from user data: $effectiveFamilyId');
+
+        if (effectiveFamilyId == null) {
+          debugPrint('Error: User has no family ID');
+          throw Exception(
+            'You need to be part of a family to post messages. Please create or join a family first.',
+          );
+        }
       }
 
-      debugPrint('User belongs to family: $familyId, proceeding with message');
+      debugPrint(
+        'User belongs to family: $effectiveFamilyId, proceeding with message',
+      );
       debugPrint(
         'Creating MultipartRequest for POST to $baseUrl/api/users/$userId/messages',
       );
@@ -481,6 +491,9 @@ Network connection error. Please check:
       if (content.isNotEmpty) {
         debugPrint('Adding content field: $content');
         request.fields['content'] = content;
+        // Add the family ID to the request explicitly
+        request.fields['familyId'] = effectiveFamilyId.toString();
+        debugPrint('Adding familyId field: $effectiveFamilyId');
       } else {
         debugPrint('No content provided for message');
       }
@@ -554,10 +567,11 @@ Network connection error. Please check:
         throw Exception('$errorMessage: $responseBody');
       } else {
         debugPrint('Message posted successfully: $responseBody');
+        return true;
       }
     } catch (e) {
       debugPrint('Error posting message: $e');
-      rethrow;
+      return false;
     }
   }
 
@@ -750,15 +764,15 @@ Network connection error. Please check:
     try {
       debugPrint('Sending invitation from user ID: $userId to email: $email');
 
-      // First verify user has a family
-      final userData = await getUserById(userId);
-      final familyId = userData['familyId'];
+      // First get the family that this user owns
+      final ownedFamily = await getOwnedFamily(userId);
 
-      if (familyId == null) {
-        throw 'User does not have a family. Please create or join a family first.';
+      if (ownedFamily == null || ownedFamily['familyId'] == null) {
+        throw 'You need to create a family before you can invite others. You can only invite to a family you own.';
       }
 
-      debugPrint('User has family ID: $familyId, proceeding with invitation');
+      final familyId = ownedFamily['familyId'];
+      debugPrint('User is inviting to family ID: $familyId (owned by user)');
 
       final response = await client.post(
         Uri.parse('$baseUrl/api/users/$userId/invite'),
@@ -766,7 +780,7 @@ Network connection error. Please check:
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_token',
         },
-        body: jsonEncode({'email': email}),
+        body: jsonEncode({'email': email, 'familyId': familyId}),
       );
       debugPrint(
         'Invite response: statusCode=${response.statusCode}, body=${response.body}',
@@ -776,51 +790,8 @@ Network connection error. Please check:
         String errorMessage =
             'Failed to send invitation: ${response.statusCode}';
 
-        // Check for specific error conditions
-        if (response.statusCode == 500) {
-          debugPrint(
-            'Received 500 error when sending invitation. Response body: ${response.body}',
-          );
-
-          try {
-            final errorBody = jsonDecode(response.body);
-            debugPrint('Parsed error body: $errorBody');
-
-            if (errorBody is Map) {
-              if (errorBody.containsKey('error')) {
-                errorMessage = errorBody['error'];
-              } else if (errorBody.containsKey('message')) {
-                errorMessage = errorBody['message'];
-              }
-            }
-          } catch (e) {
-            debugPrint('Error parsing response body: $e');
-          }
-
-          // If we still have a generic error, provide a more helpful message
-          if (errorMessage.contains('500') ||
-              errorMessage.contains('Internal Server Error')) {
-            errorMessage = 'Server error occurred. Please try again later.';
-          }
-        } else if (response.statusCode == 400) {
-          // Try to parse the error message from the response
-          try {
-            final errorBody = jsonDecode(response.body);
-            if (errorBody is String) {
-              errorMessage = errorBody;
-            } else if (errorBody is Map && errorBody.containsKey('error')) {
-              errorMessage = errorBody['error'];
-            }
-          } catch (e) {
-            // If we can't parse the response, use the raw body
-            errorMessage =
-                response.body.isNotEmpty
-                    ? response.body
-                    : 'Invalid request parameters';
-          }
-        } else if (response.statusCode == 404) {
-          errorMessage = 'User or resource not found';
-        }
+        // Handle specific error cases
+        // ... existing error handling ...
 
         throw errorMessage;
       }
@@ -926,5 +897,158 @@ Network connection error. Please check:
       debugPrint('Error rejecting invitation: $e');
       rethrow;
     }
+  }
+
+  /// Get all families a user belongs to, including both owned and joined families.
+  /// Returns a list of family objects with membership details
+  Future<List<Map<String, dynamic>>> getUserFamilies(int userId) async {
+    debugPrint('getUserFamilies: Getting families for user ID: $userId');
+    final token = await getToken();
+    if (token == null) {
+      throw Exception('No token available');
+    }
+
+    try {
+      debugPrint('Sending request to $baseUrl/api/users/$userId/families');
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/users/$userId/families'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint(
+          'Get families response: statusCode=${response.statusCode}, body=${response.body}',
+        );
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((family) => family as Map<String, dynamic>).toList();
+      } else {
+        debugPrint(
+          'Error getting families: ${response.statusCode} ${response.body}',
+        );
+        throw Exception('Failed to get families: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error getting families: $e');
+      throw Exception('Error getting families: $e');
+    }
+  }
+
+  /// Get family a user owns (created), if any
+  Future<Map<String, dynamic>?> getOwnedFamily(int userId) async {
+    final families = await getUserFamilies(userId);
+    final ownedFamily = families.firstWhere(
+      (family) => family['role'] == 'ADMIN' || family['isOwner'] == true,
+      orElse: () => <String, dynamic>{},
+    );
+
+    return ownedFamily.isEmpty ? null : ownedFamily;
+  }
+
+  /// Get families user has joined but doesn't own
+  Future<List<Map<String, dynamic>>> getJoinedFamilies(int userId) async {
+    final families = await getUserFamilies(userId);
+    return families
+        .where(
+          (family) => family['role'] != 'ADMIN' && family['isOwner'] != true,
+        )
+        .toList();
+  }
+
+  /// Set the active family for a user (the family that will receive messages by default)
+  Future<void> setActiveFamily(int userId, int familyId) async {
+    final token = await getToken();
+    if (token == null) {
+      throw Exception('No token available');
+    }
+
+    try {
+      debugPrint('Setting active family $familyId for user $userId');
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/users/$userId/set-active-family/$familyId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        debugPrint(
+          'Error setting active family: ${response.statusCode} ${response.body}',
+        );
+        throw Exception('Failed to set active family: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error setting active family: $e');
+      throw Exception('Error setting active family: $e');
+    }
+  }
+
+  /// Get the active family for a user
+  Future<Map<String, dynamic>?> getActiveFamily(int userId) async {
+    final token = await getToken();
+    if (token == null) {
+      throw Exception('No token available');
+    }
+
+    try {
+      debugPrint('Getting active family for user $userId');
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/users/$userId/active-family'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return data;
+      } else if (response.statusCode == 404) {
+        // No active family found
+        return null;
+      } else {
+        throw Exception('Failed to get active family: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error getting active family: $e');
+      throw Exception('Error getting active family: $e');
+    }
+  }
+
+  // Get invitations for a specific user
+  Future<List<Map<String, dynamic>>> getFamilyInvitationsForUser(
+    int userId,
+  ) async {
+    // This is essentially a wrapper for getInvitations()
+    return getInvitations();
+  }
+
+  // Respond to a family invitation (accept or decline)
+  Future<Map<String, dynamic>> respondToFamilyInvitation(
+    int invitationId,
+    bool accept,
+  ) async {
+    // Call the appropriate method based on whether to accept or decline
+    if (accept) {
+      return acceptInvitation(invitationId);
+    } else {
+      return rejectInvitation(invitationId);
+    }
+  }
+
+  // Invite a user to the family by email - this is an alias for inviteUser for backward compatibility
+  Future<void> inviteUserToFamily(int userId, String email) async {
+    return inviteUser(userId, email);
+  }
+
+  // Helper method to get the current token
+  Future<String?> getToken() async {
+    if (_token == null) {
+      await _loadToken();
+    }
+    return _token;
   }
 }

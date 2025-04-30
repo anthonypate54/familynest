@@ -551,7 +551,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       bottomNavigationBar:
           widget.userId != null
               ? BottomNavigation(
-                currentIndex: 3, // Invitations tab
+                currentIndex: 2, // Invitations tab
                 apiService: widget.apiService,
                 userId: widget.userId!,
                 onSendInvitation: (_) => _sendInvitation(),

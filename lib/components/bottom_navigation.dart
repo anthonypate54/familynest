@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../screens/profile_screen.dart';
 import '../screens/home_screen.dart';
+import '../screens/family_management_screen.dart';
 import '../screens/invitations_screen.dart';
 import 'dart:async';
 import '../models/invitation.dart';
@@ -156,10 +157,6 @@ class _BottomNavigationState extends State<BottomNavigation> {
         label: 'Messages',
       ),
       const BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-      const BottomNavigationBarItem(
-        icon: Icon(Icons.person_add),
-        label: 'Invite',
-      ),
       BottomNavigationBarItem(
         icon: Stack(
           children: [
@@ -188,6 +185,10 @@ class _BottomNavigationState extends State<BottomNavigation> {
           ],
         ),
         label: 'Invitations',
+      ),
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.family_restroom),
+        label: 'Family',
       ),
     ];
 
@@ -227,22 +228,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
               ),
             );
             break;
-          case 2: // Invite
-            if (_userFamilyIds.isNotEmpty) {
-              widget.onSendInvitation(index);
-            } else {
-              // Show a message if user doesn't have a family yet
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Create a family first by clicking Manage Family',
-                  ),
-                  duration: Duration(seconds: 4),
-                ),
-              );
-            }
-            break;
-          case 3: // Invitations
+          case 2: // Invitations
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
@@ -250,6 +236,19 @@ class _BottomNavigationState extends State<BottomNavigation> {
                     (context) => InvitationsScreen(
                       apiService: widget.apiService,
                       userId: widget.userId,
+                    ),
+              ),
+            );
+            break;
+          case 3: // Family
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (context) => FamilyManagementScreen(
+                      apiService: widget.apiService,
+                      userId: widget.userId,
+                      navigationController: widget.controller,
                     ),
               ),
             );
