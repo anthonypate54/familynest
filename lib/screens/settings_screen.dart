@@ -41,7 +41,9 @@ class SettingsScreenState extends State<SettingsScreen> {
         apiService: widget.apiService,
         userId: widget.userId,
         userRole: widget.userRole,
-        onSendInvitation: (_) => _sendInvitation(),
+        controller: BottomNavigationController(),
+        pendingInvitationsCount:
+            0, // You might want to load and pass actual invitations count
       ),
       body: ListView(
         children: [

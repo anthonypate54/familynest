@@ -38,10 +38,13 @@ class HomeScreenState extends State<HomeScreen> {
   // Store previous invitations to compare for new ones
   List<int> _previousInvitationIds = [];
   Set<int> _userFamilyIds = {};
+  late BottomNavigationController _navigationController;
 
   @override
   void initState() {
     super.initState();
+    _messagesFuture = _loadMessages();
+    _navigationController = BottomNavigationController();
     // Initial load of messages
     _loadInitialMessages();
     // Check for invitations when the screen loads
@@ -826,7 +829,8 @@ class HomeScreenState extends State<HomeScreen> {
           currentIndex: 0, // Messages tab
           apiService: widget.apiService,
           userId: widget.userId,
-          onSendInvitation: (_) => _sendInvitation(),
+          controller: _navigationController,
+          pendingInvitationsCount: _previousInvitationIds.length,
         ),
         body: Column(
           children: [
@@ -1365,58 +1369,6 @@ class HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-    );
-  }
-
-  Future<void> _sendInvitation() async {
-    final TextEditingController emailController = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Send Invitation'),
-          content: TextField(
-            controller: emailController,
-            decoration: const InputDecoration(labelText: 'Email'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () async {
-                try {
-                  await widget.apiService.inviteUser(
-                    widget.userId,
-                    emailController.text,
-                  );
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Invitation sent successfully!'),
-                    ),
-                  );
-                  Navigator.pop(context);
-                } catch (e) {
-                  if (!mounted) return;
-                  // Show a more detailed error message
-                  debugPrint('Error sending invitation: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error: ${e.toString()}'),
-                      backgroundColor: Colors.red,
-                      duration: const Duration(seconds: 5),
-                    ),
-                  );
-                  // Keep the dialog open so they can fix the email
-                }
-              },
-              child: const Text('Send'),
-            ),
-          ],
-        );
-      },
     );
   }
 

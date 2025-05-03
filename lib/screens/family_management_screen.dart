@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/service_provider.dart';
+import '../services/invitation_service.dart';
 import 'profile_screen.dart';
 import '../components/bottom_navigation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,10 +44,23 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
   String? _errorMessage;
   bool _allowMultipleFamilyMessages = false;
 
+  // Services
+  late InvitationService _invitationService;
+
+  // Add this to the state class variables
+  List<Map<String, dynamic>> _messagePreferences = [];
+  bool _loadingPreferences = false;
+
+  // Add these state variables for member-level message preferences
+  List<Map<String, dynamic>> _memberMessagePreferences = [];
+  bool _loadingMemberPreferences = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 1, vsync: this);
+    // Initialize the invitation service
+    _invitationService = ServiceProvider().invitationService;
     _loadData();
     _searchController.addListener(() {
       setState(() {
@@ -54,6 +69,8 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     });
     _loadUserData();
     _loadUserPreferences();
+    _loadMessagePreferences();
+    _loadMemberMessagePreferences();
   }
 
   @override
@@ -74,6 +91,8 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         _loadUserData(),
         _getUserFamilies(),
         _loadInvitations(),
+        _loadMessagePreferences(),
+        _loadMemberMessagePreferences(),
       ]);
     } catch (e) {
       debugPrint('Error loading data: $e');
@@ -94,62 +113,30 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     await _loadData();
   }
 
-  // Load invitations
+  // Load invitations using the improved invitation service
   Future<void> _loadInvitations() async {
-    try {
-      final invitations = await widget.apiService.getFamilyInvitationsForUser(
-        widget.userId,
-      );
+    // Get the service just when needed
+    final invitationService = ServiceProvider().invitationService;
 
-      // Process each invitation to add missing information
-      List<Map<String, dynamic>> processedInvitations = [];
-
-      for (var invitation in invitations) {
-        // Make a mutable copy of the invitation
-        final processedInvitation = Map<String, dynamic>.from(invitation);
-
-        // If familyName is missing but we have familyId, try to get it
-        if ((processedInvitation['familyName'] == null ||
-                processedInvitation['familyName'].toString().isEmpty) &&
-            processedInvitation['familyId'] != null) {
-          try {
-            final familyId = processedInvitation['familyId'];
-            final familyDetails = await widget.apiService.getFamily(familyId);
-            processedInvitation['familyName'] = familyDetails['name'];
-          } catch (e) {
-            debugPrint('Error fetching family details: $e');
-            // Keep the fallback handled in the UI
-          }
+    await invitationService.loadInvitations(
+      userId: widget.userId,
+      setLoadingState: (isLoading) {
+        if (mounted) {
+          setState(() {
+            // We'll leave the main _isLoading state unchanged since it's controlled by _loadData
+            // But we could update a dedicated invitation loading state if needed
+          });
         }
-
-        // If inviterName is missing but we have inviterId, try to get it
-        if ((processedInvitation['inviterName'] == null ||
-                processedInvitation['inviterName'].toString().isEmpty) &&
-            processedInvitation['inviterId'] != null) {
-          try {
-            final inviterId = processedInvitation['inviterId'];
-            final inviterDetails = await widget.apiService.getUserById(
-              inviterId,
-            );
-            processedInvitation['inviterName'] =
-                '${inviterDetails['firstName']} ${inviterDetails['lastName']}';
-          } catch (e) {
-            debugPrint('Error fetching inviter details: $e');
-            // Keep the fallback handled in the UI
-          }
+      },
+      setInvitationsState: (invitations) {
+        if (mounted) {
+          setState(() {
+            _invitations = invitations;
+          });
         }
-
-        processedInvitations.add(processedInvitation);
-      }
-
-      if (mounted) {
-        setState(() {
-          _invitations = processedInvitations;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading invitations: $e');
-    }
+      },
+      checkIfMounted: () => mounted,
+    );
   }
 
   // Respond to an invitation (accept or decline)
@@ -157,16 +144,21 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     try {
       setState(() => _isLoading = true);
 
-      if (accept) {
-        await widget.apiService.respondToFamilyInvitation(invitationId, true);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Invitation accepted!')));
+      final success = await _invitationService.respondToInvitation(
+        invitationId,
+        accept,
+      );
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              accept ? 'Invitation accepted!' : 'Invitation declined',
+            ),
+          ),
+        );
       } else {
-        await widget.apiService.respondToFamilyInvitation(invitationId, false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Invitation declined')));
+        throw Exception('Failed to process invitation');
       }
 
       // Refresh all data
@@ -335,95 +327,364 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     Map<String, dynamic> family,
     List<Map<String, dynamic>> members,
   ) {
+    // Extract and validate familyId
+    final familyId = family['familyId'] as int?;
+    if (familyId == null) {
+      debugPrint('Warning: Family ID is null in _showFamilyMembersDialog');
+      return; // Exit early if familyId is null
+    }
+
+    // Debug log the members data
+    debugPrint('Family members data: $members');
+
+    if (members.isEmpty) {
+      debugPrint('No family members found for familyId: $familyId');
+    }
+
+    // Create a map to track member preference states during dialog interaction
+    Map<int, bool> memberPreferences = {};
+    for (final member in members) {
+      final memberId = member['userId'] as int?;
+      if (memberId != null) {
+        // Check if preference already exists
+        bool preferenceExists = false;
+        bool receiveMessages = true; // Default value
+
+        // Look for existing preference
+        for (var pref in _memberMessagePreferences) {
+          if (pref['familyId'] == familyId &&
+              pref['memberUserId'] == memberId) {
+            preferenceExists = true;
+            receiveMessages = pref['receiveMessages'] ?? true;
+            break;
+          }
+        }
+
+        // Store the current preference state
+        memberPreferences[memberId] = receiveMessages;
+
+        // If not, add a default preference with receiveMessages = true
+        if (!preferenceExists && memberId != widget.userId) {
+          debugPrint(
+            'Initializing default preference for member $memberId with receiveMessages=true',
+          );
+          _memberMessagePreferences.add({
+            'familyId': familyId,
+            'memberUserId': memberId,
+            'receiveMessages': true,
+          });
+        }
+      }
+    }
+
+    // Show the dialog with its own StatefulBuilder for managing dialog state
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              '${family['familyName']} Family Members',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: members.length,
-                      itemBuilder: (context, index) {
-                        final member = members[index];
-                        final isCurrentUser = member['userId'] == widget.userId;
-
-                        return ListTile(
-                          dense: true,
-                          visualDensity: VisualDensity.compact,
-                          leading: CircleAvatar(
-                            radius: 24,
-                            backgroundColor:
-                                isCurrentUser
-                                    ? Colors.blue.shade100
-                                    : Colors.green.shade100,
-                            child: Text(
-                              (member['firstName'] as String? ?? 'U')[0],
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color:
-                                    isCurrentUser
-                                        ? Colors.blue.shade700
-                                        : Colors.green.shade700,
-                              ),
-                            ),
+      builder: (buildContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(
+                '${family['familyName'] ?? 'Unknown Family'} Family Members',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Add a header with feature explanation
+                    Container(
+                      padding: const EdgeInsets.all(8.0),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8.0),
+                      ),
+                      child: Column(
+                        children: const [
+                          Icon(
+                            Icons.notifications_active,
+                            color: Colors.blue,
+                            size: 20,
                           ),
-                          title: Text(
-                            '${member['firstName']} ${member['lastName']}',
+                          SizedBox(height: 4),
+                          Text(
+                            'Message Preferences',
                             style: TextStyle(
-                              fontWeight: FontWeight.bold,
                               fontSize: 14,
-                              color:
-                                  isCurrentUser ? Colors.blue.shade700 : null,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
                             ),
                           ),
-                          subtitle: Text(
-                            member['username'] ?? 'No username',
-                            style: const TextStyle(fontSize: 12),
+                          SizedBox(height: 4),
+                          Text(
+                            'Control which family members you receive messages from by checking or unchecking the box next to their name.',
+                            style: TextStyle(fontSize: 12),
+                            textAlign: TextAlign.center,
                           ),
-                          trailing:
-                              isCurrentUser
-                                  ? const Chip(
-                                    label: Text(
-                                      'You',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.white,
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 8),
+
+                    if (members.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Center(
+                          child: Column(
+                            children: const [
+                              Icon(
+                                Icons.people_alt,
+                                color: Colors.grey,
+                                size: 40,
+                              ),
+                              SizedBox(height: 12),
+                              Text(
+                                'No members found in this family',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      Flexible(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: members.length,
+                          itemBuilder: (context, index) {
+                            final member = members[index];
+                            final memberId = member['userId'] as int?;
+                            final isCurrentUser = memberId == widget.userId;
+
+                            // Debug log the member data
+                            debugPrint('Member data: $member');
+
+                            if (memberId == null) {
+                              debugPrint('Warning: Member has null userId');
+                              return const SizedBox.shrink();
+                            }
+
+                            // Get current state from memberPreferences map
+                            final receiveMessages =
+                                memberPreferences[memberId] ?? true;
+
+                            return GestureDetector(
+                              // Add onTap for entire row tapping
+                              onTap:
+                                  isCurrentUser
+                                      ? null
+                                      : () {
+                                        // Toggle the state on tap
+                                        final newValue = !receiveMessages;
+
+                                        // Update local dialog state
+                                        setDialogState(() {
+                                          memberPreferences[memberId] =
+                                              newValue;
+                                        });
+
+                                        // Also update backend and parent state
+                                        _updateMemberMessagePreference(
+                                          familyId,
+                                          memberId,
+                                          newValue,
+                                        );
+                                      },
+                              child: CheckboxListTile(
+                                dense: true,
+                                visualDensity: VisualDensity.compact,
+                                value: receiveMessages,
+                                onChanged:
+                                    isCurrentUser
+                                        ? null // Can't toggle your own messages
+                                        : (bool? newValue) {
+                                          if (newValue != null) {
+                                            // Update local dialog state
+                                            setDialogState(() {
+                                              memberPreferences[memberId] =
+                                                  newValue;
+                                            });
+
+                                            // Also update backend and parent state
+                                            _updateMemberMessagePreference(
+                                              familyId,
+                                              memberId,
+                                              newValue,
+                                            );
+                                          }
+                                        },
+                                secondary: CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor:
+                                      isCurrentUser
+                                          ? Colors.blue.shade100
+                                          : Colors.green.shade100,
+                                  child: Text(
+                                    (() {
+                                      // Get first letter of first name
+                                      String firstLetter = 'U'; // Default
+                                      if (member.containsKey(
+                                            'memberFirstName',
+                                          ) &&
+                                          member['memberFirstName'] != null &&
+                                          member['memberFirstName']
+                                              .toString()
+                                              .isNotEmpty) {
+                                        firstLetter =
+                                            member['memberFirstName']
+                                                .toString()[0];
+                                      }
+                                      return firstLetter;
+                                    })(),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color:
+                                          isCurrentUser
+                                              ? Colors.blue.shade700
+                                              : Colors.green.shade700,
+                                    ),
+                                  ),
+                                ),
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        (() {
+                                          // Debug - print all keys in member object
+                                          debugPrint(
+                                            'Member object keys: ${member.keys.join(", ")}',
+                                          );
+
+                                          // Try to detect if user is a family owner
+                                          bool isOwner = false;
+
+                                          // Use isOwner field from API if available
+                                          if (member.containsKey('isOwner')) {
+                                            isOwner = member['isOwner'] == true;
+                                            debugPrint(
+                                              'Using isOwner field from API: $isOwner',
+                                            );
+                                          } else if (member.containsKey(
+                                            'isowner',
+                                          )) {
+                                            isOwner = member['isowner'] == true;
+                                            debugPrint(
+                                              'Using isowner field from API: $isOwner',
+                                            );
+                                          }
+
+                                          // If user owns a family, show family name
+                                          if (isOwner) {
+                                            // Try to get owned family name from API if available
+                                            String? ownedFamilyName;
+                                            if (member.containsKey(
+                                              'ownedFamilyName',
+                                            )) {
+                                              ownedFamilyName =
+                                                  member['ownedFamilyName']
+                                                      ?.toString();
+                                            } else if (member.containsKey(
+                                              'ownedfamilyname',
+                                            )) {
+                                              ownedFamilyName =
+                                                  member['ownedfamilyname']
+                                                      ?.toString();
+                                            }
+
+                                            // If we have the family name, use it
+                                            if (ownedFamilyName != null &&
+                                                ownedFamilyName.isNotEmpty) {
+                                              debugPrint(
+                                                'Showing owned family name: $ownedFamilyName',
+                                              );
+                                              return ownedFamilyName;
+                                            }
+                                          }
+
+                                          // For non-owners, show first and last name
+                                          String firstName =
+                                              member['firstName'] ??
+                                              member['memberFirstName'] ??
+                                              'Unknown';
+                                          String lastName =
+                                              member['lastName'] ??
+                                              member['memberLastName'] ??
+                                              '';
+                                          String fullName =
+                                              '$firstName $lastName';
+                                          debugPrint(
+                                            'Showing full name: $fullName',
+                                          );
+                                          return fullName;
+                                        })(),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color:
+                                              isCurrentUser
+                                                  ? Colors.blue.shade700
+                                                  : null,
+                                        ),
                                       ),
                                     ),
-                                    backgroundColor: Colors.blue,
-                                    labelPadding: EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                      vertical: 0,
-                                    ),
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    padding: EdgeInsets.zero,
-                                  )
-                                  : null,
-                        );
-                      },
-                    ),
-                  ),
-                ],
+
+                                    // Family ownership icon
+                                    if (member.containsKey('isOwner') &&
+                                        member['isOwner'] == true)
+                                      Tooltip(
+                                        message: 'Family Owner',
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 8.0,
+                                          ),
+                                          child: Icon(
+                                            Icons.home,
+                                            color: Colors.amber,
+                                            size: 16,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                subtitle: Text(
+                                  isCurrentUser
+                                      ? 'This is you'
+                                      : member['username'] ??
+                                          member['memberUsername'] ??
+                                          'No username',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                activeColor:
+                                    Theme.of(context).colorScheme.primary,
+                                checkColor: Colors.white,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close', style: TextStyle(fontSize: 14)),
-              ),
-            ],
-          ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close', style: TextStyle(fontSize: 14)),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -526,16 +787,14 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     setState(() => _isLoading = true);
 
     try {
-      // Check if user already owns a family (either from user data or _ownedFamily)
-      final userData = await widget.apiService.getUserById(widget.userId);
-      final existingFamilyId = userData['familyId'];
-
-      if (existingFamilyId != null || _ownedFamily != null) {
+      // Check if user already owns a family
+      // Only prevent creation if they own a family, not if they're a member of one
+      if (_ownedFamily != null) {
         // User already owns a family - show error
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'You already belong to a family. You can only create one family.',
+              'You already own a family. You can only create one family.',
             ),
           ),
         );
@@ -543,7 +802,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         return;
       }
 
-      // Force leaving any existing family memberships by setting leaveCurrentFamily to true
+      // Proceed with family creation - user can be member of other families
       await widget.apiService.createFamily(widget.userId, familyName);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Family created successfully!')),
@@ -555,7 +814,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       String errorMessage = 'Error creating family';
       if (e.toString().contains('already belongs to a family')) {
         errorMessage =
-            'You already belong to a family. Please leave that family first.';
+            'Server error: This API needs to be updated to support multiple families.';
       }
       ScaffoldMessenger.of(
         context,
@@ -607,24 +866,28 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     setState(() => _isLoading = true);
 
     try {
-      // Use the owned family ID or active family ID for invitations
-      final inviteFamilyId = _ownedFamily!['familyId'];
-
-      // Make sure we're using the family we own for sending invitations
-      await widget.apiService.inviteUser(widget.userId, email);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Invitation sent to $email'),
-          backgroundColor: Colors.green,
-        ),
+      // Use invitation service to send invitation
+      final success = await _invitationService.inviteUserToFamily(
+        widget.userId,
+        email,
       );
 
-      // Clear the input field
-      _inviteEmailController.clear();
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invitation sent to $email'),
+            backgroundColor: Colors.green,
+          ),
+        );
 
-      // Refresh data to show new pending invitations
-      await _refreshData();
+        // Clear the input field
+        _inviteEmailController.clear();
+
+        // Refresh data to show new pending invitations
+        await _refreshData();
+      } else {
+        throw Exception('Failed to send invitation');
+      }
     } catch (e) {
       debugPrint('Error sending invitation: $e');
 
@@ -709,7 +972,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.primary,
         elevation: 0,
-        toolbarHeight: 65,
+        toolbarHeight: 40,
         title: const Text(
           'Manage Family',
           style: TextStyle(
@@ -720,21 +983,19 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         ),
         centerTitle: true,
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(110),
+          preferredSize: const Size.fromHeight(70),
           child: Column(
             children: [
-              // User info header with either "Family Created" or "Create Family" button
               Padding(
                 padding: const EdgeInsets.only(
                   left: 16,
                   right: 16,
-                  top: 4,
-                  bottom: 8,
+                  top: 0,
+                  bottom: 16,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // User info (left side)
                     Container(
                       padding: const EdgeInsets.all(4),
                       child: Row(
@@ -763,8 +1024,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                         ],
                       ),
                     ),
-
-                    // Either Family Created indicator or Create Family button
                     userOwnsFamily
                         ? Row(
                           children: const [
@@ -810,21 +1069,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                   ],
                 ),
               ),
-
-              // TabBar - only show one tab now that we've redesigned the UI
-              TabBar(
-                controller: _tabController,
-                tabs: const [
-                  Tab(
-                    icon: Icon(Icons.people, size: 16),
-                    text: 'Your Families',
-                  ),
-                  Tab(icon: Icon(Icons.mail, size: 16), text: 'Invitations'),
-                ],
-                indicatorColor: Colors.white,
-                labelStyle: const TextStyle(fontSize: 12),
-                unselectedLabelStyle: const TextStyle(fontSize: 12),
-              ),
             ],
           ),
         ),
@@ -846,7 +1090,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                       (context) => ProfileScreen(
                         apiService: widget.apiService,
                         userId: widget.userId,
-                        role: _userData?['role'],
+                        userRole: _userData?['role'],
                       ),
                 ),
               );
@@ -855,12 +1099,14 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
           ),
         ],
       ),
+
       bottomNavigationBar: BottomNavigation(
-        currentIndex: 3, // Family management tab
+        currentIndex: 2, // Family management tab
         apiService: widget.apiService,
         userId: widget.userId,
-        onSendInvitation: (_) => _showInviteDialog(),
-        controller: widget.navigationController,
+        controller: widget.navigationController ?? BottomNavigationController(),
+        pendingInvitationsCount:
+            _invitations.where((inv) => inv['status'] == 'PENDING').length,
       ),
       body: SafeArea(
         child: Container(
@@ -886,9 +1132,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                     children: [
                       // Families tab
                       _buildFamiliesTab(),
-
-                      // Invitations tab
-                      _buildInvitationsTab(),
                     ],
                   ),
         ),
@@ -902,187 +1145,109 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Family selector - only show if user has at least one family
-          if (_ownedFamily != null || _joinedFamilies.isNotEmpty) ...[
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(
-                'Select Active Family for Messages',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-
-            // Active family selector
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12.0),
-              ),
-              color: Colors.white.withAlpha(230),
+          // User Info Card
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(10.0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Make sure we have a default family selected
-                  Builder(
-                    builder: (context) {
-                      // Create dropdown items first
-                      final dropdownItems = <DropdownMenuItem<int>>[];
-                      final familyIds = <int>[];
-
-                      // Add owned family to the dropdown if it exists
-                      if (_ownedFamily != null) {
-                        final ownedFamilyId = _ownedFamily!['familyId'];
-                        familyIds.add(ownedFamilyId);
-                        dropdownItems.add(
-                          DropdownMenuItem<int>(
-                            value: ownedFamilyId,
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.home,
-                                  color: Colors.green,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '${_ownedFamily!['familyName']} (Owner)',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Colors.green.shade100,
+                        child: Text(
+                          _userData?['firstName']?[0] ?? 'U',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
                           ),
-                        );
-                      }
-
-                      // Add joined families to the dropdown
-                      for (final family in _joinedFamilies) {
-                        final familyId = family['familyId'];
-                        if (familyId != _ownedFamily?['familyId']) {
-                          familyIds.add(familyId);
-                          dropdownItems.add(
-                            DropdownMenuItem<int>(
-                              value: familyId,
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.group,
-                                    color: Colors.blue,
-                                    size: 16,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      '${family['familyName']} (Member)',
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_userData?['firstName'] ?? 'User'} ${_userData?['lastName'] ?? ''}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          );
-                        }
-                      }
-
-                      // Now validate _activeFamilyId exists in dropdown options
-                      if (_activeFamilyId == null ||
-                          !familyIds.contains(_activeFamilyId)) {
-                        // Set a valid family ID if current one is invalid
-                        if (_ownedFamily != null) {
-                          _activeFamilyId = _ownedFamily!['familyId'];
-                        } else if (_joinedFamilies.isNotEmpty) {
-                          _activeFamilyId = _joinedFamilies[0]['familyId'];
-                        }
-                      }
-
-                      // Final check - if we have no valid families
-                      final hasNoValidFamilyId =
-                          _activeFamilyId == null || dropdownItems.isEmpty;
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0,
-                          vertical: 8.0,
+                            Text(
+                              _userData?['username'] ?? 'Username',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
                         ),
-                        child:
-                            hasNoValidFamilyId
-                                ? const Text(
-                                  'No families available for messaging',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                )
-                                : DropdownButtonHideUnderline(
-                                  child: DropdownButton<int>(
-                                    isExpanded: true,
-                                    value: _activeFamilyId,
-                                    icon: const Icon(Icons.arrow_drop_down),
-                                    iconSize: 24,
-                                    elevation: 16,
-                                    onChanged: (int? newValue) {
-                                      setState(() {
-                                        _activeFamilyId = newValue;
-                                        _saveUserPreferences();
-                                      });
-                                    },
-                                    items: dropdownItems,
-                                  ),
-                                ),
-                      );
-                    },
-                  ),
-
-                  // Option to send messages to multiple families
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: 8.0,
-                      right: 16.0,
-                      bottom: 8.0,
-                    ),
-                    child: Row(
-                      children: [
-                        Checkbox(
-                          value: _allowMultipleFamilyMessages,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              _allowMultipleFamilyMessages = value ?? false;
-                              _saveUserPreferences();
-
-                              // Show feedback to the user
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    _allowMultipleFamilyMessages
-                                        ? 'Messages will be sent to all your families'
-                                        : 'Messages will be sent only to the selected family',
-                                  ),
-                                  duration: const Duration(seconds: 2),
-                                ),
-                              );
-                            });
-                          },
-                        ),
-                        const Text(
-                          'Send messages to all my families',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
+          ),
 
-            const SizedBox(height: 24),
-          ],
+          // Family Summary Dashboard - Quick overview of all families
+          Card(
+            margin: const EdgeInsets.only(bottom: 16),
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(10.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Your Family Dashboard',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Count of owned and joined families
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildSummaryItem(
+                          title: 'You Own',
+                          count: _ownedFamily != null ? 1 : 0,
+                          icon: Icons.admin_panel_settings,
+                          color: Colors.green,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildSummaryItem(
+                          title: 'Member Of',
+                          count: _isUserMemberOfOtherFamilies() ? 1 : 0,
+                          icon: Icons.people,
+                          color: Colors.blue,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildSummaryItem(
+                          title: 'Total Members',
+                          count: _getTotalFamilyMembers(),
+                          icon: Icons.groups,
+                          color: Colors.purple,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
 
           // Family you own section (if any)
           if (_ownedFamily != null) ...[
@@ -1216,8 +1381,28 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     setState(() => _isLoading = true);
 
     try {
+      debugPrint(
+        'Viewing members for family: ${family['familyName']} (ID: ${family['familyId']})',
+      );
+
       // Load family members directly from API
       final members = await widget.apiService.getFamilyMembers(widget.userId);
+      debugPrint('Loaded ${members.length} family members from API');
+
+      // Print the member details for debugging
+      debugPrint('DETAILED MEMBER DATA:');
+      for (var member in members) {
+        debugPrint(
+          'Member: ${member['firstName']} ${member['lastName']} (ID: ${member['userId']}) - familyName: ${member['familyName']}',
+        );
+        debugPrint('Full member data: $member');
+      }
+
+      // Refresh member message preferences
+      await _loadMemberMessagePreferences();
+      debugPrint(
+        'Loaded ${_memberMessagePreferences.length} member message preferences',
+      );
 
       if (!mounted) return;
 
@@ -1225,11 +1410,18 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       _showFamilyMembersDialog(family, members);
     } catch (e) {
       debugPrint('Error loading family members: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading family members: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading family members: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -1268,9 +1460,24 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
               color: isOwned ? Colors.green : Colors.blue,
               size: 28,
             ),
-            title: Text(
-              familyName.toString(),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    familyName.toString(),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+                if (isOwned)
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 16),
+                    tooltip: 'Edit family name',
+                    onPressed: () => _showEditFamilyNameDialog(family),
+                  ),
+              ],
             ),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1336,231 +1543,50 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
             ),
 
           // Action buttons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              // View members button (always shown)
-              if (onTapView != null)
-                OutlinedButton.icon(
-                  onPressed: onTapView,
-                  icon: const Icon(Icons.visibility, size: 16),
-                  label: const Text('View Members'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.blue,
-                    side: const BorderSide(color: Colors.blue),
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 8.0,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // View members button (always shown)
+                if (onTapView != null)
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: onTapView,
+                      icon: const Icon(Icons.visibility, size: 18),
+                      label: const Text('Members'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
                   ),
-                ),
 
-              // Leave button (only shown for joined families)
-              if (!isOwned && onTapLeave != null)
-                OutlinedButton.icon(
-                  onPressed: onTapLeave,
-                  icon: const Icon(Icons.exit_to_app, size: 16),
-                  label: const Text('Leave'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
+                // Leave button (only shown for joined families)
+                if (!isOwned && onTapLeave != null) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: onTapLeave,
+                      icon: const Icon(Icons.exit_to_app, size: 18),
+                      label: const Text('Leave'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
                   ),
-                ),
-            ],
+                ],
+              ],
+            ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildInvitationsTab() {
-    // If there are no invitations
-    if (_invitations.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.mail, size: 64, color: Colors.white70),
-              const SizedBox(height: 16),
-              const Text(
-                'No invitations',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'When someone invites you to join their family, you\'ll see it here.',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // If there are invitations
-    return ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemCount: _invitations.length,
-      itemBuilder: (context, index) {
-        final invitation = _invitations[index];
-
-        // Get invitation details with fallback values if missing
-        final familyName =
-            invitation['familyName'] ??
-            'Family #${invitation['familyId'] ?? ''}';
-        final inviterName = invitation['inviterName'] ?? 'A family member';
-        final inviterId = invitation['inviterId'];
-        final familyId = invitation['familyId'];
-        final invitationId = invitation['id'];
-        final status = invitation['status'] ?? 'PENDING';
-
-        // Only show action buttons for pending invitations
-        final isPending = status == 'PENDING';
-
-        return Card(
-          elevation: 3,
-          margin: const EdgeInsets.only(bottom: 16.0),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.0),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header with circular avatar for visual appeal
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primary.withAlpha(204),
-                  child: const Icon(Icons.mail, color: Colors.white, size: 20),
-                ),
-                title: Text(
-                  familyName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-                subtitle: Text('From: $inviterName'),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isPending ? Colors.orange : Colors.green,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    status,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-
-              // Invitation details
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 8.0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (isPending) ...[
-                      const Text(
-                        'Join this family?',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'You have been invited to join the $familyName family. Would you like to accept this invitation?',
-                      ),
-                    ] else ...[
-                      Text(
-                        status == 'ACCEPTED'
-                            ? 'You are a member of this family.'
-                            : 'You declined this invitation.',
-                        style: TextStyle(
-                          color:
-                              status == 'ACCEPTED' ? Colors.green : Colors.red,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                    if (familyId != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Text(
-                          'Family ID: $familyId',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
-              // Action buttons - only show for pending invitations
-              if (isPending)
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlinedButton(
-                        onPressed:
-                            () => _respondToInvitation(invitationId, false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                        ),
-                        child: const Text('Decline'),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed:
-                            () => _respondToInvitation(invitationId, true),
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: Colors.green,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                        ),
-                        child: const Text('Accept'),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -1760,5 +1786,355 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       'allowMultipleFamilyMessages',
       _allowMultipleFamilyMessages,
     );
+  }
+
+  // Show dialog to edit family name
+  void _showEditFamilyNameDialog(Map<String, dynamic> family) {
+    final TextEditingController nameController = TextEditingController();
+    nameController.text = family['familyName'] ?? '';
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Edit Family Name',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Enter a new name for your family.',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Family Name',
+                    hintText: 'Enter new name for your family',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  _updateFamilyName(
+                    family['familyId'],
+                    nameController.text.trim(),
+                  );
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                ),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Update family name
+  Future<void> _updateFamilyName(int familyId, String newName) async {
+    if (newName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a family name')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      await widget.apiService.updateFamilyDetails(familyId, newName);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Family name updated to "$newName"')),
+      );
+      await _refreshData();
+    } catch (e) {
+      debugPrint('Error updating family name: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error updating family name: $e')));
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // Add this method to load message preferences
+  Future<void> _loadMessagePreferences() async {
+    setState(() => _loadingPreferences = true);
+
+    try {
+      final preferences = await widget.apiService.getMessagePreferences(
+        widget.userId,
+      );
+
+      if (mounted) {
+        setState(() {
+          _messagePreferences = preferences;
+          _loadingPreferences = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading message preferences: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load message preferences: $e')),
+        );
+        setState(() => _loadingPreferences = false);
+      }
+    }
+  }
+
+  // Add this method to update message preference for a family
+  Future<void> _updateMessagePreference(
+    int familyId,
+    bool receiveMessages,
+  ) async {
+    try {
+      await widget.apiService.updateMessagePreference(
+        widget.userId,
+        familyId,
+        receiveMessages,
+      );
+
+      // Update local state
+      setState(() {
+        final index = _messagePreferences.indexWhere(
+          (p) => p['familyId'] == familyId,
+        );
+        if (index >= 0) {
+          _messagePreferences[index]['receiveMessages'] = receiveMessages;
+        }
+      });
+
+      if (!receiveMessages) {
+        // Show feedback to user when they mute a family
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You won\'t receive messages from this family'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error updating message preference: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update preference: $e')),
+      );
+    }
+  }
+
+  // Add this method to load member message preferences
+  Future<void> _loadMemberMessagePreferences() async {
+    setState(() => _loadingMemberPreferences = true);
+
+    try {
+      final preferences = await widget.apiService.getMemberMessagePreferences(
+        widget.userId,
+      );
+
+      if (mounted) {
+        setState(() {
+          _memberMessagePreferences = preferences;
+          _loadingMemberPreferences = false;
+
+          // Log the loaded preferences
+          debugPrint(
+            'Loaded ${_memberMessagePreferences.length} member preferences:',
+          );
+          for (final pref in _memberMessagePreferences) {
+            debugPrint(
+              '- Family: ${pref['familyId']}, Member: ${pref['memberUserId']}, Receive: ${pref['receiveMessages']}',
+            );
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading member message preferences: $e');
+      if (mounted) {
+        setState(() => _loadingMemberPreferences = false);
+      }
+    }
+  }
+
+  // Add this method to update member message preference
+  Future<void> _updateMemberMessagePreference(
+    int familyId,
+    int? memberUserId,
+    bool receiveMessages,
+  ) async {
+    // Validate parameters
+    if (memberUserId == null) {
+      debugPrint('Cannot update message preference for null member ID');
+      return;
+    }
+
+    debugPrint(
+      'Updating member preference: family=$familyId, member=$memberUserId, receive=$receiveMessages',
+    );
+
+    try {
+      final result = await widget.apiService.updateMemberMessagePreference(
+        widget.userId,
+        familyId,
+        memberUserId,
+        receiveMessages,
+      );
+
+      debugPrint('Backend response for member preference update: $result');
+
+      // Update local state
+      setState(() {
+        final index = _memberMessagePreferences.indexWhere(
+          (p) => p['familyId'] == familyId && p['memberUserId'] == memberUserId,
+        );
+
+        if (index >= 0) {
+          debugPrint('Updating existing member preference at index $index');
+          _memberMessagePreferences[index]['receiveMessages'] = receiveMessages;
+        } else {
+          debugPrint('Adding new member preference to state');
+          // Add new preference if it doesn't exist
+          _memberMessagePreferences.add({
+            'familyId': familyId,
+            'memberUserId': memberUserId,
+            'receiveMessages': receiveMessages,
+          });
+        }
+      });
+
+      // Show feedback to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              receiveMessages
+                  ? 'You will receive messages from this family member'
+                  : 'You won\'t receive messages from this family member',
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error updating member message preference: $e');
+      if (mounted) {
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update preference: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Helper method to check if a user should receive messages from a specific member
+  bool _shouldReceiveMessagesFromMember(int familyId, int? memberUserId) {
+    debugPrint(
+      'Checking message preference for family $familyId, member $memberUserId',
+    );
+
+    // If memberUserId is null, default to true
+    if (memberUserId == null) {
+      debugPrint('Member ID is null, defaulting to true');
+      return true;
+    }
+
+    // First check if we should receive messages from this family at all
+    final familyPreference = _messagePreferences.firstWhere(
+      (pref) => pref['familyId'] == familyId,
+      orElse: () => {'receiveMessages': true},
+    );
+
+    // If family messages are disabled, member messages are disabled too
+    if (!(familyPreference['receiveMessages'] ?? true)) {
+      debugPrint(
+        'Family messages are disabled for family $familyId, returning false',
+      );
+      return false;
+    }
+
+    // Check if this is the user viewing their own preferences - always true
+    if (memberUserId == widget.userId) {
+      debugPrint('This is the current user, always showing as true');
+      return true;
+    }
+
+    // Then check member-specific preference - default to true if not found
+    final memberPreference = _memberMessagePreferences.firstWhere(
+      (pref) =>
+          pref['familyId'] == familyId && pref['memberUserId'] == memberUserId,
+      orElse: () => {'receiveMessages': true},
+    );
+
+    final result = memberPreference['receiveMessages'] ?? true;
+    debugPrint(
+      'Message preference for member $memberUserId in family $familyId: $result',
+    );
+    return result;
+  }
+
+  // Build a summary item for the family dashboard
+  Widget _buildSummaryItem({
+    required String title,
+    required int count,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          count.toString(),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(title, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+      ],
+    );
+  }
+
+  // Calculate the total number of family members across all families
+  int _getTotalFamilyMembers() {
+    int total = 0;
+
+    // Add members from owned family
+    if (_ownedFamily != null) {
+      total += _ownedFamily!['memberCount'] as int? ?? 0;
+    }
+
+    // Add members from joined families, excluding the owned family if it's in the list
+    for (var family in _joinedFamilies) {
+      // Skip the owned family if it's in the joined families list to avoid counting twice
+      if (_ownedFamily != null &&
+          family['familyId'] == _ownedFamily!['familyId']) {
+        continue;
+      }
+      total += family['memberCount'] as int? ?? 0;
+    }
+
+    // If total is 0, return at least 1 for the current user
+    return total > 0 ? total : 1;
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'services/api_service.dart';
+import 'services/service_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'theme/app_theme.dart';
@@ -19,11 +20,14 @@ class MyApp extends StatefulWidget {
 class MyAppState extends State<MyApp> {
   late Future<Map<String, dynamic>?> _initializationFuture;
   late ApiService apiService; // Keep a single instance
+  final ServiceProvider _serviceProvider = ServiceProvider();
 
   @override
   void initState() {
     super.initState();
     apiService = ApiService();
+    // Initialize the service provider with the API service
+    _serviceProvider.initialize(apiService);
     _initializationFuture = _initialize();
   }
 
@@ -54,7 +58,7 @@ class MyAppState extends State<MyApp> {
             return ProfileScreen(
               apiService: apiService, // Reuse the same instance
               userId: user['userId'],
-              role: user['role'] ?? 'USER',
+              userRole: user['role'] ?? 'USER',
             );
           }
           return LoginScreen(apiService: apiService); // Reuse the same instance

@@ -11,17 +11,19 @@ import 'dart:io';
 import 'dart:math';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import '../models/invitation.dart';
+import '../services/service_provider.dart';
+import '../services/invitation_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ApiService apiService;
   final int userId;
-  final String? role;
+  final String? userRole;
 
   const ProfileScreen({
     super.key,
     required this.apiService,
     required this.userId,
-    required this.role,
+    required this.userRole,
   });
 
   @override
@@ -36,7 +38,7 @@ class ProfileScreenState extends State<ProfileScreen>
   XFile? _photoFile;
   Future<Map<String, dynamic>?>? _userDataFuture;
   final _profileKey = GlobalKey<State>();
-  final _navigationController = BottomNavigationController();
+  late BottomNavigationController _navigationController;
 
   // Tab controller for Profile/Invitations tabs
   late TabController _tabController;
@@ -59,6 +61,7 @@ class ProfileScreenState extends State<ProfileScreen>
     );
     _animationController.forward();
 
+    _navigationController = BottomNavigationController();
     _userDataFuture = _loadUser();
     _loadInvitations();
   }
@@ -70,95 +73,60 @@ class ProfileScreenState extends State<ProfileScreen>
     super.dispose();
   }
 
-  // Load invitations
+  // Load invitations using the improved invitation service
   Future<void> _loadInvitations() async {
-    setState(() {
-      _isLoadingInvitations = true;
-    });
+    // Get the service just when needed
+    final invitationService = ServiceProvider().invitationService;
 
-    try {
-      final invitations = await widget.apiService.getFamilyInvitationsForUser(
-        widget.userId,
-      );
-
-      // Process each invitation to add missing information
-      List<Map<String, dynamic>> processedInvitations = [];
-
-      for (var invitation in invitations) {
-        // Make a mutable copy of the invitation
-        final processedInvitation = Map<String, dynamic>.from(invitation);
-
-        // If familyName is missing but we have familyId, try to get it
-        if ((processedInvitation['familyName'] == null ||
-                processedInvitation['familyName'].toString().isEmpty) &&
-            processedInvitation['familyId'] != null) {
-          try {
-            final familyId = processedInvitation['familyId'];
-            final familyDetails = await widget.apiService.getFamily(familyId);
-            processedInvitation['familyName'] = familyDetails['name'];
-          } catch (e) {
-            debugPrint('Error fetching family details: $e');
-            // Keep the fallback handled in the UI
-          }
+    await invitationService.loadInvitations(
+      userId: widget.userId,
+      setLoadingState: (isLoading) {
+        if (mounted) {
+          setState(() {
+            _isLoadingInvitations = isLoading;
+          });
         }
-
-        // If inviterName is missing but we have inviterId, try to get it
-        if ((processedInvitation['inviterName'] == null ||
-                processedInvitation['inviterName'].toString().isEmpty) &&
-            processedInvitation['inviterId'] != null) {
-          try {
-            final inviterId = processedInvitation['inviterId'];
-            final inviterDetails = await widget.apiService.getUserById(
-              inviterId,
-            );
-            processedInvitation['inviterName'] =
-                '${inviterDetails['firstName']} ${inviterDetails['lastName']}';
-          } catch (e) {
-            debugPrint('Error fetching inviter details: $e');
-            // Keep the fallback handled in the UI
-          }
+      },
+      setInvitationsState: (invitations) {
+        if (mounted) {
+          setState(() {
+            _invitations = invitations;
+          });
         }
-
-        processedInvitations.add(processedInvitation);
-      }
-
-      if (mounted) {
-        setState(() {
-          _invitations = processedInvitations;
-          _isLoadingInvitations = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading invitations: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingInvitations = false;
-        });
-      }
-    }
+      },
+      checkIfMounted: () => mounted,
+    );
   }
 
-  // Respond to an invitation (accept or decline)
+  // Respond to an invitation using the invitation service
   Future<void> _respondToInvitation(int invitationId, bool accept) async {
     try {
       setState(() => _isLoadingInvitations = true);
 
-      if (accept) {
-        await widget.apiService.respondToFamilyInvitation(invitationId, true);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Invitation accepted!')));
+      // Get the service just when needed
+      final invitationService = ServiceProvider().invitationService;
+
+      final success = await invitationService.respondToInvitation(
+        invitationId,
+        accept,
+      );
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              accept ? 'Invitation accepted!' : 'Invitation declined',
+            ),
+          ),
+        );
       } else {
-        await widget.apiService.respondToFamilyInvitation(invitationId, false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Invitation declined')));
+        throw Exception('Failed to process invitation');
       }
 
       // Refresh all data
       await _loadInvitations();
       if (_navigationController != null) {
-        _navigationController.refreshUserFamilies();
+        _navigationController!.refreshUserFamilies();
       }
     } catch (e) {
       debugPrint('Error responding to invitation: $e');
@@ -211,29 +179,8 @@ class ProfileScreenState extends State<ProfileScreen>
               ),
         );
 
-        // Get file size and validate
-        final file = File(pickedFile.path);
-        final int fileSize = await file.length();
-        final int fileSizeKB = fileSize ~/ 1024;
-
-        debugPrint('Selected photo size: $fileSizeKB KB');
-
-        if (fileSizeKB > 800) {
-          // Close the progress dialog
-          if (!mounted) return;
-          Navigator.of(context).pop();
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Image is too large ($fileSizeKB KB). Please choose a smaller image.',
-              ),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-          return;
-        }
+        // Handle file size checking
+        int fileSizeKB = 0;
 
         setState(() {
           _photoFile = pickedFile;
@@ -241,65 +188,152 @@ class ProfileScreenState extends State<ProfileScreen>
 
         // Attempt upload
         try {
-          if (!kIsWeb) {
+          if (kIsWeb) {
+            try {
+              // For web browsers, read the bytes and send
+              final bytes = await pickedFile.readAsBytes();
+              fileSizeKB = bytes.length ~/ 1024;
+              debugPrint('Web image size: $fileSizeKB KB');
+
+              if (bytes.length > 800 * 1024) {
+                // 800KB limit
+                // Close the progress dialog
+                if (!mounted) return;
+                Navigator.of(context).pop();
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Image is too large ($fileSizeKB KB). Please choose a smaller image.',
+                    ),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+                return;
+              }
+
+              // Upload the file using the web-specific method
+              await widget.apiService.updatePhotoWeb(
+                widget.userId,
+                bytes,
+                '${DateTime.now().millisecondsSinceEpoch}.jpg',
+              );
+
+              // Refresh user data
+              setState(() {
+                _userDataFuture = _loadUser();
+              });
+
+              // Close the progress dialog
+              if (!mounted) return;
+              Navigator.of(context).pop();
+
+              // Show success message
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Profile photo updated successfully!'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            } catch (e) {
+              // Close the progress dialog
+              if (!mounted) return;
+              Navigator.of(context).pop();
+
+              // Show error message
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error uploading image: $e'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+            }
+          } else {
+            // For mobile platforms, proceed with upload
+            final file = File(pickedFile.path);
+            final int fileSize = await file.length();
+            fileSizeKB = fileSize ~/ 1024;
+            debugPrint('Selected photo size: $fileSizeKB KB');
+
+            if (fileSize > 800 * 1024) {
+              // 800KB
+              // Close the progress dialog
+              if (!mounted) return;
+              Navigator.of(context).pop();
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Image is too large ($fileSizeKB KB). Please choose a smaller image.',
+                  ),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+              return;
+            }
+
             await widget.apiService.updatePhoto(widget.userId, pickedFile.path);
 
             // Refresh the user data after successful upload
             setState(() {
               _userDataFuture = _loadUser();
             });
-          }
 
-          // Close the progress dialog
-          if (!mounted) return;
-          Navigator.of(context).pop();
+            // Close the progress dialog
+            if (!mounted) return;
+            Navigator.of(context).pop();
 
-          // Show success animation
-          showDialog(
-            context: context,
-            builder:
-                (context) => Dialog(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.check_circle,
-                          color: Colors.green,
-                          size: 64,
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Photo Updated!',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+            // Show success animation
+            showDialog(
+              context: context,
+              builder:
+                  (context) => Dialog(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.check_circle,
+                            color: Colors.green,
+                            size: 64,
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Your profile photo has been updated successfully.',
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(200, 45),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Photo Updated!',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          child: const Text('Great!'),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Your profile photo has been updated successfully.',
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size(200, 45),
+                            ),
+                            child: const Text('Great!'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-          );
+            );
+          }
         } catch (e) {
           // Close the progress dialog
           if (!mounted) return;
@@ -427,18 +461,26 @@ class ProfileScreenState extends State<ProfileScreen>
                   );
 
                   try {
-                    await widget.apiService.inviteUser(
+                    // Use invitation service to send invitation
+                    final invitationService =
+                        ServiceProvider().invitationService;
+                    final success = await invitationService.inviteUserToFamily(
                       widget.userId,
                       emailController.text,
                     );
+
                     if (!mounted) return;
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Invitation sent successfully!'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
+                    if (success) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Invitation sent successfully!'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    } else {
+                      throw Exception('Failed to send invitation');
+                    }
                   } catch (e) {
                     if (!mounted) return;
                     debugPrint('Error sending invitation: $e');
@@ -831,6 +873,54 @@ class ProfileScreenState extends State<ProfileScreen>
     );
   }
 
+  // Extract the app bar without tabs
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      automaticallyImplyLeading: false,
+      title: const Text('Profile'),
+      centerTitle: true,
+      backgroundColor: Theme.of(context).colorScheme.primary,
+      elevation: 0,
+      actions: [
+        // Refresh button
+        IconButton(
+          icon: const Icon(Icons.refresh, color: Colors.white),
+          onPressed: () {
+            setState(() {
+              _userDataFuture = _loadUser();
+            });
+          },
+          tooltip: 'Refresh',
+        ),
+        // Logout button
+        IconButton(
+          icon: const Icon(Icons.logout, color: Colors.white),
+          onPressed: _logout,
+          tooltip: 'Logout',
+        ),
+      ],
+    );
+  }
+
+  // Extract the gradient background container into a separate method
+  Widget _buildGradientBackground({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Theme.of(context).colorScheme.primary,
+            Theme.of(context).colorScheme.secondary,
+          ],
+        ),
+      ),
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Calculate responsive width for the profile content
@@ -840,100 +930,27 @@ class ProfileScreenState extends State<ProfileScreen>
         screenWidth > maxWidth + 40 ? maxWidth : screenWidth - 40;
     final bool isSmallScreen = screenWidth < 360;
 
+    // Count pending invitations for the badge
+    final pendingInvitationsCount =
+        _invitations.where((inv) => inv['status'] == 'PENDING').length;
+
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Profile'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        elevation: 0,
-        actions: [
-          // Refresh button
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: () {
-              setState(() {
-                _userDataFuture = _loadUser();
-                _loadInvitations();
-              });
-            },
-            tooltip: 'Refresh',
-          ),
-          // Logout button
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: _logout,
-            tooltip: 'Logout',
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          tabs: [
-            const Tab(icon: Icon(Icons.person), text: 'Profile'),
-            Tab(
-              icon: Stack(
-                children: [
-                  const Icon(Icons.mail),
-                  if (_invitations.any((inv) => inv['status'] == 'PENDING'))
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(1),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 8,
-                          minHeight: 8,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              text: 'Invitations',
-            ),
-          ],
-        ),
-      ),
+      appBar: _buildAppBar(),
       bottomNavigationBar: BottomNavigation(
         currentIndex: 1, // Profile tab
         apiService: widget.apiService,
         userId: widget.userId,
-        userRole: widget.role,
-        onSendInvitation: (_) => _sendInvitation(),
+        userRole: widget.userRole,
         controller: _navigationController,
+        pendingInvitationsCount: pendingInvitationsCount,
       ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity, // Fill the entire screen height
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Theme.of(context).colorScheme.primary,
-              Theme.of(context).colorScheme.secondary,
-            ],
-          ),
-        ),
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            // Profile Tab
-            _buildProfileTab(contentWidth, isSmallScreen),
-
-            // Invitations Tab
-            _buildInvitationsTab(),
-          ],
-        ),
+      body: _buildGradientBackground(
+        child: _buildProfileTab(contentWidth, isSmallScreen),
       ),
     );
   }
 
-  // Profile Tab content
+  // Profile Tab content with improved structure
   Widget _buildProfileTab(double contentWidth, bool isSmallScreen) {
     return SafeArea(
       key: _profileKey,
@@ -943,323 +960,130 @@ class ProfileScreenState extends State<ProfileScreen>
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+
           if (snapshot.hasError || snapshot.data == null) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => LoginScreen(apiService: widget.apiService),
-                ),
-                (route) => false,
-              );
-            });
+            _redirectToLogin();
             return const Center(child: CircularProgressIndicator());
           }
 
           final user = snapshot.data!;
-
-          return FadeTransition(
-            opacity: _fadeAnimation,
-            child: Center(
-              child: Container(
-                constraints: BoxConstraints(maxWidth: contentWidth),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    SizedBox(height: isSmallScreen ? 10 : 15),
-
-                    // Profile photo - smaller on small screens
-                    ProfilePhoto(
-                      photoUrl:
-                          user['photo'] != null
-                              ? '${widget.apiService.baseUrl}${user['photo']}?t=${DateTime.now().millisecondsSinceEpoch}'
-                              : null,
-                      onTap: _pickPhoto,
-                      size: isSmallScreen ? 90 : 110,
-                    ),
-
-                    SizedBox(height: isSmallScreen ? 5 : 10),
-
-                    // Edit Info Button
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: SizedBox(
-                        width: 200,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          icon: Icon(Icons.edit, size: 24),
-                          label: Text(
-                            'EDIT INFO',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          onPressed: () => _showDemographicsDialog(user),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 12,
-                              horizontal: 20,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            elevation: 5,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Profile info card
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          children: [
-                            Container(
-                              width: double.infinity,
-                              margin: EdgeInsets.only(
-                                bottom: isSmallScreen ? 8 : 12,
-                              ),
-                              child: Card(
-                                elevation: 4,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Padding(
-                                  padding: EdgeInsets.all(
-                                    isSmallScreen ? 12 : 16,
-                                  ),
-                                  child: ProfileInfo(
-                                    username: user['username'] ?? '',
-                                    firstName: user['firstName'] ?? '',
-                                    lastName: user['lastName'] ?? '',
-                                    email: user['email'] ?? 'Not available',
-                                    role: widget.role ?? 'Unknown',
-                                    isSmallScreen: isSmallScreen,
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            // Remove Manage family button
-                            SizedBox(height: isSmallScreen ? 10 : 20),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
+          return _buildProfileContent(user, contentWidth, isSmallScreen);
         },
       ),
     );
   }
 
-  // Invitations Tab content
-  Widget _buildInvitationsTab() {
-    if (_isLoadingInvitations) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
-      );
-    }
-
-    // If there are no invitations
-    if (_invitations.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.mail, size: 64, color: Colors.white70),
-              const SizedBox(height: 16),
-              const Text(
-                'No invitations',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'When someone invites you to join their family, you\'ll see it here.',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+  // Helper method to redirect to login
+  void _redirectToLogin() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (context) => LoginScreen(apiService: widget.apiService),
         ),
+        (route) => false,
       );
-    }
+    });
+  }
 
-    // If there are invitations
-    return ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemCount: _invitations.length,
-      itemBuilder: (context, index) {
-        final invitation = _invitations[index];
-
-        // Get invitation details with fallback values if missing
-        final familyName =
-            invitation['familyName'] ??
-            'Family #${invitation['familyId'] ?? ''}';
-        final inviterName = invitation['inviterName'] ?? 'A family member';
-        final inviterId = invitation['inviterId'];
-        final familyId = invitation['familyId'];
-        final invitationId = invitation['id'];
-        final status = invitation['status'] ?? 'PENDING';
-
-        // Only show action buttons for pending invitations
-        final isPending = status == 'PENDING';
-
-        return Card(
-          elevation: 3,
-          margin: const EdgeInsets.only(bottom: 16.0),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.0),
-          ),
+  // Extract the profile content to a separate method
+  Widget _buildProfileContent(
+    Map<String, dynamic> user,
+    double contentWidth,
+    bool isSmallScreen,
+  ) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Center(
+        child: Container(
+          constraints: BoxConstraints(maxWidth: contentWidth),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Header with circular avatar for visual appeal
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primary.withOpacity(0.8),
-                  child: const Icon(Icons.mail, color: Colors.white, size: 20),
-                ),
-                title: Text(
-                  familyName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-                subtitle: Text('From: $inviterName'),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isPending ? Colors.orange : Colors.green,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    status,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+              SizedBox(height: isSmallScreen ? 10 : 20),
+
+              // Profile photo - smaller on small screens
+              ProfilePhoto(
+                photoUrl:
+                    user['photo'] != null
+                        ? '${widget.apiService.baseUrl}${user['photo']}?t=${DateTime.now().millisecondsSinceEpoch}'
+                        : null,
+                onTap: _pickPhoto,
+                size: isSmallScreen ? 90 : 110,
+              ),
+
+              SizedBox(height: isSmallScreen ? 5 : 10),
+
+              // Edit Info Button
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: SizedBox(
+                  width: 200,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    icon: Icon(Icons.edit, size: 24),
+                    label: Text(
+                      'EDIT INFO',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onPressed: () => _showDemographicsDialog(user),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 20,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      elevation: 5,
                     ),
                   ),
                 ),
               ),
 
-              // Invitation details
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 8.0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (isPending) ...[
-                      const Text(
-                        'Join this family?',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'You have been invited to join the $familyName family. Would you like to accept this invitation?',
-                      ),
-                    ] else ...[
-                      Text(
-                        status == 'ACCEPTED'
-                            ? 'You are a member of this family.'
-                            : 'You declined this invitation.',
-                        style: TextStyle(
-                          color:
-                              status == 'ACCEPTED' ? Colors.green : Colors.red,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                    if (familyId != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Text(
-                          'Family ID: $familyId',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
-              // Action buttons - only show for pending invitations
-              if (isPending)
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+              // Profile info card
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
                     children: [
-                      OutlinedButton(
-                        onPressed:
-                            () => _respondToInvitation(invitationId, false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
+                      Container(
+                        width: double.infinity,
+                        margin: EdgeInsets.only(bottom: isSmallScreen ? 8 : 12),
+                        child: Card(
+                          elevation: 4,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
+                          child: Padding(
+                            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                            child: ProfileInfo(
+                              username: user['username'] ?? '',
+                              firstName: user['firstName'] ?? '',
+                              lastName: user['lastName'] ?? '',
+                              email: user['email'] ?? 'Not available',
+                              role: widget.userRole ?? 'Unknown',
+                              isSmallScreen: isSmallScreen,
+                            ),
                           ),
                         ),
-                        child: const Text('Decline'),
                       ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed:
-                            () => _respondToInvitation(invitationId, true),
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: Colors.green,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                        ),
-                        child: const Text('Accept'),
-                      ),
+
+                      // Remove Manage family button
+                      SizedBox(height: isSmallScreen ? 10 : 20),
                     ],
                   ),
                 ),
+              ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

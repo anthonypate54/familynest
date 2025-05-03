@@ -22,7 +22,7 @@ class AppTheme {
       backgroundColor: primaryColor,
       elevation: 0,
       centerTitle: true,
-      iconTheme: IconThemeData(color: Colors.white),
+      iconTheme: IconThemeData(color: Colors.white54),
       titleTextStyle: TextStyle(
         color: Colors.white,
         fontSize: 20,

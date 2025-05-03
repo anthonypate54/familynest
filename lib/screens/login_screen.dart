@@ -55,7 +55,7 @@ class LoginScreenState extends State<LoginScreen> {
               (context) => ProfileScreen(
                 apiService: widget.apiService,
                 userId: user['userId'],
-                role: user['role'] ?? 'USER',
+                userRole: user['role'] ?? 'USER',
               ),
         ),
       );
@@ -85,7 +85,7 @@ class LoginScreenState extends State<LoginScreen> {
                 (context) => ProfileScreen(
                   apiService: widget.apiService,
                   userId: response['userId'],
-                  role: response['role'] ?? 'USER',
+                  userRole: response['role'] ?? 'USER',
                 ),
           ),
         );
@@ -114,7 +114,7 @@ class LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
         firstName: _firstNameController.text,
         lastName: _lastNameController.text,
-        role: _selectedRole,
+        userRole: _selectedRole,
         photoPath: null, // No photo upload
       );
       debugPrint('Registration successful, userId: ${result['userId']}');
