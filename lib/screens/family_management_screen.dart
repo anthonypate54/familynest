@@ -4,6 +4,8 @@ import '../services/service_provider.dart';
 import '../services/invitation_service.dart';
 import 'profile_screen.dart';
 import '../components/bottom_navigation.dart';
+import '../dialogs/families_message_dialog.dart';
+import '../dialogs/member_message_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
@@ -52,14 +54,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
   List<Map<String, dynamic>> _messagePreferences = [];
   bool _loadingPreferences = false;
 
-  // Add these state variables for member-level message preferences
-  List<Map<String, dynamic>> _memberMessagePreferences = [];
-  bool _loadingMemberPreferences = false;
-
-  // Add these new fields to manage debouncing
-  final Map<String, Timer> _pendingUpdateTimers = {};
-  final Map<String, bool> _pendingUpdates = {};
-
   @override
   void initState() {
     super.initState();
@@ -75,13 +69,10 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     _loadUserData();
     _loadUserPreferences();
     _loadMessagePreferences();
-    _loadMemberMessagePreferences();
   }
 
   @override
   void dispose() {
-    // Add this to cancel any pending timers when disposing
-    _pendingUpdateTimers.forEach((_, timer) => timer.cancel());
     _familyNameController.dispose();
     _inviteEmailController.dispose();
     _searchController.dispose();
@@ -99,7 +90,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         _getUserFamilies(),
         _loadInvitations(),
         _loadMessagePreferences(),
-        _loadMemberMessagePreferences(),
       ]);
     } catch (e) {
       debugPrint('Error loading data: $e');
@@ -326,371 +316,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
               ),
             ],
           ),
-    );
-  }
-
-  // Dialog to show family members
-  void _showFamilyMembersDialog(
-    Map<String, dynamic> family,
-    List<Map<String, dynamic>> members,
-  ) {
-    // Extract and validate familyId
-    final familyId = family['familyId'] as int?;
-    if (familyId == null) {
-      debugPrint('Warning: Family ID is null in _showFamilyMembersDialog');
-      return; // Exit early if familyId is null
-    }
-
-    // Debug log the members data
-    debugPrint('Family members data: $members');
-
-    if (members.isEmpty) {
-      debugPrint('No family members found for familyId: $familyId');
-    }
-
-    // Create a map to track member preference states during dialog interaction
-    Map<int, bool> memberPreferences = {};
-    for (final member in members) {
-      final memberId = member['userId'] as int?;
-      if (memberId != null) {
-        // Check if preference already exists
-        bool preferenceExists = false;
-        bool receiveMessages = true; // Default value
-
-        // Look for existing preference
-        for (var pref in _memberMessagePreferences) {
-          if (pref['familyId'] == familyId &&
-              pref['memberUserId'] == memberId) {
-            preferenceExists = true;
-            receiveMessages = pref['receiveMessages'] ?? true;
-            break;
-          }
-        }
-
-        // Store the current preference state
-        memberPreferences[memberId] = receiveMessages;
-
-        // If not, add a default preference with receiveMessages = true
-        if (!preferenceExists && memberId != widget.userId) {
-          debugPrint(
-            'Initializing default preference for member $memberId with receiveMessages=true',
-          );
-          _memberMessagePreferences.add({
-            'familyId': familyId,
-            'memberUserId': memberId,
-            'receiveMessages': true,
-          });
-        }
-      }
-    }
-
-    // Show the dialog with its own StatefulBuilder for managing dialog state
-    showDialog(
-      context: context,
-      builder: (buildContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text(
-                '${family['familyName'] ?? 'Unknown Family'} Family Members',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Add a header with feature explanation
-                    Container(
-                      padding: const EdgeInsets.all(8.0),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8.0),
-                      ),
-                      child: Column(
-                        children: const [
-                          Icon(
-                            Icons.notifications_active,
-                            color: Colors.blue,
-                            size: 20,
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Message Preferences',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Control which family members you receive messages from by checking or unchecking the box next to their name.',
-                            style: TextStyle(fontSize: 12),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(height: 1),
-                    const SizedBox(height: 8),
-
-                    if (members.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Center(
-                          child: Column(
-                            children: const [
-                              Icon(
-                                Icons.people_alt,
-                                color: Colors.grey,
-                                size: 40,
-                              ),
-                              SizedBox(height: 12),
-                              Text(
-                                'No members found in this family',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else
-                      Flexible(
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: members.length,
-                          itemBuilder: (context, index) {
-                            final member = members[index];
-                            final memberId = member['userId'] as int?;
-                            final isCurrentUser = memberId == widget.userId;
-
-                            // Debug log the member data
-                            debugPrint('Member data: $member');
-
-                            if (memberId == null) {
-                              debugPrint('Warning: Member has null userId');
-                              return const SizedBox.shrink();
-                            }
-
-                            // Get current state from memberPreferences map
-                            final receiveMessages =
-                                memberPreferences[memberId] ?? true;
-
-                            return GestureDetector(
-                              onTap:
-                                  isCurrentUser
-                                      ? null
-                                      : () {
-                                        // Toggle the state on tap
-                                        final newValue = !receiveMessages;
-
-                                        // Update local dialog state
-                                        setDialogState(() {
-                                          memberPreferences[memberId] =
-                                              newValue;
-                                        });
-
-                                        // Use debounced update instead of immediate update
-                                        _debouncedUpdatePreference(
-                                          familyId,
-                                          memberId,
-                                          newValue,
-                                        );
-                                      },
-                              child: CheckboxListTile(
-                                dense: true,
-                                visualDensity: VisualDensity.compact,
-                                value: receiveMessages,
-                                onChanged:
-                                    isCurrentUser
-                                        ? null // Can't toggle your own messages
-                                        : (bool? newValue) {
-                                          if (newValue != null) {
-                                            // Update local dialog state
-                                            setDialogState(() {
-                                              memberPreferences[memberId] =
-                                                  newValue;
-                                            });
-
-                                            // Use debounced update instead of immediate update
-                                            _debouncedUpdatePreference(
-                                              familyId,
-                                              memberId,
-                                              newValue,
-                                            );
-                                          }
-                                        },
-                                secondary: CircleAvatar(
-                                  radius: 20,
-                                  backgroundColor:
-                                      isCurrentUser
-                                          ? Colors.blue.shade100
-                                          : Colors.green.shade100,
-                                  child: Text(
-                                    (() {
-                                      // Get first letter of first name
-                                      String firstLetter = 'U'; // Default
-                                      if (member.containsKey(
-                                            'memberFirstName',
-                                          ) &&
-                                          member['memberFirstName'] != null &&
-                                          member['memberFirstName']
-                                              .toString()
-                                              .isNotEmpty) {
-                                        firstLetter =
-                                            member['memberFirstName']
-                                                .toString()[0];
-                                      }
-                                      return firstLetter;
-                                    })(),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color:
-                                          isCurrentUser
-                                              ? Colors.blue.shade700
-                                              : Colors.green.shade700,
-                                    ),
-                                  ),
-                                ),
-                                title: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        (() {
-                                          // Debug - print all keys in member object
-                                          debugPrint(
-                                            'Member object keys: ${member.keys.join(", ")}',
-                                          );
-
-                                          // Try to detect if user is a family owner
-                                          bool isOwner = false;
-
-                                          // Use isOwner field from API if available
-                                          if (member.containsKey('isOwner')) {
-                                            isOwner = member['isOwner'] == true;
-                                            debugPrint(
-                                              'Using isOwner field from API: $isOwner',
-                                            );
-                                          } else if (member.containsKey(
-                                            'isowner',
-                                          )) {
-                                            isOwner = member['isowner'] == true;
-                                            debugPrint(
-                                              'Using isowner field from API: $isOwner',
-                                            );
-                                          }
-
-                                          // If user owns a family, show family name
-                                          if (isOwner) {
-                                            // Try to get owned family name from API if available
-                                            String? ownedFamilyName;
-                                            if (member.containsKey(
-                                              'ownedFamilyName',
-                                            )) {
-                                              ownedFamilyName =
-                                                  member['ownedFamilyName']
-                                                      ?.toString();
-                                            } else if (member.containsKey(
-                                              'ownedfamilyname',
-                                            )) {
-                                              ownedFamilyName =
-                                                  member['ownedfamilyname']
-                                                      ?.toString();
-                                            }
-
-                                            // If we have the family name, use it
-                                            if (ownedFamilyName != null &&
-                                                ownedFamilyName.isNotEmpty) {
-                                              debugPrint(
-                                                'Showing owned family name: $ownedFamilyName',
-                                              );
-                                              return ownedFamilyName;
-                                            }
-                                          }
-
-                                          // For non-owners, show first and last name
-                                          String firstName =
-                                              member['firstName'] ??
-                                              member['memberFirstName'] ??
-                                              'Unknown';
-                                          String lastName =
-                                              member['lastName'] ??
-                                              member['memberLastName'] ??
-                                              '';
-                                          String fullName =
-                                              '$firstName $lastName';
-                                          debugPrint(
-                                            'Showing full name: $fullName',
-                                          );
-                                          return fullName;
-                                        })(),
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                          color:
-                                              isCurrentUser
-                                                  ? Colors.blue.shade700
-                                                  : null,
-                                        ),
-                                      ),
-                                    ),
-
-                                    // Family ownership icon
-                                    if (member.containsKey('isOwner') &&
-                                        member['isOwner'] == true)
-                                      Tooltip(
-                                        message: 'Family Owner',
-                                        child: Padding(
-                                          padding: const EdgeInsets.only(
-                                            left: 8.0,
-                                          ),
-                                          child: Icon(
-                                            Icons.home,
-                                            color: Colors.amber,
-                                            size: 16,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                subtitle: Text(
-                                  isCurrentUser
-                                      ? 'This is you'
-                                      : member['username'] ??
-                                          member['memberUsername'] ??
-                                          'No username',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                activeColor:
-                                    Theme.of(context).colorScheme.primary,
-                                checkColor: Colors.white,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Close', style: TextStyle(fontSize: 14)),
-                ),
-              ],
-            );
-          },
-        );
-      },
     );
   }
 
@@ -1269,32 +894,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
             const SizedBox(height: 24),
           ],
 
-          // Families you're a member of section
-          if (_joinedFamilies.isNotEmpty) ...[
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8.0),
-              child: Text(
-                'Families You\'re A Member Of',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            ..._joinedFamilies
-                .where((f) => f['familyId'] != _ownedFamily?['familyId'])
-                .map(
-                  (family) => _buildFamilyCard(
-                    family,
-                    isOwned: false,
-                    onTapView: () => _viewFamilyMembers(family),
-                    onTapLeave: () => _promptLeaveFamily(family),
-                  ),
-                ),
-            const SizedBox(height: 16),
-          ],
-
           // No families message
           if (_ownedFamily == null && _joinedFamilies.isEmpty)
             Center(
@@ -1380,33 +979,16 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     // Prevent multiple rapid taps
     if (_isLoading) return;
 
-    // Load data first before showing any UI
-    setState(() => _isLoading = true);
-
-    try {
-      // Do all loading first, before showing any UI
-      final members = await widget.apiService.getFamilyMembers(widget.userId);
-      await _loadMemberMessagePreferences();
-
-      if (!mounted) return;
-
-      // Reset loading state
-      setState(() => _isLoading = false);
-
-      // Now show the dialog with already-loaded data
-      _showFamilyMembersDialog(family, members);
-    } catch (e) {
-      debugPrint('Error loading family members: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading family members: $e'),
-            backgroundColor: Colors.red,
+    // Show the dialog immediately with no loading indicators
+    showDialog(
+      context: context,
+      builder:
+          (context) => MemberMessageDialog(
+            apiService: widget.apiService,
+            userId: widget.userId,
+            family: family,
           ),
-        );
-      }
-    }
+    );
   }
 
   // Build card for an individual family
@@ -1559,6 +1141,23 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                     ),
                   ),
 
+                // Add Families button to manage message preferences
+                if (onTapView != null) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showFamiliesMessageDialog(),
+                      icon: const Icon(Icons.family_restroom, size: 18),
+                      label: const Text('Families'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                ],
+
                 // Leave button (only shown for joined families)
                 if (!isOwned && onTapLeave != null) ...[
                   const SizedBox(width: 8),
@@ -1580,6 +1179,18 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
           ),
         ],
       ),
+    );
+  }
+
+  // Show the families message dialog
+  void _showFamiliesMessageDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => FamiliesMessageDialog(
+            apiService: widget.apiService,
+            userId: widget.userId,
+          ),
     );
   }
 
@@ -1892,158 +1503,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     }
   }
 
-  // Add this method to load member message preferences
-  Future<void> _loadMemberMessagePreferences() async {
-    setState(() => _loadingMemberPreferences = true);
-
-    try {
-      final preferences = await widget.apiService.getMemberMessagePreferences(
-        widget.userId,
-      );
-
-      if (mounted) {
-        setState(() {
-          _memberMessagePreferences = preferences;
-          _loadingMemberPreferences = false;
-
-          // Log the loaded preferences
-          debugPrint(
-            'Loaded ${_memberMessagePreferences.length} member preferences:',
-          );
-          for (final pref in _memberMessagePreferences) {
-            debugPrint(
-              '- Family: ${pref['familyId']}, Member: ${pref['memberUserId']}, Receive: ${pref['receiveMessages']}',
-            );
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading member message preferences: $e');
-      if (mounted) {
-        setState(() => _loadingMemberPreferences = false);
-      }
-    }
-  }
-
-  // Add this method to update member message preference
-  Future<void> _updateMemberMessagePreference(
-    int familyId,
-    int? memberUserId,
-    bool receiveMessages,
-  ) async {
-    // Validate parameters
-    if (memberUserId == null) {
-      debugPrint('Cannot update message preference for null member ID');
-      return;
-    }
-
-    debugPrint(
-      'Updating member preference: family=$familyId, member=$memberUserId, receive=$receiveMessages',
-    );
-
-    try {
-      final result = await widget.apiService.updateMemberMessagePreference(
-        widget.userId,
-        familyId,
-        memberUserId,
-        receiveMessages,
-      );
-
-      debugPrint('Backend response for member preference update: $result');
-
-      // Update local state
-      setState(() {
-        final index = _memberMessagePreferences.indexWhere(
-          (p) => p['familyId'] == familyId && p['memberUserId'] == memberUserId,
-        );
-
-        if (index >= 0) {
-          debugPrint('Updating existing member preference at index $index');
-          _memberMessagePreferences[index]['receiveMessages'] = receiveMessages;
-        } else {
-          debugPrint('Adding new member preference to state');
-          // Add new preference if it doesn't exist
-          _memberMessagePreferences.add({
-            'familyId': familyId,
-            'memberUserId': memberUserId,
-            'receiveMessages': receiveMessages,
-          });
-        }
-      });
-
-      // Show feedback to user
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              receiveMessages
-                  ? 'You will receive messages from this family member'
-                  : 'You won\'t receive messages from this family member',
-            ),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error updating member message preference: $e');
-      if (mounted) {
-        // Show error message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update preference: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // Helper method to check if a user should receive messages from a specific member
-  bool _shouldReceiveMessagesFromMember(int familyId, int? memberUserId) {
-    debugPrint(
-      'Checking message preference for family $familyId, member $memberUserId',
-    );
-
-    // If memberUserId is null, default to true
-    if (memberUserId == null) {
-      debugPrint('Member ID is null, defaulting to true');
-      return true;
-    }
-
-    // First check if we should receive messages from this family at all
-    final familyPreference = _messagePreferences.firstWhere(
-      (pref) => pref['familyId'] == familyId,
-      orElse: () => {'receiveMessages': true},
-    );
-
-    // If family messages are disabled, member messages are disabled too
-    if (!(familyPreference['receiveMessages'] ?? true)) {
-      debugPrint(
-        'Family messages are disabled for family $familyId, returning false',
-      );
-      return false;
-    }
-
-    // Check if this is the user viewing their own preferences - always true
-    if (memberUserId == widget.userId) {
-      debugPrint('This is the current user, always showing as true');
-      return true;
-    }
-
-    // Then check member-specific preference - default to true if not found
-    final memberPreference = _memberMessagePreferences.firstWhere(
-      (pref) =>
-          pref['familyId'] == familyId && pref['memberUserId'] == memberUserId,
-      orElse: () => {'receiveMessages': true},
-    );
-
-    final result = memberPreference['receiveMessages'] ?? true;
-    debugPrint(
-      'Message preference for member $memberUserId in family $familyId: $result',
-    );
-    return result;
-  }
-
   // Build a summary item for the family dashboard
   Widget _buildSummaryItem({
     required String title,
@@ -2090,37 +1549,5 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
     // If total is 0, return at least 1 for the current user
     return total > 0 ? total : 1;
-  }
-
-  // Add this new method for debounced preference updates
-  void _debouncedUpdatePreference(
-    int familyId,
-    int memberUserId,
-    bool newValue,
-  ) {
-    final key = "$familyId-$memberUserId";
-
-    // Store the pending update value
-    _pendingUpdates[key] = newValue;
-
-    // Cancel any existing timer for this key
-    _pendingUpdateTimers[key]?.cancel();
-
-    // Create a new timer
-    _pendingUpdateTimers[key] = Timer(const Duration(milliseconds: 300), () {
-      // If there's still a pending update when the timer fires, apply it
-      if (_pendingUpdates.containsKey(key)) {
-        final valueToApply = _pendingUpdates[key]!;
-        debugPrint(
-          'Applying debounced preference update: $key = $valueToApply',
-        );
-
-        // Remove from pending updates
-        _pendingUpdates.remove(key);
-
-        // Call the actual update method
-        _updateMemberMessagePreference(familyId, memberUserId, valueToApply);
-      }
-    });
   }
 }
