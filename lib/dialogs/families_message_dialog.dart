@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'dart:async';
+import 'member_message_dialog.dart';
 
 class FamiliesMessageDialog extends StatefulWidget {
   final ApiService apiService;
@@ -42,9 +43,17 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
     setState(() => _isLoading = true);
 
     try {
+      debugPrint(
+        'FamiliesMessageDialog: Starting to load message preferences for user ${widget.userId}',
+      );
+
       // Load message preferences only - it contains all families user belongs to
       final preferences = await widget.apiService.getMessagePreferences(
         widget.userId,
+      );
+
+      debugPrint(
+        'FamiliesMessageDialog: Got ${preferences.length} families from preferences',
       );
 
       if (mounted) {
@@ -55,16 +64,18 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
           _isLoading = false;
 
           // Debug log the loaded data
-          debugPrint('Loaded ${_families.length} families');
+          debugPrint(
+            'FamiliesMessageDialog: Loaded ${_families.length} families',
+          );
           for (final family in _families) {
             debugPrint(
-              'Family: ${family['familyName'] ?? 'Unknown'} (ID: ${family['familyId']}), role: ${family['role']}',
+              'FamiliesMessageDialog: Family: ${family['familyName'] ?? 'Unknown'} (ID: ${family['familyId']}), role: ${family['role']}',
             );
           }
         });
       }
     } catch (e) {
-      debugPrint('Error loading data: $e');
+      debugPrint('FamiliesMessageDialog: Error loading data: $e');
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(
@@ -165,23 +176,19 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
 
   // Navigate to member preferences for a specific family
   void _viewFamilyMemberPreferences(Map<String, dynamic> family) {
-    Navigator.pop(context); // Close the current dialog
-
     debugPrint(
       'Opening member preferences for family: ${family['familyName']} (ID: ${family['familyId']})',
     );
 
-    // Call the callback to show the members dialog
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (context) => FamilyMembersPreferencesScreen(
-              apiService: widget.apiService,
-              userId: widget.userId,
-              familyId: family['familyId'],
-              familyName: family['familyName'] ?? 'Unknown Family',
-            ),
-      ),
+    // Use showDialog to display MemberMessageDialog instead of navigating to a new screen
+    showDialog(
+      context: context,
+      builder:
+          (context) => MemberMessageDialog(
+            apiService: widget.apiService,
+            userId: widget.userId,
+            family: family,
+          ),
     );
   }
 
@@ -413,388 +420,6 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
           child: const Text('Close'),
         ),
       ],
-    );
-  }
-}
-
-// Members screen
-class FamilyMembersPreferencesScreen extends StatefulWidget {
-  final ApiService apiService;
-  final int userId;
-  final int familyId;
-  final String familyName;
-
-  const FamilyMembersPreferencesScreen({
-    Key? key,
-    required this.apiService,
-    required this.userId,
-    required this.familyId,
-    required this.familyName,
-  }) : super(key: key);
-
-  @override
-  State<FamilyMembersPreferencesScreen> createState() =>
-      _FamilyMembersPreferencesScreenState();
-}
-
-class _FamilyMembersPreferencesScreenState
-    extends State<FamilyMembersPreferencesScreen> {
-  bool _isLoading = true;
-  List<Map<String, dynamic>> _members = [];
-  List<Map<String, dynamic>> _memberPreferences = [];
-
-  // For debouncing updates
-  final Map<String, Timer> _pendingUpdateTimers = {};
-  final Map<String, bool> _pendingUpdates = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-  @override
-  void dispose() {
-    // Cancel any pending timers
-    _pendingUpdateTimers.forEach((_, timer) => timer.cancel());
-    super.dispose();
-  }
-
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-
-    try {
-      // Load family members and member preferences
-      final results = await Future.wait([
-        widget.apiService.getFamilyMembers(widget.userId),
-        widget.apiService.getMemberMessagePreferences(widget.userId),
-      ]);
-
-      if (mounted) {
-        setState(() {
-          // Filter members to only include those from this family
-          _members =
-              (results[0] as List<Map<String, dynamic>>)
-                  .where((member) => member['familyId'] == widget.familyId)
-                  .toList();
-
-          _memberPreferences = results[1] as List<Map<String, dynamic>>;
-          _isLoading = false;
-
-          // Debug log the loaded data
-          debugPrint(
-            'Loaded ${_members.length} family members for family ${widget.familyId} (${widget.familyName})',
-          );
-          for (final member in _members) {
-            debugPrint(
-              'Member: ${member['firstName'] ?? member['memberFirstName']} ${member['lastName'] ?? member['memberLastName']} (ID: ${member['userId']})',
-            );
-          }
-
-          debugPrint('Loaded ${_memberPreferences.length} member preferences');
-          for (final pref in _memberPreferences) {
-            if (pref['familyId'] == widget.familyId) {
-              debugPrint(
-                'Member preference: familyId=${pref['familyId']}, memberUserId=${pref['memberUserId']}, receive=${pref['receiveMessages']}',
-              );
-            }
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading data: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
-      }
-    }
-  }
-
-  // Get the receive messages setting for a member
-  bool _getReceiveMessagesForMember(int memberId) {
-    final preference = _memberPreferences.firstWhere(
-      (pref) =>
-          pref['familyId'] == widget.familyId &&
-          pref['memberUserId'] == memberId,
-      orElse: () => {'receiveMessages': true},
-    );
-    return preference['receiveMessages'] ?? true;
-  }
-
-  // Update member preference with debouncing
-  void _debouncedUpdateMemberPreference(int memberId, bool newValue) {
-    final key = "${widget.familyId}-$memberId";
-
-    // Store the pending update value
-    _pendingUpdates[key] = newValue;
-
-    // Cancel any existing timer for this key
-    _pendingUpdateTimers[key]?.cancel();
-
-    // Create a new timer
-    _pendingUpdateTimers[key] = Timer(const Duration(milliseconds: 300), () {
-      // If there's still a pending update when the timer fires, apply it
-      if (_pendingUpdates.containsKey(key)) {
-        final valueToApply = _pendingUpdates[key]!;
-        debugPrint(
-          'Applying debounced member preference update: $key = $valueToApply',
-        );
-
-        // Remove from pending updates
-        _pendingUpdates.remove(key);
-
-        // Call the actual update method
-        _updateMemberPreference(memberId, valueToApply);
-      }
-    });
-  }
-
-  // Update message preference for a member
-  Future<void> _updateMemberPreference(
-    int memberId,
-    bool receiveMessages,
-  ) async {
-    try {
-      // Update preference in backend
-      await widget.apiService.updateMemberMessagePreference(
-        widget.userId,
-        widget.familyId,
-        memberId,
-        receiveMessages,
-      );
-
-      // Update local state
-      if (mounted) {
-        setState(() {
-          final index = _memberPreferences.indexWhere(
-            (pref) =>
-                pref['familyId'] == widget.familyId &&
-                pref['memberUserId'] == memberId,
-          );
-
-          if (index >= 0) {
-            _memberPreferences[index]['receiveMessages'] = receiveMessages;
-          } else {
-            _memberPreferences.add({
-              'familyId': widget.familyId,
-              'memberUserId': memberId,
-              'receiveMessages': receiveMessages,
-            });
-          }
-        });
-
-        // Show feedback
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              receiveMessages
-                  ? 'You will receive messages from this member'
-                  : 'You won\'t receive messages from this member',
-            ),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error updating member preference: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating preference: $e')),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // MODIFIED: Fixed _messagePreferences typo to _memberPreferences in onChanged
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('${widget.familyName} Family Members'),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-      ),
-      body: Column(
-        children: [
-          // Header card with message preferences info
-          Container(
-            color: Colors.blue.shade50,
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Icon(Icons.notifications, color: Colors.blue, size: 32),
-                const SizedBox(height: 8),
-                const Text(
-                  'Message Preferences',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Control which family members you receive messages from by checking or unchecking the box next to their name.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1, thickness: 1),
-          if (_isLoading)
-            const Expanded(child: Center(child: CircularProgressIndicator()))
-          else if (_members.isEmpty)
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.people_alt, color: Colors.grey, size: 64),
-                    SizedBox(height: 16),
-                    Text(
-                      'No members found in this family',
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            Expanded(
-              child: ListView.builder(
-                itemCount: _members.length,
-                padding: EdgeInsets.zero,
-                itemBuilder: (context, index) {
-                  final member = _members[index];
-                  final memberId = member['userId'] as int?;
-                  if (memberId == null) return const SizedBox.shrink();
-
-                  final isCurrentUser = memberId == widget.userId;
-                  final firstName =
-                      member['firstName'] ??
-                      member['memberFirstName'] ??
-                      'Unknown';
-                  final lastName =
-                      member['lastName'] ?? member['memberLastName'] ?? '';
-                  final username =
-                      member['username'] ??
-                      member['memberUsername'] ??
-                      'No username';
-                  final isOwner = member['isOwner'] == true;
-                  final receiveMessages = _getReceiveMessagesForMember(
-                    memberId,
-                  );
-
-                  return CheckboxListTile(
-                    dense: true,
-                    visualDensity: VisualDensity.compact,
-                    value: receiveMessages,
-                    onChanged:
-                        isCurrentUser
-                            ? null
-                            : (newValue) {
-                              if (newValue != null) {
-                                // Update UI immediately for responsiveness
-                                setState(() {
-                                  // Find and update existing preference
-                                  bool found = false;
-                                  for (
-                                    int i = 0;
-                                    i < _memberPreferences.length;
-                                    i++
-                                  ) {
-                                    if (_memberPreferences[i]['familyId'] ==
-                                            widget.familyId &&
-                                        _memberPreferences[i]['memberUserId'] ==
-                                            memberId) {
-                                      _memberPreferences[i]['receiveMessages'] =
-                                          newValue;
-                                      found = true;
-                                      break;
-                                    }
-                                  }
-
-                                  // If no existing preference, add a new one
-                                  // REMOVED: _messagePreferences.add({
-                                  // ADDED: Fixed typo to use _memberPreferences
-                                  if (!found) {
-                                    _memberPreferences.add({
-                                      'familyId': widget.familyId,
-                                      'memberUserId': memberId,
-                                      'receiveMessages': newValue,
-                                    });
-                                  }
-                                });
-
-                                // Update with debouncing
-                                _debouncedUpdateMemberPreference(
-                                  memberId,
-                                  newValue,
-                                );
-                              }
-                            },
-                    secondary: CircleAvatar(
-                      backgroundColor:
-                          isCurrentUser
-                              ? Colors.blue.shade100
-                              : Colors.green.shade100,
-                      child: Text(
-                        firstName.toString()[0].toUpperCase(),
-                        style: TextStyle(
-                          color:
-                              isCurrentUser
-                                  ? Colors.blue.shade700
-                                  : Colors.green.shade700,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    title: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '$firstName $lastName',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color:
-                                  isCurrentUser ? Colors.blue.shade700 : null,
-                            ),
-                          ),
-                        ),
-                        if (isOwner)
-                          Icon(Icons.home, color: Colors.amber, size: 18),
-                      ],
-                    ),
-                    subtitle: Text(
-                      isCurrentUser ? 'This is you' : username,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    activeColor: Theme.of(context).colorScheme.primary,
-                    checkColor: Colors.white,
-                  );
-                },
-              ),
-            ),
-          const Divider(height: 1, thickness: 1),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                child: const Text('Close'),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

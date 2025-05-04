@@ -50,24 +50,42 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
     setState(() => _localLoading = true);
 
     try {
-      // Load data in parallel
+      final familyId = widget.family['familyId'] as int;
+      debugPrint(
+        'MemberMessageDialog: Starting to load data for family ${widget.family["familyName"]} (ID: $familyId)',
+      );
+
+      // Use the new method to get family members specific to this family
+      debugPrint(
+        'MemberMessageDialog: Calling getFamilyMembersByFamilyId for family $familyId (user ${widget.userId})',
+      );
       final results = await Future.wait([
-        widget.apiService.getFamilyMembers(widget.userId),
+        widget.apiService.getFamilyMembersByFamilyId(widget.userId, familyId),
         widget.apiService.getMemberMessagePreferences(widget.userId),
       ]);
 
       if (!mounted) return;
 
-      final familyId = widget.family['familyId'] as int;
-
       setState(() {
         _members = results[0] as List<Map<String, dynamic>>;
+        debugPrint(
+          'MemberMessageDialog: Got ${_members.length} members for family $familyId',
+        );
+
+        // Log all members for diagnostic purposes
+        for (var member in _members) {
+          debugPrint('MemberMessageDialog: MEMBER DATA DUMP: $member');
+          debugPrint(
+            'MemberMessageDialog: Member: ${member["memberUserId"]} - name: ${member["memberFirstName"] ?? "Unknown"} ${member["memberLastName"] ?? ""}',
+          );
+        }
+
         _memberPreferences = results[1] as List<Map<String, dynamic>>;
         _localLoading = false;
 
         // Build preference map for easy lookup
         for (var member in _members) {
-          final memberId = member['userId'] as int?;
+          final memberId = member['memberUserId'] as int?;
           if (memberId != null) {
             // Find existing preference
             final preference = _memberPreferences.firstWhere(
@@ -77,18 +95,17 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
               orElse: () => {'receiveMessages': true},
             );
             _memberPreferenceMap[memberId] =
-                preference['receiveMessages'] ?? true;
+                preference['receiveMessages'] ??
+                member['receiveMessages'] ??
+                true;
+            debugPrint(
+              'MemberMessageDialog: Set preference for member $memberId to ${_memberPreferenceMap[memberId]}',
+            );
           }
-        }
-
-        // Debug logging
-        debugPrint('Family members data: $_members');
-        for (var member in _members) {
-          debugPrint('Member data: $member');
         }
       });
     } catch (e) {
-      debugPrint('Error loading data: $e');
+      debugPrint('MemberMessageDialog: Error loading data: $e');
       if (mounted) {
         setState(() => _localLoading = false);
         ScaffoldMessenger.of(
@@ -191,6 +208,13 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
     final familyName = widget.family['familyName'] ?? 'Unknown Family';
     final familyId = widget.family['familyId'] as int;
 
+    debugPrint(
+      'MemberMessageDialog: Building UI for family $familyName (ID: $familyId)',
+    );
+    debugPrint(
+      'MemberMessageDialog: Loading state: $_localLoading, Members count: ${_members.length}',
+    );
+
     return AlertDialog(
       title: Text(
         '$familyName Family Members',
@@ -248,14 +272,26 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
                 padding: const EdgeInsets.all(16.0),
                 child: Center(
                   child: Column(
-                    children: const [
-                      Icon(Icons.people_alt, color: Colors.grey, size: 40),
-                      SizedBox(height: 12),
-                      Text(
+                    children: [
+                      const Icon(
+                        Icons.people_alt,
+                        color: Colors.grey,
+                        size: 40,
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
                         'No members found in this family',
                         style: TextStyle(
                           color: Colors.grey,
                           fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Family ID: $familyId',
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
                         ),
                       ),
                     ],
@@ -268,17 +304,33 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
                   shrinkWrap: true,
                   itemCount: _members.length,
                   itemBuilder: (context, index) {
+                    debugPrint(
+                      'MemberMessageDialog: Building list item for index $index',
+                    );
                     final member = _members[index];
-                    final memberId = member['userId'] as int?;
+                    final memberId = member['memberUserId'] as int?;
+                    debugPrint(
+                      'MemberMessageDialog: Member at index $index has ID: $memberId',
+                    );
+
                     final isCurrentUser = memberId == widget.userId;
 
                     if (memberId == null) {
+                      debugPrint(
+                        'MemberMessageDialog: Skipping member at index $index due to null ID',
+                      );
                       return const SizedBox.shrink();
                     }
 
                     // Get current preference state
                     final receiveMessages =
-                        _memberPreferenceMap[memberId] ?? true;
+                        _memberPreferenceMap[memberId] ??
+                        member['receiveMessages'] ??
+                        true;
+
+                    debugPrint(
+                      'MemberMessageDialog: Building item for member $memberId, isCurrentUser=$isCurrentUser, receiveMessages=$receiveMessages',
+                    );
 
                     return GestureDetector(
                       onTap:
@@ -287,6 +339,9 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
                               : () {
                                 // Toggle the state on tap
                                 final newValue = !receiveMessages;
+                                debugPrint(
+                                  'MemberMessageDialog: Toggling preference for member $memberId to $newValue',
+                                );
 
                                 // Update UI state immediately
                                 setState(() {
@@ -309,6 +364,9 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
                                 ? null // Can't toggle your own messages
                                 : (bool? newValue) {
                                   if (newValue != null) {
+                                    debugPrint(
+                                      'MemberMessageDialog: Checkbox changed for member $memberId to $newValue',
+                                    );
                                     // Update UI state immediately
                                     setState(() {
                                       _memberPreferenceMap[memberId] = newValue;
@@ -339,10 +397,6 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
                                       .isNotEmpty) {
                                 firstLetter =
                                     member['memberFirstName'].toString()[0];
-                              } else if (member.containsKey('firstName') &&
-                                  member['firstName'] != null &&
-                                  member['firstName'].toString().isNotEmpty) {
-                                firstLetter = member['firstName'].toString()[0];
                               }
                               return firstLetter;
                             })(),
@@ -363,60 +417,18 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
                                 (() {
                                   // Debug - print all keys in member object
                                   debugPrint(
-                                    'Member object keys: ${member.keys.join(", ")}',
+                                    'MemberMessageDialog: Member object keys: ${member.keys.join(", ")}',
                                   );
 
-                                  // Try to detect if user is a family owner
-                                  bool isOwner = false;
-
-                                  // Use isOwner field from API if available
-                                  if (member.containsKey('isOwner')) {
-                                    isOwner = member['isOwner'] == true;
-                                    debugPrint(
-                                      'Using isOwner field from API: $isOwner',
-                                    );
-                                  } else if (member.containsKey('isowner')) {
-                                    isOwner = member['isowner'] == true;
-                                    debugPrint(
-                                      'Using isowner field from API: $isOwner',
-                                    );
-                                  }
-
-                                  // If user owns a family, show family name
-                                  if (isOwner) {
-                                    // Try to get owned family name from API if available
-                                    String? ownedFamilyName;
-                                    if (member.containsKey('ownedFamilyName')) {
-                                      ownedFamilyName =
-                                          member['ownedFamilyName']?.toString();
-                                    } else if (member.containsKey(
-                                      'ownedfamilyname',
-                                    )) {
-                                      ownedFamilyName =
-                                          member['ownedfamilyname']?.toString();
-                                    }
-
-                                    // If we have the family name, use it
-                                    if (ownedFamilyName != null &&
-                                        ownedFamilyName.isNotEmpty) {
-                                      debugPrint(
-                                        'Showing owned family name: $ownedFamilyName',
-                                      );
-                                      return ownedFamilyName;
-                                    }
-                                  }
-
-                                  // For non-owners, show first and last name
+                                  // Always show first and last name
                                   String firstName =
-                                      member['firstName'] ??
-                                      member['memberFirstName'] ??
-                                      'Unknown';
+                                      member['memberFirstName'] ?? 'Unknown';
                                   String lastName =
-                                      member['lastName'] ??
-                                      member['memberLastName'] ??
-                                      '';
+                                      member['memberLastName'] ?? '';
                                   String fullName = '$firstName $lastName';
-                                  debugPrint('Showing full name: $fullName');
+                                  debugPrint(
+                                    'MemberMessageDialog: Showing full name: $fullName',
+                                  );
                                   return fullName;
                                 })(),
                                 style: TextStyle(
@@ -449,9 +461,7 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
                         subtitle: Text(
                           isCurrentUser
                               ? 'This is you'
-                              : member['username'] ??
-                                  member['memberUsername'] ??
-                                  'No username',
+                              : member['memberUsername'] ?? 'No username',
                           style: const TextStyle(fontSize: 12),
                         ),
                         activeColor: Theme.of(context).colorScheme.primary,

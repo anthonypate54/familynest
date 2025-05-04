@@ -708,16 +708,102 @@ Network connection error. Please check:
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
     }
+    debugPrint('ApiService: Getting family members for user $userId');
     final response = await client.get(
       Uri.parse('$baseUrl/api/users/$userId/family-members'),
       headers: headers,
     );
     if (response.statusCode == 200) {
-      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+      final members =
+          (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+      debugPrint('ApiService: Got ${members.length} family members');
+      return members;
     } else if (response.statusCode == 400) {
+      debugPrint('ApiService: Got 400 response from getFamilyMembers');
       return [];
     } else {
+      debugPrint(
+        'ApiService: Error ${response.statusCode} from getFamilyMembers: ${response.body}',
+      );
       throw Exception('Failed to get family members: ${response.body}');
+    }
+  }
+
+  // Get members of a specific family
+  Future<List<Map<String, dynamic>>> getFamilyMembersByFamilyId(
+    int userId,
+    int familyId,
+  ) async {
+    debugPrint(
+      'ApiService: Getting members for family $familyId (user $userId)',
+    );
+
+    // First try to get member preferences data
+    final memberPreferences = await getMemberMessagePreferences(userId);
+
+    // Filter to only include members of the specified family
+    final familyMembers =
+        memberPreferences.where((pref) {
+          return pref['familyId'] == familyId;
+        }).toList();
+
+    // If we found members through preferences, return them
+    if (familyMembers.isNotEmpty) {
+      debugPrint(
+        'ApiService: Found ${familyMembers.length} members in family $familyId from preferences',
+      );
+      return familyMembers;
+    }
+
+    // Otherwise, fall back to getting family members directly
+    debugPrint(
+      'ApiService: No member preferences found, falling back to family membership data',
+    );
+
+    try {
+      // Get all family members
+      final allMembers = await getFamilyMembers(userId);
+
+      // Get family details to enhance the data
+      Map<String, dynamic>? familyDetails;
+      try {
+        familyDetails = await getFamily(familyId);
+      } catch (e) {
+        debugPrint('ApiService: Failed to get family details: $e');
+      }
+
+      // Build member data in the same format as preferences would return
+      List<Map<String, dynamic>> result = [];
+
+      for (var member in allMembers) {
+        // Only include members of this family
+        if (member['familyId'] == familyId) {
+          // Create a preference-like structure
+          result.add({
+            'familyId': familyId,
+            'receiveMessages': true, // Default to true
+            'memberUserId': member['userId'],
+            'memberFirstName':
+                member['firstName'] ?? member['memberFirstName'] ?? 'Unknown',
+            'memberLastName':
+                member['lastName'] ?? member['memberLastName'] ?? '',
+            'memberUsername':
+                member['username'] ?? member['memberUsername'] ?? 'No username',
+            'isOwner':
+                member['role'] == 'ADMIN' || member['role'] == 'FAMILY_ADMIN',
+            'memberOfFamilyName': familyDetails?['name'] ?? 'Unknown Family',
+            'userId': userId,
+          });
+        }
+      }
+
+      debugPrint(
+        'ApiService: Created ${result.length} synthetic member records for family $familyId',
+      );
+      return result;
+    } catch (e) {
+      debugPrint('ApiService: Error in fallback member lookup: $e');
+      return [];
     }
   }
 
