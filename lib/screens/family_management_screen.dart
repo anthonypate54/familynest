@@ -5,6 +5,7 @@ import '../services/invitation_service.dart';
 import 'profile_screen.dart';
 import '../components/bottom_navigation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 class FamilyManagementScreen extends StatefulWidget {
   final ApiService apiService;
@@ -55,6 +56,10 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
   List<Map<String, dynamic>> _memberMessagePreferences = [];
   bool _loadingMemberPreferences = false;
 
+  // Add these new fields to manage debouncing
+  final Map<String, Timer> _pendingUpdateTimers = {};
+  final Map<String, bool> _pendingUpdates = {};
+
   @override
   void initState() {
     super.initState();
@@ -75,6 +80,8 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
   @override
   void dispose() {
+    // Add this to cancel any pending timers when disposing
+    _pendingUpdateTimers.forEach((_, timer) => timer.cancel());
     _familyNameController.dispose();
     _inviteEmailController.dispose();
     _searchController.dispose();
@@ -478,7 +485,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                                 memberPreferences[memberId] ?? true;
 
                             return GestureDetector(
-                              // Add onTap for entire row tapping
                               onTap:
                                   isCurrentUser
                                       ? null
@@ -492,8 +498,8 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                                               newValue;
                                         });
 
-                                        // Also update backend and parent state
-                                        _updateMemberMessagePreference(
+                                        // Use debounced update instead of immediate update
+                                        _debouncedUpdatePreference(
                                           familyId,
                                           memberId,
                                           newValue,
@@ -514,8 +520,8 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                                                   newValue;
                                             });
 
-                                            // Also update backend and parent state
-                                            _updateMemberMessagePreference(
+                                            // Use debounced update instead of immediate update
+                                            _debouncedUpdatePreference(
                                               familyId,
                                               memberId,
                                               newValue,
@@ -1073,13 +1079,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
           ),
         ),
         actions: [
-          // Add invite button if user owns a family
-          if (_ownedFamily != null)
-            IconButton(
-              icon: const Icon(Icons.person_add, color: Colors.white, size: 18),
-              onPressed: () => _showInviteDialog(),
-              tooltip: 'Send invitation to new family members',
-            ),
           IconButton(
             icon: const Icon(Icons.person, color: Colors.white, size: 18),
             onPressed: () {
@@ -1378,49 +1377,34 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
   // Open the members screen for a family
   void _viewFamilyMembers(Map<String, dynamic> family) async {
+    // Prevent multiple rapid taps
+    if (_isLoading) return;
+
+    // Load data first before showing any UI
     setState(() => _isLoading = true);
 
     try {
-      debugPrint(
-        'Viewing members for family: ${family['familyName']} (ID: ${family['familyId']})',
-      );
-
-      // Load family members directly from API
+      // Do all loading first, before showing any UI
       final members = await widget.apiService.getFamilyMembers(widget.userId);
-      debugPrint('Loaded ${members.length} family members from API');
-
-      // Print the member details for debugging
-      debugPrint('DETAILED MEMBER DATA:');
-      for (var member in members) {
-        debugPrint(
-          'Member: ${member['firstName']} ${member['lastName']} (ID: ${member['userId']}) - familyName: ${member['familyName']}',
-        );
-        debugPrint('Full member data: $member');
-      }
-
-      // Refresh member message preferences
       await _loadMemberMessagePreferences();
-      debugPrint(
-        'Loaded ${_memberMessagePreferences.length} member message preferences',
-      );
 
       if (!mounted) return;
 
-      // Show the members dialog
+      // Reset loading state
+      setState(() => _isLoading = false);
+
+      // Now show the dialog with already-loaded data
       _showFamilyMembersDialog(family, members);
     } catch (e) {
       debugPrint('Error loading family members: $e');
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error loading family members: $e'),
             backgroundColor: Colors.red,
           ),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
       }
     }
   }
@@ -1471,12 +1455,21 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                     ),
                   ),
                 ),
-                if (isOwned)
+                // Add the buttons in a row
+                if (isOwned) ...[
+                  // Invite button
+                  IconButton(
+                    icon: const Icon(Icons.person_add, size: 18),
+                    tooltip: 'Invite family members',
+                    onPressed: () => _showInviteDialog(),
+                  ),
+                  // Edit button
                   IconButton(
                     icon: const Icon(Icons.edit, size: 16),
                     tooltip: 'Edit family name',
                     onPressed: () => _showEditFamilyNameDialog(family),
                   ),
+                ],
               ],
             ),
             trailing: Container(
@@ -1899,45 +1892,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     }
   }
 
-  // Add this method to update message preference for a family
-  Future<void> _updateMessagePreference(
-    int familyId,
-    bool receiveMessages,
-  ) async {
-    try {
-      await widget.apiService.updateMessagePreference(
-        widget.userId,
-        familyId,
-        receiveMessages,
-      );
-
-      // Update local state
-      setState(() {
-        final index = _messagePreferences.indexWhere(
-          (p) => p['familyId'] == familyId,
-        );
-        if (index >= 0) {
-          _messagePreferences[index]['receiveMessages'] = receiveMessages;
-        }
-      });
-
-      if (!receiveMessages) {
-        // Show feedback to user when they mute a family
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('You won\'t receive messages from this family'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error updating message preference: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update preference: $e')),
-      );
-    }
-  }
-
   // Add this method to load member message preferences
   Future<void> _loadMemberMessagePreferences() async {
     setState(() => _loadingMemberPreferences = true);
@@ -2136,5 +2090,37 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
     // If total is 0, return at least 1 for the current user
     return total > 0 ? total : 1;
+  }
+
+  // Add this new method for debounced preference updates
+  void _debouncedUpdatePreference(
+    int familyId,
+    int memberUserId,
+    bool newValue,
+  ) {
+    final key = "$familyId-$memberUserId";
+
+    // Store the pending update value
+    _pendingUpdates[key] = newValue;
+
+    // Cancel any existing timer for this key
+    _pendingUpdateTimers[key]?.cancel();
+
+    // Create a new timer
+    _pendingUpdateTimers[key] = Timer(const Duration(milliseconds: 300), () {
+      // If there's still a pending update when the timer fires, apply it
+      if (_pendingUpdates.containsKey(key)) {
+        final valueToApply = _pendingUpdates[key]!;
+        debugPrint(
+          'Applying debounced preference update: $key = $valueToApply',
+        );
+
+        // Remove from pending updates
+        _pendingUpdates.remove(key);
+
+        // Call the actual update method
+        _updateMemberMessagePreference(familyId, memberUserId, valueToApply);
+      }
+    });
   }
 }

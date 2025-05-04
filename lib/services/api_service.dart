@@ -1340,25 +1340,6 @@ Network connection error. Please check:
         final data = jsonDecode(response.body);
         debugPrint('Successfully updated member message preference: $data');
         return data as Map<String, dynamic>;
-      } else if (response.statusCode == 404) {
-        // API endpoint might not exist yet, simulate success
-        debugPrint(
-          'Member message preferences endpoint not found (404) - simulating success',
-        );
-
-        // Create a local record of this preference
-        final Map<String, dynamic> simulatedResponse = {
-          'success': true,
-          'message': 'Preference updated (simulated)',
-          'userId': userId,
-          'familyId': familyId,
-          'memberUserId': memberUserId,
-          'receiveMessages': receiveMessages,
-          'lastUpdated': DateTime.now().toIso8601String(),
-        };
-
-        debugPrint('Simulated successful response: $simulatedResponse');
-        return simulatedResponse;
       } else {
         final errorBody = response.body;
         debugPrint(
@@ -1370,21 +1351,7 @@ Network connection error. Please check:
       }
     } catch (e) {
       debugPrint('Error updating member message preference: $e');
-      // Return simulated success for now until backend implements this
-      final Map<String, dynamic> simulatedResponse = {
-        'success': true,
-        'message': 'Preference updated (simulated)',
-        'userId': userId,
-        'familyId': familyId,
-        'memberUserId': memberUserId,
-        'receiveMessages': receiveMessages,
-        'lastUpdated': DateTime.now().toIso8601String(),
-      };
-
-      debugPrint(
-        'Exception occurred, returning simulated response: $simulatedResponse',
-      );
-      return simulatedResponse;
+      rethrow;
     }
   }
 }
