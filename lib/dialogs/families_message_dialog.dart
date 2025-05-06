@@ -122,7 +122,7 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
     });
   }
 
-  // Update message preference for a family
+  // Update preference for a family with debouncing finish
   Future<void> _updateFamilyPreference(
     int familyId,
     bool receiveMessages,
@@ -152,24 +152,34 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
           }
         });
 
-        // Show feedback
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              receiveMessages
-                  ? 'You will receive messages from this family'
-                  : 'You won\'t receive messages from this family',
+        // Show feedback if ScaffoldMessenger is available
+        try {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                receiveMessages
+                    ? 'You will receive messages from this family'
+                    : 'You won\'t receive messages from this family',
+              ),
+              duration: const Duration(seconds: 2),
             ),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+          );
+        } catch (snackBarError) {
+          // In a test environment, ScaffoldMessenger might not be available
+          debugPrint('Could not show SnackBar: $snackBarError');
+        }
       }
     } catch (e) {
       debugPrint('Error updating family preference: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating preference: $e')),
-        );
+        try {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating preference: $e')),
+          );
+        } catch (snackBarError) {
+          // In a test environment, ScaffoldMessenger might not be available
+          debugPrint('Could not show error SnackBar: $snackBarError');
+        }
       }
     }
   }

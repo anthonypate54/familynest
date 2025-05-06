@@ -31,23 +31,27 @@ void main() {
       // Build the widget
       await tester.pumpWidget(
         MaterialApp(
-          home: Builder(
-            builder:
-                (context) => Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder:
-                            (context) => FamiliesMessageDialog(
-                              apiService: mockApiService,
-                              userId: 1,
-                            ),
-                      );
-                    },
-                    child: const Text('Open Dialog'),
-                  ),
-                ),
+          home: ScaffoldMessenger(
+            child: Scaffold(
+              body: Builder(
+                builder:
+                    (context) => Center(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder:
+                                (context) => FamiliesMessageDialog(
+                                  apiService: mockApiService,
+                                  userId: 1,
+                                ),
+                          );
+                        },
+                        child: const Text('Open Dialog'),
+                      ),
+                    ),
+              ),
+            ),
           ),
         ),
       );
@@ -88,23 +92,27 @@ void main() {
       // Build the widget
       await tester.pumpWidget(
         MaterialApp(
-          home: Builder(
-            builder:
-                (context) => Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder:
-                            (context) => FamiliesMessageDialog(
-                              apiService: mockApiService,
-                              userId: 1,
-                            ),
-                      );
-                    },
-                    child: const Text('Open Dialog'),
-                  ),
-                ),
+          home: ScaffoldMessenger(
+            child: Scaffold(
+              body: Builder(
+                builder:
+                    (context) => Center(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder:
+                                (context) => FamiliesMessageDialog(
+                                  apiService: mockApiService,
+                                  userId: 1,
+                                ),
+                          );
+                        },
+                        child: const Text('Open Dialog'),
+                      ),
+                    ),
+              ),
+            ),
           ),
         ),
       );
@@ -149,23 +157,27 @@ void main() {
         // Build the widget
         await tester.pumpWidget(
           MaterialApp(
-            home: Builder(
-              builder:
-                  (context) => Center(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder:
-                              (context) => FamiliesMessageDialog(
-                                apiService: mockApiService,
-                                userId: 1,
-                              ),
-                        );
-                      },
-                      child: const Text('Open Dialog'),
-                    ),
-                  ),
+            home: ScaffoldMessenger(
+              child: Scaffold(
+                body: Builder(
+                  builder:
+                      (context) => Center(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder:
+                                  (context) => FamiliesMessageDialog(
+                                    apiService: mockApiService,
+                                    userId: 1,
+                                  ),
+                            );
+                          },
+                          child: const Text('Open Dialog'),
+                        ),
+                      ),
+                ),
+              ),
             ),
           ),
         );
@@ -209,24 +221,28 @@ void main() {
       // Build the widget
       await tester.pumpWidget(
         MaterialApp(
-          home: Builder(
-            builder:
-                (context) => Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder:
-                            (context) => MemberMessageDialog(
-                              apiService: mockApiService,
-                              userId: 1,
-                              family: family,
-                            ),
-                      );
-                    },
-                    child: const Text('Open Dialog'),
-                  ),
-                ),
+          home: ScaffoldMessenger(
+            child: Scaffold(
+              body: Builder(
+                builder:
+                    (context) => Center(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder:
+                                (context) => MemberMessageDialog(
+                                  apiService: mockApiService,
+                                  userId: 1,
+                                  family: family,
+                                ),
+                          );
+                        },
+                        child: const Text('Open Dialog'),
+                      ),
+                    ),
+              ),
+            ),
           ),
         ),
       );
@@ -282,24 +298,28 @@ void main() {
       // Build the widget
       await tester.pumpWidget(
         MaterialApp(
-          home: Builder(
-            builder:
-                (context) => Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder:
-                            (context) => MemberMessageDialog(
-                              apiService: mockApiService,
-                              userId: 1,
-                              family: family,
-                            ),
-                      );
-                    },
-                    child: const Text('Open Dialog'),
-                  ),
-                ),
+          home: ScaffoldMessenger(
+            child: Scaffold(
+              body: Builder(
+                builder:
+                    (context) => Center(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder:
+                                (context) => MemberMessageDialog(
+                                  apiService: mockApiService,
+                                  userId: 1,
+                                  family: family,
+                                ),
+                          );
+                        },
+                        child: const Text('Open Dialog'),
+                      ),
+                    ),
+              ),
+            ),
           ),
         ),
       );
