@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:familynest/theme/app_theme.dart';
 import 'package:familynest/theme/app_styles.dart';
 import 'message_thread_screen.dart';
+import '../utils/page_transitions.dart';
 
 class HomeScreen extends StatefulWidget {
   final ApiService apiService;
@@ -801,27 +802,7 @@ class HomeScreenState extends State<HomeScreen> {
             ),
             IconButton(
               icon: const Icon(Icons.logout, color: Colors.white),
-              onPressed: () async {
-                try {
-                  await widget.apiService.logout();
-                  if (!mounted) return;
-
-                  // Use Navigator.pushAndRemoveUntil to clear the navigation stack
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                      builder:
-                          (context) =>
-                              LoginScreen(apiService: widget.apiService),
-                    ),
-                    (route) => false, // This removes all previous routes
-                  );
-                } catch (e) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error logging out: $e')),
-                  );
-                }
-              },
+              onPressed: _logout,
               tooltip: 'Logout',
             ),
           ],
@@ -945,15 +926,12 @@ class HomeScreenState extends State<HomeScreen> {
                                 }
 
                                 // Proceed to navigate to thread screen since we have a valid ID
-                                Navigator.push(
+                                slidePush(
                                   context,
-                                  MaterialPageRoute(
-                                    builder:
-                                        (context) => MessageThreadScreen(
-                                          apiService: widget.apiService,
-                                          userId: widget.userId,
-                                          message: message,
-                                        ),
+                                  MessageThreadScreen(
+                                    apiService: widget.apiService,
+                                    userId: widget.userId,
+                                    message: message,
                                   ),
                                 ).then((_) {
                                   // Reload messages when returning from thread screen to update engagement metrics
@@ -1549,14 +1527,11 @@ class HomeScreenState extends State<HomeScreen> {
                   label: 'View',
                   textColor: Colors.white,
                   onPressed: () {
-                    Navigator.pushReplacement(
+                    slidePushReplacement(
                       context,
-                      MaterialPageRoute(
-                        builder:
-                            (context) => InvitationsScreen(
-                              apiService: widget.apiService,
-                              userId: widget.userId,
-                            ),
+                      InvitationsScreen(
+                        apiService: widget.apiService,
+                        userId: widget.userId,
                       ),
                     );
                   },
@@ -1604,5 +1579,19 @@ class HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+  }
+
+  /// Handle logout action
+  void _logout() async {
+    debugPrint('Logging out...');
+    await widget.apiService.logout();
+    if (mounted) {
+      // Use Navigator.pushAndRemoveUntil to clear the navigation stack
+      slidePushAndRemoveUntil(
+        context,
+        LoginScreen(apiService: widget.apiService),
+        (route) => false, // This predicate removes all routes
+      );
+    }
   }
 }

@@ -4,6 +4,7 @@ import 'services/service_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'theme/app_theme.dart';
+import 'utils/page_transitions.dart';
 
 void main() {
   runApp(const MyApp());
@@ -44,6 +45,29 @@ class MyAppState extends State<MyApp> {
     return MaterialApp(
       title: 'FamilyNest',
       theme: AppTheme.lightTheme,
+      // Define custom page transitions for the entire app
+      onGenerateRoute: (settings) {
+        // Use named routes if you have them
+        if (settings.name == '/') {
+          return null; // Let Flutter handle the initial route
+        }
+
+        // For all other routes, use slide transition
+        if (settings.arguments is Widget) {
+          return SlidePageRoute(
+            page: settings.arguments as Widget,
+            settings: settings,
+          );
+        }
+        return null;
+      },
+      // Use custom page transitions for unnamed routes too
+      onUnknownRoute: (settings) {
+        return SlidePageRoute(
+          page: const Scaffold(body: Center(child: Text('Route not found'))),
+          settings: settings,
+        );
+      },
       home: FutureBuilder<Map<String, dynamic>?>(
         future: _initializationFuture,
         builder: (context, snapshot) {

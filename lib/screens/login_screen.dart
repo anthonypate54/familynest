@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'profile_screen.dart';
 import '../services/api_service.dart';
 import 'home_screen.dart';
+import '../utils/page_transitions.dart';
 
 class LoginScreen extends StatefulWidget {
   final ApiService apiService;
@@ -48,15 +49,12 @@ class LoginScreenState extends State<LoginScreen> {
       debugPrint(
         'Auto-login successful, userId: ${user['userId']}, role: ${user['role']}',
       );
-      Navigator.pushReplacement(
+      slidePushReplacement(
         context,
-        MaterialPageRoute(
-          builder:
-              (context) => ProfileScreen(
-                apiService: widget.apiService,
-                userId: user['userId'],
-                userRole: user['role'] ?? 'USER',
-              ),
+        ProfileScreen(
+          apiService: widget.apiService,
+          userId: user['userId'],
+          userRole: user['role'] ?? 'USER',
         ),
       );
     }
@@ -78,15 +76,12 @@ class LoginScreenState extends State<LoginScreen> {
 
       if (response != null) {
         if (!mounted) return;
-        Navigator.pushReplacement(
+        slidePushReplacement(
           context,
-          MaterialPageRoute(
-            builder:
-                (context) => ProfileScreen(
-                  apiService: widget.apiService,
-                  userId: response['userId'],
-                  userRole: response['role'] ?? 'USER',
-                ),
+          ProfileScreen(
+            apiService: widget.apiService,
+            userId: response['userId'],
+            userRole: response['role'] ?? 'USER',
           ),
         );
       } else {

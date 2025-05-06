@@ -6,6 +6,7 @@ import '../screens/home_screen.dart';
 import '../screens/family_management_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/invitations_screen.dart';
+import '../utils/page_transitions.dart'; // Import the page transitions
 
 import '../services/api_service.dart'; // Import ApiService if not already imported
 
@@ -40,53 +41,41 @@ class BottomNavigation extends StatelessWidget {
       onTap: (index) {
         // Messages tab (index 0)
         if (index == 0 && currentIndex != 0) {
-          Navigator.pushReplacement(
+          slidePushReplacement(
             context,
-            MaterialPageRoute(
-              builder:
-                  (_) => HomeScreen(apiService: apiService, userId: userId),
-            ),
+            HomeScreen(apiService: apiService, userId: userId),
           );
         }
         // Profile tab (index 1)
         else if (index == 1 && currentIndex != 1) {
-          Navigator.pushReplacement(
+          slidePushReplacement(
             context,
-            MaterialPageRoute(
-              builder:
-                  (_) => ProfileScreen(
-                    apiService: apiService,
-                    userId: userId,
-                    userRole: userRole,
-                  ),
+            ProfileScreen(
+              apiService: apiService,
+              userId: userId,
+              userRole: userRole,
             ),
           );
         }
         // Family tab (index 2)
         else if (index == 2 && currentIndex != 2) {
-          Navigator.pushReplacement(
+          slidePushReplacement(
             context,
-            MaterialPageRoute(
-              builder:
-                  (_) => FamilyManagementScreen(
-                    apiService: apiService,
-                    userId: userId,
-                    navigationController: controller,
-                  ),
+            FamilyManagementScreen(
+              apiService: apiService,
+              userId: userId,
+              navigationController: controller,
             ),
           );
         }
         // Invitations tab (index 3)
         else if (index == 3 && currentIndex != 3) {
-          Navigator.pushReplacement(
+          slidePushReplacement(
             context,
-            MaterialPageRoute(
-              builder:
-                  (_) => InvitationsScreen(
-                    apiService: apiService,
-                    userId: userId,
-                    navigationController: controller,
-                  ),
+            InvitationsScreen(
+              apiService: apiService,
+              userId: userId,
+              navigationController: controller,
             ),
           );
         }

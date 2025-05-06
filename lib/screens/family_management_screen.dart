@@ -8,6 +8,7 @@ import '../dialogs/families_message_dialog.dart';
 import '../dialogs/member_message_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import '../utils/page_transitions.dart';
 
 class FamilyManagementScreen extends StatefulWidget {
   final ApiService apiService;
@@ -707,15 +708,12 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
           IconButton(
             icon: const Icon(Icons.person, color: Colors.white, size: 18),
             onPressed: () {
-              Navigator.push(
+              slidePush(
                 context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => ProfileScreen(
-                        apiService: widget.apiService,
-                        userId: widget.userId,
-                        userRole: _userData?['role'],
-                      ),
+                ProfileScreen(
+                  apiService: widget.apiService,
+                  userId: widget.userId,
+                  userRole: _userData?['role'],
                 ),
               );
             },

@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import '../theme/app_styles.dart';
 import '../components/bottom_navigation.dart';
 import 'login_screen.dart';
+import '../utils/page_transitions.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ApiService apiService;
@@ -300,12 +301,9 @@ class SettingsScreenState extends State<SettingsScreen> {
           onTap: () {
             widget.apiService.logout();
             if (!mounted) return;
-            Navigator.pushAndRemoveUntil(
+            slidePushAndRemoveUntil(
               context,
-              MaterialPageRoute(
-                builder:
-                    (context) => LoginScreen(apiService: widget.apiService),
-              ),
+              LoginScreen(apiService: widget.apiService),
               (route) => false,
             );
           },

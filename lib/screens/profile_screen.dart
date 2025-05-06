@@ -13,6 +13,7 @@ import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import '../models/invitation.dart';
 import '../services/service_provider.dart';
 import '../services/invitation_service.dart';
+import '../utils/page_transitions.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ApiService apiService;
@@ -828,15 +829,12 @@ class ProfileScreenState extends State<ProfileScreen>
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  Navigator.push(
+                  slidePush(
                     context,
-                    MaterialPageRoute(
-                      builder:
-                          (context) => FamilyManagementScreen(
-                            apiService: widget.apiService,
-                            userId: widget.userId,
-                            navigationController: _navigationController,
-                          ),
+                    FamilyManagementScreen(
+                      apiService: widget.apiService,
+                      userId: widget.userId,
+                      navigationController: _navigationController,
                     ),
                   );
                 },
@@ -976,11 +974,9 @@ class ProfileScreenState extends State<ProfileScreen>
   // Helper method to redirect to login
   void _redirectToLogin() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.pushAndRemoveUntil(
+      slidePushAndRemoveUntil(
         context,
-        MaterialPageRoute(
-          builder: (context) => LoginScreen(apiService: widget.apiService),
-        ),
+        LoginScreen(apiService: widget.apiService),
         (route) => false,
       );
     });
