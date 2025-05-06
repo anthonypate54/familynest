@@ -11,6 +11,7 @@ import 'invitations_screen.dart';
 import 'dart:async';
 import 'package:familynest/theme/app_theme.dart';
 import 'package:familynest/theme/app_styles.dart';
+import 'message_thread_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final ApiService apiService;
@@ -912,189 +913,314 @@ class HomeScreenState extends State<HomeScreen> {
                             final mediaType = message['mediaType'];
                             final mediaUrl = message['mediaUrl'];
 
-                            return Card(
-                              margin: const EdgeInsets.symmetric(
-                                vertical: 8,
-                                horizontal: 16,
-                              ),
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        // Profile Photo
-                                        Container(
-                                          width: 40,
-                                          height: 40,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: Colors.blue,
-                                              width: 2,
+                            // Debug: Print message content to check for id field
+                            debugPrint('Message content: $message');
+                            if (message['id'] == null) {
+                              debugPrint(
+                                'WARNING: Message is missing ID field!',
+                              );
+                            }
+
+                            return GestureDetector(
+                              onTap: () {
+                                // Debug: Print message keys for troubleshooting
+                                debugPrint(
+                                  'Home screen - Message keys: ${message.keys.toList().join(', ')}',
+                                );
+
+                                // Check if the message has a valid ID using our new flag
+                                final bool hasValidId =
+                                    message['hasValidId'] == true;
+
+                                if (!hasValidId) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Cannot view thread details for this message. Social features are only available for messages with valid IDs.',
+                                      ),
+                                      duration: Duration(seconds: 3),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                // Proceed to navigate to thread screen since we have a valid ID
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (context) => MessageThreadScreen(
+                                          apiService: widget.apiService,
+                                          userId: widget.userId,
+                                          message: message,
+                                        ),
+                                  ),
+                                ).then((_) {
+                                  // Reload messages when returning from thread screen to update engagement metrics
+                                  _loadMessages();
+                                });
+                              },
+                              child: Card(
+                                margin: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                  horizontal: 16,
+                                ),
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // Profile Photo
+                                          Container(
+                                            width: 40,
+                                            height: 40,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: Colors.blue,
+                                                width: 2,
+                                              ),
+                                            ),
+                                            child: ClipOval(
+                                              child:
+                                                  photoUrl != null
+                                                      ? Image.network(
+                                                        '${widget.apiService.baseUrl}$photoUrl',
+                                                        fit: BoxFit.cover,
+                                                        errorBuilder: (
+                                                          context,
+                                                          error,
+                                                          stackTrace,
+                                                        ) {
+                                                          return const Icon(
+                                                            Icons.person,
+                                                            color: Colors.blue,
+                                                          );
+                                                        },
+                                                      )
+                                                      : const Icon(
+                                                        Icons.person,
+                                                        color: Colors.blue,
+                                                      ),
                                             ),
                                           ),
-                                          child: ClipOval(
-                                            child:
-                                                photoUrl != null
-                                                    ? Image.network(
-                                                      '${widget.apiService.baseUrl}$photoUrl',
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder: (
-                                                        context,
-                                                        error,
-                                                        stackTrace,
-                                                      ) {
-                                                        return const Icon(
-                                                          Icons.person,
-                                                          color: Colors.blue,
-                                                        );
-                                                      },
-                                                    )
-                                                    : const Icon(
-                                                      Icons.person,
-                                                      color: Colors.blue,
-                                                    ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        // Message Content
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                message['senderUsername'],
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                ),
-                                              ),
-                                              if (message['content']
-                                                  .isNotEmpty) ...[
-                                                const SizedBox(height: 4),
+                                          const SizedBox(width: 12),
+                                          // Message Content
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
                                                 Text(
-                                                  message['content'],
+                                                  message['senderUsername'],
                                                   style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                                if (message['content']
+                                                    .isNotEmpty) ...[
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    message['content'],
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                ],
+                                                if (mediaUrl != null) ...[
+                                                  const SizedBox(height: 8),
+                                                  ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                    child:
+                                                        mediaType == 'photo'
+                                                            ? Image.network(
+                                                              '${widget.apiService.baseUrl}$mediaUrl',
+                                                              fit: BoxFit.cover,
+                                                              errorBuilder: (
+                                                                context,
+                                                                error,
+                                                                stackTrace,
+                                                              ) {
+                                                                return const Center(
+                                                                  child: Icon(
+                                                                    Icons.error,
+                                                                    color:
+                                                                        Colors
+                                                                            .red,
+                                                                  ),
+                                                                );
+                                                              },
+                                                            )
+                                                            : mediaType ==
+                                                                'video'
+                                                            ? GestureDetector(
+                                                              onTap: () {
+                                                                _playMessageVideo(
+                                                                  '${widget.apiService.baseUrl}$mediaUrl',
+                                                                  context,
+                                                                );
+                                                              },
+                                                              child: Stack(
+                                                                alignment:
+                                                                    Alignment
+                                                                        .center,
+                                                                children: [
+                                                                  Container(
+                                                                    height: 200,
+                                                                    width:
+                                                                        double
+                                                                            .infinity,
+                                                                    color:
+                                                                        Colors
+                                                                            .black,
+                                                                    child: const Center(
+                                                                      child: Icon(
+                                                                        Icons
+                                                                            .video_library,
+                                                                        color:
+                                                                            Colors.white,
+                                                                        size:
+                                                                            50,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  const Icon(
+                                                                    Icons
+                                                                        .play_circle_filled,
+                                                                    color:
+                                                                        Colors
+                                                                            .white,
+                                                                    size: 64,
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            )
+                                                            : const Text(
+                                                              'Unsupported media type',
+                                                            ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                          Text(
+                                            message.containsKey(
+                                                  'formattedTimestamp',
+                                                )
+                                                ? message['formattedTimestamp']
+                                                : '',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey[600],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+
+                                      // Add engagement metrics row
+                                      const SizedBox(height: 8),
+                                      const Divider(height: 1),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 8.0,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            // Comments count
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.comment_outlined,
+                                                  size: 16,
+                                                  color: Colors.grey,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  // Get comment count from message, default to 0
+                                                  message['commentCount']
+                                                          ?.toString() ??
+                                                      '0',
+                                                  style: TextStyle(
                                                     fontSize: 14,
+                                                    color: Colors.grey[700],
                                                   ),
                                                 ),
                                               ],
-                                              if (mediaUrl != null) ...[
-                                                const SizedBox(height: 8),
-                                                ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-                                                  child:
-                                                      mediaType == 'photo'
-                                                          ? Image.network(
-                                                            '${widget.apiService.baseUrl}$mediaUrl',
-                                                            fit: BoxFit.cover,
-                                                            width:
-                                                                double.infinity,
-                                                            height: 200,
-                                                            errorBuilder: (
-                                                              context,
-                                                              error,
-                                                              stackTrace,
-                                                            ) {
-                                                              debugPrint(
-                                                                'Error loading image: $error',
-                                                              );
-                                                              return Container(
-                                                                width:
-                                                                    double
-                                                                        .infinity,
-                                                                height: 200,
-                                                                color:
-                                                                    Colors
-                                                                        .grey[300],
-                                                                child: const Icon(
-                                                                  Icons
-                                                                      .broken_image,
-                                                                  color:
-                                                                      Colors
-                                                                          .grey,
-                                                                  size: 50,
-                                                                ),
-                                                              );
-                                                            },
-                                                          )
-                                                          : Builder(
-                                                            builder: (context) {
-                                                              final videoUrl =
-                                                                  '${widget.apiService.baseUrl}$mediaUrl';
-                                                              debugPrint(
-                                                                'Loading video from: $videoUrl',
-                                                              );
-                                                              return GestureDetector(
-                                                                onTap: () {
-                                                                  _playMessageVideo(
-                                                                    videoUrl,
-                                                                    context,
-                                                                  );
-                                                                },
-                                                                child: Stack(
-                                                                  alignment:
-                                                                      Alignment
-                                                                          .center,
-                                                                  children: [
-                                                                    Container(
-                                                                      height:
-                                                                          200,
-                                                                      width:
-                                                                          double
-                                                                              .infinity,
-                                                                      color:
-                                                                          Colors
-                                                                              .black,
-                                                                      child: const Center(
-                                                                        child: Text(
-                                                                          'Video',
-                                                                          style: TextStyle(
-                                                                            color:
-                                                                                Colors.white,
-                                                                          ),
-                                                                        ),
-                                                                      ),
-                                                                    ),
-                                                                    const Icon(
-                                                                      Icons
-                                                                          .play_circle_fill,
-                                                                      size: 50,
-                                                                      color:
-                                                                          Colors
-                                                                              .white,
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              );
-                                                            },
-                                                          ),
+                                            ),
+                                            const SizedBox(width: 16),
+
+                                            // Reactions count
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.favorite_border,
+                                                  size: 16,
+                                                  color: Colors.grey,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  // Get reactions count from message, default to 0
+                                                  message['reactionCount']
+                                                          ?.toString() ??
+                                                      '0',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color: Colors.grey[700],
+                                                  ),
                                                 ),
                                               ],
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                message['timestamp'],
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.grey[600],
+                                            ),
+                                            const SizedBox(width: 16),
+
+                                            // Views count
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.visibility_outlined,
+                                                  size: 16,
+                                                  color: Colors.grey,
                                                 ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  // Get views count from message, default to 0
+                                                  message['viewCount']
+                                                          ?.toString() ??
+                                                      '0',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color: Colors.grey[700],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const Spacer(),
+
+                                            // Tap to view indicator (subtle)
+                                            Text(
+                                              'View thread',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[500],
                                               ),
-                                            ],
-                                          ),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
-                                  ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             );
