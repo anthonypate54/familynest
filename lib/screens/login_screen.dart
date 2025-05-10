@@ -211,6 +211,7 @@ class LoginScreenState extends State<LoginScreen> {
                               labelText: 'Username',
                               border: OutlineInputBorder(),
                             ),
+
                             validator: (value) {
                               if (value == null || value.isEmpty) {
                                 return 'Please enter a username';
@@ -254,6 +255,9 @@ class LoginScreenState extends State<LoginScreen> {
                         if (_isRegistering) const SizedBox(height: 16),
                         TextFormField(
                           controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          textCapitalization: TextCapitalization.none,
+                          autocorrect: false,
                           decoration: const InputDecoration(
                             labelText: 'Email',
                             border: OutlineInputBorder(),

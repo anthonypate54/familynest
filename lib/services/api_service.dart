@@ -5,17 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'dart:async';
 import 'dart:io' show Platform, File;
+import '../config/app_config.dart';
 
 class ApiService {
-  // Dynamic baseUrl based on platform
+  // Dynamic baseUrl based on AppConfig
   String get baseUrl {
-    if (kIsWeb) {
-      return "http://localhost:8080"; // Web
-    } else if (Platform.isAndroid) {
-      return "http://10.0.0.81:8080"; // Android emulator (pointing to host machine)
-    } else {
-      return "http://localhost:8080"; // iOS and others
-    }
+    return AppConfig().baseUrl;
   }
 
   final http.Client client;
@@ -109,11 +104,14 @@ Network connection error. Please check:
 
   Future<Map<String, dynamic>> loginUser(String email, String password) async {
     try {
-      debugPrint('Attempting to login with email: $email');
+      // Ensure email is always lowercase
+      final lowercaseEmail = email.toLowerCase();
+      debugPrint('Attempting to login with email: $lowercaseEmail');
+
       final response = await client.post(
         Uri.parse('$baseUrl/api/users/login'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'password': password}),
+        body: jsonEncode({'email': lowercaseEmail, 'password': password}),
       );
       debugPrint(
         'Login response: statusCode=${response.statusCode}, body=${response.body}',
@@ -1895,6 +1893,53 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('Error getting engagement data: $e');
       rethrow;
+    }
+  }
+
+  // Get engagement data for multiple messages at once (much more efficient)
+  Future<Map<String, dynamic>> getBatchMessageEngagementData(
+    List<int> messageIds,
+  ) async {
+    if (messageIds.isEmpty) {
+      debugPrint(
+        'Error: Cannot fetch batch engagement data - No message IDs provided',
+      );
+      return {'messages': {}};
+    }
+
+    // Limit batch size to prevent excessive payloads
+    final ids = messageIds.take(50).toList();
+
+    debugPrint('Getting batch engagement data for ${ids.length} messages');
+
+    try {
+      // Build query params with multiple messageIds
+      final queryParams = ids.map((id) => 'messageIds=$id').join('&');
+      final url = Uri.parse(
+        '$baseUrl/api/messages/batch-engagement?$queryParams',
+      );
+
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await http.get(url, headers: headers);
+      debugPrint(
+        'Batch engagement data response: status=${response.statusCode}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        debugPrint('Error response: ${response.body}');
+        throw Exception(
+          'Failed to get batch engagement data: ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error getting batch engagement data: $e');
+      return {'messages': {}};
     }
   }
 }

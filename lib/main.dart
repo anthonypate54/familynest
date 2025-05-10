@@ -5,8 +5,42 @@ import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'theme/app_theme.dart';
 import 'utils/page_transitions.dart';
+import 'config/app_config.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 void main() {
+  // Initialize app configuration
+  final config = AppConfig();
+
+  // For development purposes, you can override the base URL here
+  // This would be read from environment variables in a CI/CD pipeline
+  if (const bool.fromEnvironment('USE_LOCAL_API')) {
+    config.setCustomBaseUrl(
+      const String.fromEnvironment(
+        'API_URL',
+        defaultValue: 'http://localhost:8080',
+      ),
+    );
+  }
+
+  // You could also set different environments based on build flags
+  // Example: flutter build --dart-define=ENVIRONMENT=production
+  const environment = String.fromEnvironment(
+    'ENVIRONMENT',
+    defaultValue: 'development',
+  );
+  if (environment == 'production') {
+    config.setEnvironment(Environment.production);
+  } else if (environment == 'staging') {
+    config.setEnvironment(Environment.staging);
+  }
+
+  // Log current configuration if in debug mode
+  if (kDebugMode) {
+    print('Initializing app with baseUrl: ${config.baseUrl}');
+    print('Environment: $environment');
+  }
+
   runApp(const MyApp());
 }
 
