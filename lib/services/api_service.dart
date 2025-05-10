@@ -507,6 +507,23 @@ Network connection error. Please check:
           throw Exception('File does not exist at path: $mediaPath');
         }
 
+        // Check file size
+        final fileSize = await file.length();
+        final fileSizeMB = fileSize / (1024 * 1024);
+        debugPrint('File size: $fileSize bytes ($fileSizeMB MB)');
+
+        // Define size limits based on media type
+        final double sizeLimit =
+            mediaType == 'video' ? 20.0 : 5.0; // 20MB for video, 5MB for photos
+
+        // Warn user if file is large (but still allow upload - server will handle it)
+        if (fileSizeMB > sizeLimit) {
+          debugPrint(
+            'Warning: File size $fileSizeMB MB exceeds recommended limit of $sizeLimit MB',
+          );
+          // We'll still upload, the server will handle it as a large file
+        }
+
         debugPrint('File exists, size: ${await file.length()} bytes');
         request.fields['mediaType'] = mediaType;
 

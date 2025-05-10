@@ -1086,6 +1086,88 @@ class HomeScreenState extends State<HomeScreen> {
                                                                 ],
                                                               ),
                                                             )
+                                                            : mediaType ==
+                                                                    'photo_large' ||
+                                                                mediaType ==
+                                                                    'video_large'
+                                                            ? GestureDetector(
+                                                              onTap: () {
+                                                                _handleLargeMedia(
+                                                                  '${widget.apiService.baseUrl}$mediaUrl',
+                                                                  mediaType,
+                                                                  context,
+                                                                );
+                                                              },
+                                                              child: Stack(
+                                                                alignment:
+                                                                    Alignment
+                                                                        .center,
+                                                                children: [
+                                                                  Container(
+                                                                    height: 120,
+                                                                    width:
+                                                                        double
+                                                                            .infinity,
+                                                                    decoration: BoxDecoration(
+                                                                      color:
+                                                                          Colors
+                                                                              .grey[200],
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                            8,
+                                                                          ),
+                                                                    ),
+                                                                    child: Center(
+                                                                      child: Column(
+                                                                        mainAxisAlignment:
+                                                                            MainAxisAlignment.center,
+                                                                        children: [
+                                                                          Icon(
+                                                                            mediaType ==
+                                                                                    'photo_large'
+                                                                                ? Icons.image
+                                                                                : Icons.video_file,
+                                                                            color:
+                                                                                Colors.grey[700],
+                                                                            size:
+                                                                                40,
+                                                                          ),
+                                                                          const SizedBox(
+                                                                            height:
+                                                                                8,
+                                                                          ),
+                                                                          Text(
+                                                                            mediaType ==
+                                                                                    'photo_large'
+                                                                                ? 'Large Photo (Tap to View)'
+                                                                                : 'Large Video (Tap to View)',
+                                                                            style: TextStyle(
+                                                                              color:
+                                                                                  Colors.grey[700],
+                                                                              fontWeight:
+                                                                                  FontWeight.bold,
+                                                                            ),
+                                                                          ),
+                                                                          const SizedBox(
+                                                                            height:
+                                                                                4,
+                                                                          ),
+                                                                          Text(
+                                                                            'Size exceeds automatic loading limit',
+                                                                            style: TextStyle(
+                                                                              color:
+                                                                                  Colors.grey[600],
+                                                                              fontSize:
+                                                                                  12,
+                                                                            ),
+                                                                          ),
+                                                                        ],
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            )
                                                             : const Text(
                                                               'Unsupported media type',
                                                             ),
@@ -1593,5 +1675,138 @@ class HomeScreenState extends State<HomeScreen> {
         (route) => false, // This predicate removes all routes
       );
     }
+  }
+
+  void _handleLargeMedia(
+    String mediaUrl,
+    String mediaType,
+    BuildContext context,
+  ) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              mediaType == 'photo_large' ? 'Large Photo' : 'Large Video',
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This ${mediaType == 'photo_large' ? 'photo' : 'video'} exceeds the automatic loading size limit.',
+                ),
+                const SizedBox(height: 16),
+                const Text('Options:'),
+                const SizedBox(height: 8),
+                const Text('• Open in browser to view full file'),
+                const Text('• Download to your device'),
+                const Text('• View in a media player app'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  _launchUrl(mediaUrl);
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Open in Browser'),
+              ),
+              if (mediaType == 'video_large')
+                TextButton(
+                  onPressed: () {
+                    _playMessageVideo(mediaUrl, context);
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Try Playing Anyway'),
+                ),
+              if (mediaType == 'photo_large')
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    showDialog(
+                      context: context,
+                      builder:
+                          (context) => Dialog(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                InteractiveViewer(
+                                  panEnabled: true,
+                                  boundaryMargin: const EdgeInsets.all(80),
+                                  minScale: 0.5,
+                                  maxScale: 4,
+                                  child: Image.network(
+                                    mediaUrl,
+                                    loadingBuilder: (
+                                      context,
+                                      child,
+                                      loadingProgress,
+                                    ) {
+                                      if (loadingProgress == null) return child;
+                                      return Center(
+                                        child: CircularProgressIndicator(
+                                          value:
+                                              loadingProgress
+                                                          .expectedTotalBytes !=
+                                                      null
+                                                  ? loadingProgress
+                                                          .cumulativeBytesLoaded /
+                                                      loadingProgress
+                                                          .expectedTotalBytes!
+                                                  : null,
+                                        ),
+                                      );
+                                    },
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.error,
+                                            color: Colors.red,
+                                            size: 50,
+                                          ),
+                                          const SizedBox(height: 16),
+                                          const Text('Error loading image'),
+                                          const SizedBox(height: 8),
+                                          TextButton(
+                                            onPressed: () {
+                                              _launchUrl(mediaUrl);
+                                            },
+                                            child: const Text(
+                                              'Open in Browser',
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: TextButton(
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                    },
+                                    child: const Text('Close'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                    );
+                  },
+                  child: const Text('Try Viewing Anyway'),
+                ),
+            ],
+          ),
+    );
   }
 }
