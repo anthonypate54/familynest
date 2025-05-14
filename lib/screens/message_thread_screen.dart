@@ -5,6 +5,7 @@ import 'dart:io';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_styles.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class MessageThreadScreen extends StatefulWidget {
   final ApiService apiService;
@@ -684,23 +685,63 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
                                 child: ClipOval(
                                   child:
                                       photoUrl != null
-                                          ? Image.network(
-                                            '${widget.apiService.baseUrl}$photoUrl',
+                                          ? CachedNetworkImage(
+                                            imageUrl:
+                                                photoUrl.startsWith('http')
+                                                    ? photoUrl
+                                                    : '${widget.apiService.baseUrl}$photoUrl',
                                             fit: BoxFit.cover,
-                                            errorBuilder: (
+                                            placeholder:
+                                                (context, url) =>
+                                                    CircularProgressIndicator(),
+                                            errorWidget: (
                                               context,
                                               error,
                                               stackTrace,
                                             ) {
-                                              return const Icon(
-                                                Icons.person,
-                                                color: Colors.blue,
+                                              return CircleAvatar(
+                                                backgroundColor: Color(
+                                                  widget
+                                                          .message['senderUsername']
+                                                          .hashCode |
+                                                      0xFF000000,
+                                                ),
+                                                child: Text(
+                                                  widget
+                                                          .message['senderUsername']
+                                                          .isNotEmpty
+                                                      ? widget
+                                                          .message['senderUsername'][0]
+                                                          .toUpperCase()
+                                                      : '?',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
                                               );
                                             },
                                           )
-                                          : const Icon(
-                                            Icons.person,
-                                            color: Colors.blue,
+                                          : CircleAvatar(
+                                            backgroundColor: Color(
+                                              widget
+                                                      .message['senderUsername']
+                                                      .hashCode |
+                                                  0xFF000000,
+                                            ),
+                                            child: Text(
+                                              widget
+                                                      .message['senderUsername']
+                                                      .isNotEmpty
+                                                  ? widget
+                                                      .message['senderUsername'][0]
+                                                      .toUpperCase()
+                                                  : '?',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
                                           ),
                                 ),
                               ),
@@ -753,7 +794,9 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
                               child:
                                   mediaType == 'photo'
                                       ? Image.network(
-                                        '${widget.apiService.baseUrl}$mediaUrl',
+                                        mediaUrl.startsWith('http')
+                                            ? mediaUrl
+                                            : '${widget.apiService.baseUrl}$mediaUrl',
                                         fit: BoxFit.cover,
                                         errorBuilder: (
                                           context,
@@ -1085,17 +1128,73 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   // Comment author photo
-                                  CircleAvatar(
-                                    backgroundImage:
-                                        comment['userPhoto'] != null
-                                            ? NetworkImage(
-                                              '${widget.apiService.baseUrl}${comment['userPhoto']}',
-                                            )
-                                            : null,
-                                    child:
-                                        comment['userPhoto'] == null
-                                            ? const Icon(Icons.person)
-                                            : null,
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.2),
+                                          blurRadius: 4,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                    child: CircleAvatar(
+                                      backgroundColor: Color(
+                                        (comment['username'] ?? 'User')
+                                                .hashCode |
+                                            0xFF000000,
+                                      ),
+                                      child:
+                                          comment['userPhoto'] != null
+                                              ? ClipOval(
+                                                child: CachedNetworkImage(
+                                                  imageUrl:
+                                                      comment['userPhoto']
+                                                              .toString()
+                                                              .startsWith(
+                                                                'http',
+                                                              )
+                                                          ? comment['userPhoto']
+                                                          : '${widget.apiService.baseUrl}${comment['userPhoto']}',
+                                                  fit: BoxFit.cover,
+                                                  width: 40,
+                                                  height: 40,
+                                                  placeholder:
+                                                      (context, url) =>
+                                                          CircularProgressIndicator(),
+                                                  errorWidget:
+                                                      (
+                                                        context,
+                                                        url,
+                                                        error,
+                                                      ) => Text(
+                                                        (comment['username'] ??
+                                                                'U')[0]
+                                                            .toUpperCase(),
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                ),
+                                              )
+                                              : Text(
+                                                (comment['username'] ?? 'U')[0]
+                                                    .toUpperCase(),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
 
@@ -1153,11 +1252,30 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
             ),
             child: Row(
               children: [
-                CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: Text(
-                    widget.userId.toString().substring(0, 1),
-                    style: const TextStyle(color: Colors.white),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    backgroundColor: Colors.blue,
+                    child: Text(
+                      widget.userId.toString().substring(0, 1),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1180,12 +1298,31 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white, size: 18),
-                    onPressed: _postComment,
-                    tooltip: 'Post Comment',
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    backgroundColor: Colors.blue,
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.send,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      onPressed: _postComment,
+                      tooltip: 'Post Comment',
+                    ),
                   ),
                 ),
               ],

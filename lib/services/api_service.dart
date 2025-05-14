@@ -6,11 +6,33 @@ import 'package:flutter/painting.dart';
 import 'dart:async';
 import 'dart:io' show Platform, File;
 import '../config/app_config.dart';
+import 'video_upload_service.dart';
+import 'dart:math' as Math;
 
 class ApiService {
   // Dynamic baseUrl based on AppConfig
   String get baseUrl {
-    return AppConfig().baseUrl;
+    final url = AppConfig().baseUrl;
+    debugPrint("Using API base URL: $url");
+    return url;
+  }
+
+  // Media base URL - may be different in production (e.g., CDN)
+  String get mediaBaseUrl {
+    final url = AppConfig().mediaBaseUrl;
+    debugPrint("Using media base URL: $url");
+    return url;
+  }
+
+  // Special handling for web endpoints in development
+  String _getApiEndpoint(String path) {
+    if (kIsWeb) {
+      // For web, make sure we have the /api prefix
+      if (!path.startsWith('/api/')) {
+        return '/api$path';
+      }
+    }
+    return path;
   }
 
   final http.Client client;
@@ -108,8 +130,11 @@ Network connection error. Please check:
       final lowercaseEmail = email.toLowerCase();
       debugPrint('Attempting to login with email: $lowercaseEmail');
 
+      final loginPath = _getApiEndpoint('/api/users/login');
+      debugPrint('Login endpoint: $loginPath');
+
       final response = await client.post(
-        Uri.parse('$baseUrl/api/users/login'),
+        Uri.parse('$baseUrl$loginPath'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': lowercaseEmail, 'password': password}),
       );
@@ -152,11 +177,12 @@ Network connection error. Please check:
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $_token',
       };
+      final currentUserPath = _getApiEndpoint('/api/users/current');
       debugPrint(
-        'Sending request to $baseUrl/api/users/current with headers: $headers',
+        'Sending request to $baseUrl$currentUserPath with headers: $headers',
       );
       final response = await client.get(
-        Uri.parse('$baseUrl/api/users/current'),
+        Uri.parse('$baseUrl$currentUserPath'),
         headers: headers,
       );
       debugPrint(
@@ -215,9 +241,10 @@ Network connection error. Please check:
         }
       }
 
+      final registerPath = _getApiEndpoint('/api/users');
       var request = http.MultipartRequest(
         'POST',
-        Uri.parse('$baseUrl/api/users'),
+        Uri.parse('$baseUrl$registerPath'),
       );
 
       // Combine basic user data with demographic data
@@ -347,6 +374,42 @@ Network connection error. Please check:
         final userData = jsonDecode(response.body) as Map<String, dynamic>;
         debugPrint('User data successfully retrieved: $userData');
 
+        // Log photo URL information
+        print('👤 USER DATA FOR ID $id:');
+        print('Keys in user data: ${userData.keys.join(', ')}');
+
+        // Check for photoUrl
+        if (userData.containsKey('photoUrl')) {
+          print('📸 photoUrl: ${userData['photoUrl']}');
+          if (userData['photoUrl'] != null) {
+            final String fullUrl =
+                userData['photoUrl'].startsWith('http')
+                    ? userData['photoUrl']
+                    : '$baseUrl${userData['photoUrl']}';
+            print('Full photo URL: $fullUrl');
+          }
+        }
+
+        // Look for any keys containing photo
+        final photoRelatedKeys =
+            userData.keys
+                .where(
+                  (key) =>
+                      key.toLowerCase().contains('photo') ||
+                      key.toLowerCase().contains('image') ||
+                      key.toLowerCase().contains('avatar'),
+                )
+                .toList();
+
+        if (photoRelatedKeys.isNotEmpty) {
+          print('📸 POTENTIAL PHOTO FIELDS IN USER DATA:');
+          for (final key in photoRelatedKeys) {
+            print('$key: ${userData[key]}');
+          }
+        } else {
+          print('⚠️ NO PHOTO-RELATED FIELDS FOUND IN USER DATA');
+        }
+
         // Explicitly log the familyId for debugging
         debugPrint('Family ID for user $id: ${userData['familyId']}');
 
@@ -434,17 +497,155 @@ Network connection error. Please check:
     }
   }
 
-  Future<bool> postMessage(
+  // Handle video file upload with backend thumbnail generation
+  Future<Map<String, String>> uploadVideoWithThumbnail(File videoFile) async {
+    debugPrint('Uploading video for processing: ${videoFile.path}');
+    final url = '$baseUrl/api/videos/upload';
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse(url));
+
+      // Add the auth token
+      request.headers['Authorization'] = 'Bearer $_token';
+
+      // Add the video file
+      request.files.add(
+        await http.MultipartFile.fromPath('file', videoFile.path),
+      );
+
+      debugPrint('Sending video upload request to: $url');
+      var response = await request.send();
+
+      if (response.statusCode == 200) {
+        final String responseBody = await response.stream.bytesToString();
+        debugPrint('Video processing response: $responseBody');
+
+        final Map<String, dynamic> data = json.decode(responseBody);
+
+        // Get the video and thumbnail URLs
+        final String videoUrl = data['videoUrl'] ?? '';
+        final String thumbnailUrl = data['thumbnailUrl'] ?? '';
+
+        // Convert relative URLs to absolute URLs
+        final String fullVideoUrl =
+            videoUrl.startsWith('http') ? videoUrl : '$baseUrl$videoUrl';
+
+        final String fullThumbnailUrl =
+            thumbnailUrl.startsWith('http')
+                ? thumbnailUrl
+                : '$baseUrl$thumbnailUrl';
+
+        debugPrint('Video URL: $fullVideoUrl');
+        debugPrint('Thumbnail URL: $fullThumbnailUrl');
+
+        return {'videoUrl': fullVideoUrl, 'thumbnailUrl': fullThumbnailUrl};
+      } else {
+        final String responseBody = await response.stream.bytesToString();
+        debugPrint(
+          'Video upload failed with status ${response.statusCode}: $responseBody',
+        );
+        return {};
+      }
+    } catch (e) {
+      debugPrint('Error uploading video: $e');
+      return {};
+    }
+  }
+
+  // Get full URL for a thumbnail - can use public endpoint if available
+  String getThumbnailUrl(String thumbnailPath) {
+    // If it's already a full URL, return it as is
+    if (thumbnailPath.startsWith('http')) {
+      return thumbnailPath;
+    }
+
+    // If it's a relative path
+    if (thumbnailPath.startsWith('/')) {
+      // Extract just the filename from the path for our special endpoint
+      final String filename = thumbnailPath.substring(
+        thumbnailPath.lastIndexOf('/') + 1,
+      );
+
+      // Use our special direct thumbnail endpoint
+      return '$baseUrl/api/videos/public/thumbnail/$filename';
+    }
+
+    // If it's just a filename, assume it's a thumbnail
+    if (!thumbnailPath.contains('/')) {
+      return '$baseUrl/api/videos/public/thumbnail/$thumbnailPath';
+    }
+
+    // Default to just adding the base URL
+    return '$baseUrl$thumbnailPath';
+  }
+
+  // Integrate backend video upload with message posting
+  Future<bool> postMessageWithVideoProcessing(
     int userId,
     String content, {
     String? mediaPath,
     String? mediaType,
     int? familyId,
   }) async {
+    // Handle video upload with thumbnail generation if this is a video
+    Map<String, String>? videoData;
+    String? effectiveMediaPath = mediaPath;
+
+    if (mediaPath != null && mediaType == 'video' && !kIsWeb) {
+      try {
+        debugPrint('Processing video before posting message');
+        final videoFile = File(mediaPath);
+
+        // Upload to backend for processing
+        videoData = await uploadVideoWithThumbnail(videoFile);
+
+        // If we got a successful remote URL, use that instead of the local file
+        if (videoData['videoUrl'] != null &&
+            videoData['videoUrl']!.isNotEmpty &&
+            videoData['videoUrl']!.startsWith('http')) {
+          // Use the remote URL instead of the local file
+          effectiveMediaPath = null; // Don't send local file
+          debugPrint('Using remote video URL: ${videoData['videoUrl']}');
+        } else {
+          // Fall back to original local file
+          debugPrint('Falling back to local video file');
+        }
+      } catch (e) {
+        debugPrint('Error processing video: $e');
+        // Continue with original file
+      }
+    }
+
+    // Proceed with posting the message
+    bool success = await postMessage(
+      userId,
+      content,
+      mediaPath: effectiveMediaPath,
+      mediaType: mediaType,
+      familyId: familyId,
+      // Pass the video data if available
+      videoUrl: videoData?['videoUrl'],
+      thumbnailUrl: videoData?['thumbnailUrl'],
+    );
+
+    return success;
+  }
+
+  // Modify postMessage to accept videoUrl and thumbnailUrl
+  Future<bool> postMessage(
+    int userId,
+    String content, {
+    String? mediaPath,
+    String? mediaType,
+    int? familyId,
+    String? videoUrl,
+    String? thumbnailUrl,
+  }) async {
     try {
       debugPrint('Starting postMessage for userId: $userId');
       debugPrint('Content: "$content"');
       debugPrint('Media path: $mediaPath, media type: $mediaType');
+      debugPrint('Video URL: $videoUrl, thumbnail URL: $thumbnailUrl');
       debugPrint('Explicit family ID provided: $familyId');
 
       // First get the user's active family if no explicit family ID is provided
@@ -471,33 +672,46 @@ Network connection error. Please check:
       debugPrint(
         'User belongs to family: $effectiveFamilyId, proceeding with message',
       );
-      debugPrint(
-        'Creating MultipartRequest for POST to $baseUrl/api/users/$userId/messages',
-      );
 
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/api/users/$userId/messages'),
-      );
+      // Use the exact same endpoint format as the successful script
+      final url = '$baseUrl/api/users/$userId/messages';
+      debugPrint('Creating MultipartRequest for POST to $url');
+
+      var request = http.MultipartRequest('POST', Uri.parse(url));
 
       if (_token != null) {
-        debugPrint('Adding authorization token to request');
+        debugPrint('Adding authorization token to request: $_token');
         request.headers['Authorization'] = 'Bearer $_token';
       } else {
         debugPrint('Warning: No token available for message posting');
+        throw Exception('No authentication token available');
       }
 
       if (content.isNotEmpty) {
         debugPrint('Adding content field: $content');
         request.fields['content'] = content;
-        // Add the family ID to the request explicitly
+        // Add the family ID to the request explicitly - this is critical
         request.fields['familyId'] = effectiveFamilyId.toString();
         debugPrint('Adding familyId field: $effectiveFamilyId');
       } else {
         debugPrint('No content provided for message');
       }
 
-      if (mediaPath != null && mediaType != null && !kIsWeb) {
+      // Handle remote video URLs from backend processing
+      if (videoUrl != null && videoUrl.startsWith('http')) {
+        debugPrint('Adding remote video URL to message: $videoUrl');
+        request.fields['videoUrl'] = videoUrl;
+
+        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+          debugPrint('Adding thumbnail URL to message: $thumbnailUrl');
+          request.fields['thumbnailUrl'] = thumbnailUrl;
+        }
+
+        // Set media type to video
+        request.fields['mediaType'] = 'video';
+      }
+      // Handle media files
+      else if (mediaPath != null && mediaType != null && !kIsWeb) {
         debugPrint('Adding media to message: $mediaPath, type: $mediaType');
 
         // Check if file exists
@@ -580,6 +794,16 @@ Network connection error. Please check:
           }
         }
 
+        if (response.statusCode == 400) {
+          errorMessage =
+              'Bad request: $errorMessage (possibly image upload issue)';
+        } else if (response.statusCode == 401 || response.statusCode == 403) {
+          errorMessage = 'Authentication issue: $errorMessage';
+        } else if (response.statusCode >= 500) {
+          errorMessage = 'Server error: $errorMessage';
+        }
+
+        debugPrint('Throwing exception with message: $errorMessage');
         throw Exception('$errorMessage: $responseBody');
       } else {
         debugPrint('Message posted successfully: $responseBody');
@@ -608,8 +832,65 @@ Network connection error. Please check:
       'Get messages response: status=${response.statusCode}, body=${response.body}',
     );
     if (response.statusCode == 200) {
-      final messages =
-          (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+      final responseData = jsonDecode(response.body);
+      // Extract messages from response - could be in a 'messages' field or directly in the response
+      final List<dynamic> rawMessages =
+          responseData is Map && responseData.containsKey('messages')
+              ? responseData['messages'] as List
+              : responseData as List;
+
+      // Log the raw message data for debugging
+      debugPrint('🔍 DETAILED MESSAGE DEBUGGING:');
+      debugPrint('📊 Messages response structure: ${responseData.runtimeType}');
+      if (responseData is Map) {
+        debugPrint('📊 Response fields: ${responseData.keys.join(', ')}');
+      }
+      debugPrint('📊 Got ${rawMessages.length} messages from server');
+
+      // Check first couple of messages (to avoid flooding logs)
+      for (int i = 0; i < Math.min(3, rawMessages.length); i++) {
+        final msg = rawMessages[i];
+        debugPrint('📝 Message $i:');
+        debugPrint('   Keys: ${msg.keys.join(', ')}');
+
+        // Check media-related fields
+        if (msg['mediaType'] != null || msg['media_type'] != null) {
+          final mediaType = msg['mediaType'] ?? msg['media_type'];
+          final mediaUrl = msg['mediaUrl'] ?? msg['media_url'];
+          debugPrint('   📊 Media type: $mediaType');
+          debugPrint('   🔗 Media URL: $mediaUrl');
+
+          // Specifically check for thumbnail fields
+          debugPrint('   Has thumbnailUrl? ${msg.containsKey('thumbnailUrl')}');
+          debugPrint(
+            '   Has thumbnail_url? ${msg.containsKey('thumbnail_url')}',
+          );
+          if (msg.containsKey('thumbnailUrl')) {
+            debugPrint('   🖼️ thumbnailUrl: ${msg['thumbnailUrl']}');
+          }
+          if (msg.containsKey('thumbnail_url')) {
+            debugPrint('   🖼️ thumbnail_url: ${msg['thumbnail_url']}');
+          }
+
+          // Look for any keys containing 'thumbnail' (case insensitive)
+          final thumbnailKeys =
+              msg.keys
+                  .where((k) => k.toLowerCase().contains('thumbnail'))
+                  .toList();
+          if (thumbnailKeys.isNotEmpty) {
+            debugPrint(
+              '   📸 Found thumbnail-related keys: ${thumbnailKeys.join(', ')}',
+            );
+            for (final key in thumbnailKeys) {
+              debugPrint('   📸 $key = ${msg[key]}');
+            }
+          } else if (mediaType == 'video') {
+            debugPrint('   ⚠️ Video without any thumbnail field');
+          }
+        }
+      }
+
+      final messages = rawMessages.cast<Map<String, dynamic>>();
 
       // Process each message to ensure it has proper ID information
       for (var message in messages) {
@@ -1958,5 +2239,75 @@ Network connection error. Please check:
       debugPrint('Error getting batch engagement data: $e');
       return {'messages': {}};
     }
+  }
+
+  // Debug method to test thumbnail accessibility
+  Future<bool> testThumbnailAccess(String thumbnailUrl) async {
+    // If URL doesn't start with http, add the base URL
+    final String fullUrl =
+        thumbnailUrl.startsWith('http')
+            ? thumbnailUrl
+            : '$baseUrl$thumbnailUrl';
+
+    debugPrint('🧪 Testing thumbnail URL accessibility: $fullUrl');
+
+    try {
+      final response = await client.get(Uri.parse(fullUrl));
+      final isSuccess = response.statusCode == 200;
+
+      debugPrint(
+        '🔍 Thumbnail test result for $fullUrl: ${response.statusCode}',
+      );
+      debugPrint('  Content-Type: ${response.headers['content-type']}');
+      debugPrint('  Content Length: ${response.contentLength} bytes');
+      debugPrint('  Success: $isSuccess');
+
+      return isSuccess;
+    } catch (e) {
+      debugPrint('⚠️ Error testing thumbnail URL: $e');
+      return false;
+    }
+  }
+
+  // Get all possible variants of a thumbnail URL to test
+  List<String> getThumbnailUrlVariants(String originalPath) {
+    final List<String> variants = [];
+
+    // If it's already a full URL, add it as is
+    if (originalPath.startsWith('http')) {
+      variants.add(originalPath);
+    }
+
+    // Extract just the filename
+    String filename = originalPath;
+    if (originalPath.contains('/')) {
+      filename = originalPath.substring(originalPath.lastIndexOf('/') + 1);
+    }
+
+    // Add variants with different paths
+    variants.add('$baseUrl/uploads/thumbnails/$filename');
+    variants.add('$baseUrl/public/media/thumbnails/$filename');
+    variants.add('/uploads/thumbnails/$filename');
+    variants.add('/public/media/thumbnails/$filename');
+
+    return variants;
+  }
+
+  // Test all possible thumbnail URL variants and return the first working one
+  Future<String?> findWorkingThumbnailUrl(String originalPath) async {
+    debugPrint('🔎 Finding working thumbnail URL for: $originalPath');
+
+    final variants = getThumbnailUrlVariants(originalPath);
+
+    for (final variant in variants) {
+      debugPrint('  Testing variant: $variant');
+      if (await testThumbnailAccess(variant)) {
+        debugPrint('✅ Found working thumbnail URL: $variant');
+        return variant;
+      }
+    }
+
+    debugPrint('❌ No working thumbnail URL found');
+    return null;
   }
 }

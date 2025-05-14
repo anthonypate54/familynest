@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Custom page route with a slide transition from right to left
+/// Custom page route with a simple slide transition
 class SlidePageRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
 
@@ -9,19 +9,21 @@ class SlidePageRoute<T> extends PageRouteBuilder<T> {
         settings: settings,
         pageBuilder: (context, animation, secondaryAnimation) => page,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          // Simple slide from right
           const begin = Offset(1.0, 0.0);
           const end = Offset.zero;
-          const curve = Curves.easeInOut;
 
           var tween = Tween(
             begin: begin,
             end: end,
-          ).chain(CurveTween(curve: curve));
-          var offsetAnimation = animation.drive(tween);
+          ).chain(CurveTween(curve: Curves.easeInOut));
 
-          return SlideTransition(position: offsetAnimation, child: child);
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
         },
-        transitionDuration: const Duration(milliseconds: 300),
+        transitionDuration: const Duration(milliseconds: 250),
       );
 }
 

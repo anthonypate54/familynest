@@ -5,6 +5,7 @@ import '../theme/app_styles.dart';
 import '../components/bottom_navigation.dart';
 import 'login_screen.dart';
 import '../utils/page_transitions.dart';
+import '../controllers/bottom_navigation_controller.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ApiService apiService;
@@ -41,7 +42,7 @@ class SettingsScreenState extends State<SettingsScreen> {
         currentIndex: 2, // Settings tab
         apiService: widget.apiService,
         userId: widget.userId,
-        userRole: widget.userRole,
+        userRole: widget.userRole ?? 'USER',
         controller: BottomNavigationController(),
         pendingInvitationsCount:
             0, // You might want to load and pass actual invitations count
@@ -76,6 +77,8 @@ class SettingsScreenState extends State<SettingsScreen> {
     try {
       // First check if user has a family
       final userData = await widget.apiService.getUserById(widget.userId);
+      if (!mounted) return;
+
       final familyId = userData['familyId'];
 
       if (familyId == null) {
@@ -88,108 +91,111 @@ class SettingsScreenState extends State<SettingsScreen> {
       await showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text('Send Invitation'),
-            content: TextField(
-              controller: emailController,
-              decoration: const InputDecoration(labelText: 'Email'),
-              keyboardType: TextInputType.emailAddress,
-              autofocus: true,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
+        builder:
+            (BuildContext dialogContext) => AlertDialog(
+              title: const Text('Send Invitation'),
+              content: TextField(
+                controller: emailController,
+                decoration: const InputDecoration(labelText: 'Email'),
+                keyboardType: TextInputType.emailAddress,
+                autofocus: true,
               ),
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(context); // Close the dialog immediately
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(
+                      dialogContext,
+                    ); // Close the dialog immediately
 
-                  // Show a loading indicator
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Sending invitation...'),
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-
-                  try {
-                    await widget.apiService.inviteUser(
-                      widget.userId,
-                      emailController.text,
-                    );
                     if (!mounted) return;
-
+                    // Show a loading indicator
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Invitation sent successfully!'),
-                        backgroundColor: Colors.green,
+                        content: Text('Sending invitation...'),
+                        duration: Duration(seconds: 1),
                       ),
                     );
-                  } catch (e) {
-                    if (!mounted) return;
-                    debugPrint('Error sending invitation: $e');
 
-                    String errorMessage = e.toString();
+                    try {
+                      await widget.apiService.inviteUser(
+                        widget.userId,
+                        emailController.text,
+                      );
+                      if (!mounted) return;
 
-                    // Check if it's the database error we fixed
-                    if (errorMessage.contains('invitee_email') ||
-                        errorMessage.contains('constraint') ||
-                        errorMessage.contains('null value in column')) {
-                      // Show a specific message that's more helpful
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Error sending invitation: ${emailController.text}. Please try a different email.',
+                        const SnackBar(
+                          content: Text('Invitation sent successfully!'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      debugPrint('Error sending invitation: $e');
+
+                      String errorMessage = e.toString();
+
+                      // Check if it's the database error we fixed
+                      if (errorMessage.contains('invitee_email') ||
+                          errorMessage.contains('constraint') ||
+                          errorMessage.contains('null value in column')) {
+                        // Show a specific message that's more helpful
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Error sending invitation: ${emailController.text}. Please try a different email.',
+                            ),
+                            backgroundColor: Colors.red,
+                            duration: const Duration(seconds: 5),
                           ),
-                          backgroundColor: Colors.red,
-                          duration: Duration(seconds: 5),
-                        ),
-                      );
-                    } else if (errorMessage.contains(
-                      'already in your family',
-                    )) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'This person is already in your family!',
+                        );
+                      } else if (errorMessage.contains(
+                        'already in your family',
+                      )) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'This person is already in your family!',
+                            ),
+                            backgroundColor: Colors.orange,
                           ),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
-                    } else if (errorMessage.contains('already pending')) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'There is already a pending invitation for this email.',
+                        );
+                      } else if (errorMessage.contains('already pending')) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'There is already a pending invitation for this email.',
+                            ),
+                            backgroundColor: Colors.orange,
                           ),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
-                    } else if (errorMessage.contains('Server error') ||
-                        errorMessage.contains('500')) {
-                      // Only show the backend error dialog for server errors
-                      _showInvitationBackendError();
-                    } else {
-                      // For other errors, show a snackbar with the message
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error: $errorMessage'),
-                          backgroundColor: Colors.red,
-                          duration: Duration(seconds: 5),
-                        ),
-                      );
+                        );
+                      } else if (errorMessage.contains('Server error') ||
+                          errorMessage.contains('500')) {
+                        // Only show the backend error dialog for server errors
+                        _showInvitationBackendError();
+                      } else {
+                        // For other errors, show a snackbar with the message
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error: $errorMessage'),
+                            backgroundColor: Colors.red,
+                            duration: const Duration(seconds: 5),
+                          ),
+                        );
+                      }
                     }
-                  }
-                },
-                child: const Text('Send'),
-              ),
-            ],
-          );
-        },
+                  },
+                  child: const Text('Send'),
+                ),
+              ],
+            ),
       );
     } catch (e) {
+      if (!mounted) return;
       debugPrint('Error checking user family status: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
@@ -202,19 +208,19 @@ class SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
+          (BuildContext dialogContext) => AlertDialog(
             title: const Text('Create a Family First'),
             content: const Text(
               'You need to create a family before you can invite others. Would you like to create a family now?',
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Not Now'),
               ),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context);
+                  Navigator.pop(dialogContext);
                   // Navigate to family management screen
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -239,7 +245,7 @@ class SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
+          (BuildContext dialogContext) => AlertDialog(
             title: const Text('Invitation System Unavailable'),
             content: const Text(
               'We\'re sorry, but the invitation system is currently experiencing technical issues.\n\n'
@@ -249,7 +255,7 @@ class SettingsScreenState extends State<SettingsScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('OK'),
               ),
             ],
@@ -298,8 +304,8 @@ class SettingsScreenState extends State<SettingsScreen> {
         ListTile(
           leading: const Icon(Icons.logout, color: Colors.red),
           title: const Text('Logout', style: TextStyle(color: Colors.red)),
-          onTap: () {
-            widget.apiService.logout();
+          onTap: () async {
+            await widget.apiService.logout();
             if (!mounted) return;
             slidePushAndRemoveUntil(
               context,
@@ -433,31 +439,30 @@ class SettingsScreenState extends State<SettingsScreen> {
   void _showRefreshIntervalDialog() {
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Refresh Interval'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildIntervalOption('1 min'),
-              _buildIntervalOption('5 min'),
-              _buildIntervalOption('15 min'),
-              _buildIntervalOption('30 min'),
-              _buildIntervalOption('1 hour'),
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Refresh Interval'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildIntervalOption('1 min', dialogContext),
+                _buildIntervalOption('5 min', dialogContext),
+                _buildIntervalOption('15 min', dialogContext),
+                _buildIntervalOption('30 min', dialogContext),
+                _buildIntervalOption('1 hour', dialogContext),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-          ],
-        );
-      },
     );
   }
 
-  Widget _buildIntervalOption(String interval) {
+  Widget _buildIntervalOption(String interval, BuildContext dialogContext) {
     return RadioListTile<String>(
       title: Text(interval),
       value: interval,
@@ -467,7 +472,7 @@ class SettingsScreenState extends State<SettingsScreen> {
           setState(() {
             _refreshInterval = value;
           });
-          Navigator.pop(context);
+          Navigator.pop(dialogContext);
         }
       },
     );
@@ -501,32 +506,31 @@ class SettingsScreenState extends State<SettingsScreen> {
   void _showClearDataDialog() {
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Clear App Data'),
-          content: const Text(
-            'This will delete all cached data including saved messages and media. This action cannot be undone.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Clear App Data'),
+            content: const Text(
+              'This will delete all cached data including saved messages and media. This action cannot be undone.',
             ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('App data cleared')),
-                );
-              },
-              child: const Text(
-                'Clear Data',
-                style: TextStyle(color: Colors.red),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
               ),
-            ),
-          ],
-        );
-      },
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('App data cleared')),
+                  );
+                },
+                child: const Text(
+                  'Clear Data',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
+          ),
     );
   }
 
@@ -568,30 +572,29 @@ class SettingsScreenState extends State<SettingsScreen> {
   void _showAboutDialog() {
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('About FamilyNest'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Version: 1.0.0'),
-              const SizedBox(height: 8),
-              const Text(
-                'FamilyNest is an app designed to connect families through sharing messages, photos, and videos.',
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('About FamilyNest'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text('Version: 1.0.0'),
+                SizedBox(height: 8),
+                Text(
+                  'FamilyNest is an app designed to connect families through sharing messages, photos, and videos.',
+                ),
+                SizedBox(height: 16),
+                Text('© 2023 FamilyNest Inc.'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
               ),
-              const SizedBox(height: 16),
-              const Text('© 2023 FamilyNest Inc.'),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
     );
   }
 }

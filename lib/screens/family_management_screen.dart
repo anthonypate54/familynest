@@ -9,6 +9,7 @@ import '../dialogs/member_message_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import '../utils/page_transitions.dart';
+import '../controllers/bottom_navigation_controller.dart';
 
 class FamilyManagementScreen extends StatefulWidget {
   final ApiService apiService;
@@ -722,14 +723,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         ],
       ),
 
-      bottomNavigationBar: BottomNavigation(
-        currentIndex: 2, // Family management tab
-        apiService: widget.apiService,
-        userId: widget.userId,
-        controller: widget.navigationController ?? BottomNavigationController(),
-        pendingInvitationsCount:
-            _invitations.where((inv) => inv['status'] == 'PENDING').length,
-      ),
       body: SafeArea(
         child: Container(
           width: double.infinity,

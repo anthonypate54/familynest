@@ -14,17 +14,21 @@ import '../models/invitation.dart';
 import '../services/service_provider.dart';
 import '../services/invitation_service.dart';
 import '../utils/page_transitions.dart';
+import '../controllers/bottom_navigation_controller.dart';
+import '../utils/auth_utils.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ApiService apiService;
   final int userId;
-  final String? userRole;
+  final String userRole;
+  final BottomNavigationController? navigationController;
 
   const ProfileScreen({
     super.key,
     required this.apiService,
     required this.userId,
     required this.userRole,
+    this.navigationController,
   });
 
   @override
@@ -62,7 +66,9 @@ class ProfileScreenState extends State<ProfileScreen>
     );
     _animationController.forward();
 
-    _navigationController = BottomNavigationController();
+    // Use the provided controller or create a new one
+    _navigationController =
+        widget.navigationController ?? BottomNavigationController();
     _userDataFuture = _loadUser();
     _loadInvitations();
   }
@@ -380,43 +386,7 @@ class ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _logout() async {
-    // Show confirmation dialog
-    bool confirmLogout =
-        await showDialog(
-          context: context,
-          builder:
-              (context) => AlertDialog(
-                title: const Text('Confirm Logout'),
-                content: const Text('Are you sure you want to log out?'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text('Logout'),
-                  ),
-                ],
-              ),
-        ) ??
-        false;
-
-    if (!confirmLogout) return;
-
-    widget.apiService.logout();
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (context) => LoginScreen(apiService: widget.apiService),
-      ),
-      (route) => false,
-    );
+    await AuthUtils.showLogoutConfirmation(context, widget.apiService);
   }
 
   Future<void> _sendInvitation() async {
@@ -934,14 +904,6 @@ class ProfileScreenState extends State<ProfileScreen>
 
     return Scaffold(
       appBar: _buildAppBar(),
-      bottomNavigationBar: BottomNavigation(
-        currentIndex: 1, // Profile tab
-        apiService: widget.apiService,
-        userId: widget.userId,
-        userRole: widget.userRole,
-        controller: _navigationController,
-        pendingInvitationsCount: pendingInvitationsCount,
-      ),
       body: _buildGradientBackground(
         child: _buildProfileTab(contentWidth, isSmallScreen),
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/service_provider.dart';
 import '../services/api_service.dart';
 import '../components/bottom_navigation.dart';
+import '../controllers/bottom_navigation_controller.dart';
 
 class InvitationsScreen extends StatefulWidget {
   final ApiService apiService;
@@ -112,14 +113,6 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
             tooltip: 'Refresh Invitations',
           ),
         ],
-      ),
-      bottomNavigationBar: BottomNavigation(
-        currentIndex: 3, // Invitations tab
-        apiService: widget.apiService,
-        userId: widget.userId,
-        controller: widget.navigationController,
-        pendingInvitationsCount:
-            _invitations.where((inv) => inv['status'] == 'PENDING').length,
       ),
       body: Container(
         width: double.infinity,

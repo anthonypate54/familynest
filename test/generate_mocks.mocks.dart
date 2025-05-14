@@ -604,4 +604,16 @@ class MockApiService extends _i1.Mock implements _i3.ApiService {
             ),
           )
           as _i5.Future<Map<String, dynamic>>);
+
+  @override
+  _i5.Future<Map<String, dynamic>> getBatchMessageEngagementData(
+    List<int>? messageIds,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getBatchMessageEngagementData, [messageIds]),
+            returnValue: _i5.Future<Map<String, dynamic>>.value(
+              <String, dynamic>{},
+            ),
+          )
+          as _i5.Future<Map<String, dynamic>>);
 }

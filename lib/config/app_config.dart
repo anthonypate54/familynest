@@ -49,12 +49,30 @@ class AppConfig {
       default:
         // For development, we need different URLs based on the platform
         if (kIsWeb) {
-          return "http://localhost:8080"; // Web
+          return "http://localhost:8080"; // Use simple localhost for web
         } else if (Platform.isAndroid) {
           return "http://10.0.2.2:8080"; // Android emulator (10.0.2.2 points to host loopback)
         } else {
           return "http://localhost:8080"; // iOS simulator and others
         }
+    }
+  }
+
+  /// Get the base URL for media (images, videos, etc.)
+  String get mediaBaseUrl {
+    switch (_environment) {
+      case Environment.production:
+        // In production, media is likely served from a CDN or S3 bucket
+        return "https://media.familynest.example.com"; // Replace with actual CDN/S3 URL
+
+      case Environment.staging:
+        // In staging, media might be served from a staging S3 bucket
+        return "https://staging-media.familynest.example.com"; // Replace with actual staging S3 URL
+
+      case Environment.development:
+      default:
+        // In development, media is served from the same server as the API
+        return baseUrl;
     }
   }
 

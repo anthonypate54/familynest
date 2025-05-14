@@ -5,6 +5,7 @@ import 'profile_screen.dart';
 import '../services/api_service.dart';
 import 'home_screen.dart';
 import '../utils/page_transitions.dart';
+import '../main.dart'; // Import to access MainAppContainer
 
 class LoginScreen extends StatefulWidget {
   final ApiService apiService;
@@ -51,7 +52,7 @@ class LoginScreenState extends State<LoginScreen> {
       );
       slidePushReplacement(
         context,
-        ProfileScreen(
+        MainAppContainer(
           apiService: widget.apiService,
           userId: user['userId'],
           userRole: user['role'] ?? 'USER',
@@ -78,7 +79,7 @@ class LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
         slidePushReplacement(
           context,
-          ProfileScreen(
+          MainAppContainer(
             apiService: widget.apiService,
             userId: response['userId'],
             userRole: response['role'] ?? 'USER',

@@ -9,75 +9,42 @@ import '../screens/invitations_screen.dart';
 import '../utils/page_transitions.dart'; // Import the page transitions
 
 import '../services/api_service.dart'; // Import ApiService if not already imported
+import '../controllers/bottom_navigation_controller.dart';
 
-class BottomNavigationController {
-  void refreshUserFamilies() {
-    // Implementation to refresh family data
-  }
-}
-
-class BottomNavigation extends StatelessWidget {
+class BottomNavigation extends StatefulWidget {
   final int currentIndex;
   final ApiService apiService;
   final int userId;
-  final String? userRole;
+  final String userRole;
   final BottomNavigationController? controller;
-  final int pendingInvitationsCount; // Count of pending invitations
+  final int pendingInvitationsCount;
+  // Add callback for handling tab changes
+  final Function(int)? onTabChanged;
 
   const BottomNavigation({
     super.key,
     required this.currentIndex,
     required this.apiService,
     required this.userId,
-    this.userRole,
-    required this.controller,
-    this.pendingInvitationsCount = 0, // Default to 0 if not provided
+    this.userRole = 'USER',
+    this.controller,
+    this.pendingInvitationsCount = 0,
+    this.onTabChanged,
   });
 
   @override
+  State<BottomNavigation> createState() => _BottomNavigationState();
+}
+
+class _BottomNavigationState extends State<BottomNavigation> {
+  @override
   Widget build(BuildContext context) {
     return BottomNavigationBar(
-      currentIndex: currentIndex,
+      currentIndex: widget.currentIndex,
       onTap: (index) {
-        // Messages tab (index 0)
-        if (index == 0 && currentIndex != 0) {
-          slidePushReplacement(
-            context,
-            HomeScreen(apiService: apiService, userId: userId),
-          );
-        }
-        // Profile tab (index 1)
-        else if (index == 1 && currentIndex != 1) {
-          slidePushReplacement(
-            context,
-            ProfileScreen(
-              apiService: apiService,
-              userId: userId,
-              userRole: userRole,
-            ),
-          );
-        }
-        // Family tab (index 2)
-        else if (index == 2 && currentIndex != 2) {
-          slidePushReplacement(
-            context,
-            FamilyManagementScreen(
-              apiService: apiService,
-              userId: userId,
-              navigationController: controller,
-            ),
-          );
-        }
-        // Invitations tab (index 3)
-        else if (index == 3 && currentIndex != 3) {
-          slidePushReplacement(
-            context,
-            InvitationsScreen(
-              apiService: apiService,
-              userId: userId,
-              navigationController: controller,
-            ),
-          );
+        // Just call the callback to notify MainAppContainer to update its state
+        if (widget.onTabChanged != null) {
+          widget.onTabChanged!(index);
         }
       },
       items: [
@@ -89,49 +56,34 @@ class BottomNavigation extends StatelessWidget {
           icon: Icon(Icons.person),
           label: 'Profile',
         ),
-        const BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Family'),
-        // Invitations tab with badge for pending invitations
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.family_restroom),
+          label: 'Family',
+        ),
         BottomNavigationBarItem(
           icon: Stack(
             clipBehavior: Clip.none,
             children: [
               const Icon(Icons.mail),
-              if (pendingInvitationsCount > 0)
+              if (widget.pendingInvitationsCount > 0)
                 Positioned(
-                  right: -5,
                   top: -5,
+                  right: -5,
                   child: Container(
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(1),
                     decoration: BoxDecoration(
                       color: Colors.red,
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     constraints: const BoxConstraints(
                       minWidth: 12,
                       minHeight: 12,
                     ),
-                    child:
-                        pendingInvitationsCount > 9
-                            ? const Text(
-                              '9+',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 8,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            )
-                            : pendingInvitationsCount > 0
-                            ? Text(
-                              '$pendingInvitationsCount',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 8,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            )
-                            : const SizedBox.shrink(),
+                    child: Text(
+                      '${widget.pendingInvitationsCount}',
+                      style: const TextStyle(color: Colors.white, fontSize: 8),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
             ],
@@ -139,9 +91,9 @@ class BottomNavigation extends StatelessWidget {
           label: 'Invitations',
         ),
       ],
-      selectedItemColor: Theme.of(context).colorScheme.primary,
-      unselectedItemColor: Colors.grey,
       type: BottomNavigationBarType.fixed,
+      selectedItemColor: Theme.of(context).primaryColor,
+      unselectedItemColor: Colors.grey,
     );
   }
 }
