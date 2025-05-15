@@ -42,6 +42,38 @@ class ApiService {
 
   Future<void> initialize() async {
     await _loadToken();
+
+    // Try to auto-login with any available token
+    if (_token != null && _token!.isNotEmpty) {
+      try {
+        // Verify if the existing token is valid by making a test call
+        final currentUser = await getCurrentUser();
+        if (currentUser != null) {
+          debugPrint('✅ Auto-login successful with existing token');
+          return; // Token is valid, initialization successful
+        } else {
+          debugPrint('⚠️ Stored token is invalid, will try backup methods');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error validating stored token: $e');
+      }
+
+      // If we have a token but it's invalid, try to get a test token in debug mode
+      if (kDebugMode) {
+        try {
+          debugPrint('🔑 Attempting to fetch fresh test token for auto-login');
+          final testTokenResponse = await getTestToken101();
+          if (testTokenResponse != null && testTokenResponse['token'] != null) {
+            debugPrint('✅ Successfully retrieved test token for auto-login');
+            return; // Test token successfully obtained and stored
+          }
+        } catch (e) {
+          debugPrint('❌ Error getting test token: $e');
+        }
+      }
+    }
+
+    // Test connection if no valid token was found
     try {
       await testConnection();
     } catch (e) {
@@ -102,84 +134,270 @@ Network connection error. Please check:
   }
 
   Future<void> _loadToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString('auth_token');
-    debugPrint('Loaded token from storage: $_token');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Check if shared preferences contains our token
+      final keys = prefs.getKeys();
+      debugPrint('All SharedPreferences keys: $keys');
+
+      // Try to retrieve token from both primary and backup locations
+      _token = prefs.getString('auth_token');
+
+      // If primary token is missing, try the backup token
+      if (_token == null || _token!.isEmpty) {
+        _token = prefs.getString('auth_token_backup');
+        if (_token != null && _token!.isNotEmpty) {
+          debugPrint('Using backup token since primary token was missing');
+          // Restore primary token
+          await prefs.setString('auth_token', _token!);
+        }
+      }
+
+      // For debugging builds, if no token is found, try to fetch a test token
+      if ((_token == null || _token!.isEmpty) && kDebugMode) {
+        debugPrint('No token found in storage, trying to get a test token');
+        // Will fetch a test token in the initialize method
+      } else if (_token != null && _token!.isNotEmpty) {
+        debugPrint(
+          'Loaded token from storage: ${_token!.substring(0, Math.min(10, _token!.length))}...',
+        );
+      } else {
+        debugPrint('No token found in storage');
+      }
+    } catch (e) {
+      debugPrint('Error loading token: $e');
+      _token = null;
+    }
   }
 
   Future<void> _saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('auth_token', token);
-    _token = token;
-    debugPrint('Saved token to storage: $token');
-    // Verify token was saved
-    final savedToken = prefs.getString('auth_token');
-    debugPrint('Verified saved token: $savedToken');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Clear any existing tokens first
+      await prefs.remove('auth_token');
+      await prefs.remove('auth_token_backup');
+
+      // Save with two different keys for redundancy
+      await prefs.setString('auth_token', token);
+      await prefs.setString('auth_token_backup', token);
+
+      _token = token;
+      debugPrint(
+        'Saved token to storage: ${token.substring(0, Math.min(10, token.length))}...',
+      );
+
+      // Verify token was saved
+      final savedToken = prefs.getString('auth_token');
+      final backupToken = prefs.getString('auth_token_backup');
+
+      if (savedToken != null && savedToken.isNotEmpty) {
+        debugPrint(
+          '✅ Primary token saved successfully (${savedToken.length} chars)',
+        );
+      } else {
+        debugPrint('❌ ERROR: Primary token not saved!');
+      }
+
+      if (backupToken != null && backupToken.isNotEmpty) {
+        debugPrint(
+          '✅ Backup token saved successfully (${backupToken.length} chars)',
+        );
+      } else {
+        debugPrint('❌ ERROR: Backup token not saved!');
+      }
+
+      // Save the token timestamp for debugging
+      await prefs.setString(
+        'token_save_time',
+        DateTime.now().toIso8601String(),
+      );
+
+      // No need to call commit - it's done automatically in the newer SharedPreferences API
+    } catch (e) {
+      debugPrint('Error saving token: $e');
+    }
   }
 
   Future<void> _clearToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    _token = null;
-    debugPrint('Cleared token from storage');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Clear token data
+      await prefs.remove('auth_token');
+      await prefs.remove('auth_token_backup');
+      await prefs.remove('token_save_time');
+
+      // Clear additional login data
+      await prefs.remove('user_id');
+      await prefs.remove('user_role');
+      await prefs.remove('is_logged_in');
+      await prefs.remove('login_time');
+
+      _token = null;
+      debugPrint('Cleared all auth data from storage');
+    } catch (e) {
+      debugPrint('Error clearing token: $e');
+    }
   }
 
-  Future<Map<String, dynamic>> loginUser(String email, String password) async {
+  Future<Map<String, dynamic>?> login(String email, String password) async {
     try {
-      // Ensure email is always lowercase
-      final lowercaseEmail = email.toLowerCase();
-      debugPrint('Attempting to login with email: $lowercaseEmail');
+      debugPrint('Attempting login for email: $email');
 
-      final loginPath = _getApiEndpoint('/api/users/login');
-      debugPrint('Login endpoint: $loginPath');
+      // Check if we already have shared preferences available
+      final prefs = await SharedPreferences.getInstance();
+      final prefsKeys = prefs.getKeys();
+      debugPrint('SharedPreferences before login: $prefsKeys');
 
-      final response = await client.post(
-        Uri.parse('$baseUrl$loginPath'),
+      // Clear any existing tokens to start fresh
+      await prefs.remove('auth_token');
+      await prefs.remove('auth_token_backup');
+      await prefs.remove('token_save_time');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/users/login'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': lowercaseEmail, 'password': password}),
+        body: json.encode({'email': email, 'password': password}),
       );
-      debugPrint(
-        'Login response: statusCode=${response.statusCode}, body=${response.body}',
-      );
+
       if (response.statusCode == 200) {
-        final responseBody = jsonDecode(response.body) as Map<String, dynamic>;
-        final token = responseBody['token'] as String?;
-        if (token != null) {
-          await _saveToken(token);
-        } else {
-          debugPrint('No token received in login response');
-          throw Exception('No token received from server');
+        debugPrint('Login successful, parsing response');
+        try {
+          final data = json.decode(response.body);
+
+          debugPrint('Login response: $data');
+
+          if (data['token'] != null) {
+            // Save token using the _saveToken method
+            final String token = data['token'];
+            await _saveToken(token);
+
+            // Double verification step - read it back directly after save
+            final verifyToken = prefs.getString('auth_token');
+            if (verifyToken != token) {
+              debugPrint(
+                '⚠️ CRITICAL: Token verification failed! Trying again...',
+              );
+
+              // Try once more with direct prefs calls
+              await prefs.setString('auth_token', token);
+              await prefs.setString('auth_token_backup', token);
+              debugPrint('Forced token save a second time');
+
+              // Create additional persistent storage to ensure login across sessions
+              await prefs.setString('user_id', data['userId'].toString());
+              await prefs.setString('user_role', data['role'] ?? 'USER');
+              await prefs.setBool('is_logged_in', true);
+              await prefs.setString(
+                'login_time',
+                DateTime.now().toIso8601String(),
+              );
+
+              // Verify again
+              final secondVerifyToken = prefs.getString('auth_token');
+              if (secondVerifyToken == token) {
+                debugPrint('✅ Token successfully saved on second attempt');
+              } else {
+                debugPrint(
+                  '❌ CRITICAL ERROR: Token could not be saved after multiple attempts',
+                );
+              }
+            } else {
+              debugPrint('✅ Token verification successful');
+
+              // Store additional user data for backup login
+              await prefs.setString('user_id', data['userId'].toString());
+              await prefs.setString('user_role', data['role'] ?? 'USER');
+              await prefs.setBool('is_logged_in', true);
+              await prefs.setString(
+                'login_time',
+                DateTime.now().toIso8601String(),
+              );
+            }
+
+            // Ensure _token is set in memory
+            _token = token;
+
+            return data;
+          } else {
+            debugPrint('⚠️ WARNING: No token in login response!');
+            return data; // Still return the data, but it may not allow auto-login next time
+          }
+        } catch (e) {
+          debugPrint('Error parsing login response: $e');
+          debugPrint('Response body was: ${response.body}');
+          return null;
         }
-        return {
-          'userId': (responseBody['userId'] as num).toInt(),
-          'token': token,
-          'role': responseBody['role'] as String? ?? 'USER',
-        };
       } else {
-        throw Exception(
-          'Failed to login: statusCode=${response.statusCode}, body=${response.body}',
-        );
+        debugPrint('Login failed with status code: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
+        return null;
       }
     } catch (e) {
-      debugPrint('Login failed with error: $e');
-      rethrow;
+      debugPrint('Exception during login: $e');
+      return null;
     }
   }
 
   Future<Map<String, dynamic>?> getCurrentUser() async {
-    debugPrint('Checking for current user, token: $_token');
-    if (_token == null) {
-      debugPrint('No token available, returning null');
-      return null;
-    }
+    debugPrint(
+      'Checking for current user, token: ${_token != null ? "${_token!.substring(0, Math.min(10, _token!.length))}..." : "null"}',
+    );
+
     try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Check if we have a valid token
+      if (_token == null || _token!.isEmpty) {
+        debugPrint('No token available, checking for backup login info');
+
+        // Check if we have backup login info
+        final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+        final userId = prefs.getString('user_id');
+        final userRole = prefs.getString('user_role');
+
+        if (isLoggedIn && userId != null) {
+          debugPrint(
+            '🔄 Found backup login info, attempting to restore session',
+          );
+
+          // For development builds, try to get a fresh test token
+          if (kDebugMode) {
+            try {
+              debugPrint('🔑 Attempting to get fresh test token');
+              final testTokenResponse = await getTestToken101();
+              if (testTokenResponse != null &&
+                  testTokenResponse['token'] != null) {
+                debugPrint('✅ Session restored with test token');
+                return {
+                  'userId': int.parse(userId),
+                  'role': userRole ?? 'USER',
+                };
+              }
+            } catch (e) {
+              debugPrint('❌ Error getting test token: $e');
+            }
+          }
+
+          // Return the user info from backup
+          debugPrint('🔄 Returning user data from backup login info');
+          return {'userId': int.parse(userId), 'role': userRole ?? 'USER'};
+        }
+
+        debugPrint('No backup login info available');
+        return null;
+      }
+
+      // Try to validate token with the server
       final headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $_token',
       };
       final currentUserPath = _getApiEndpoint('/api/users/current');
       debugPrint(
-        'Sending request to $baseUrl$currentUserPath with headers: $headers',
+        'Sending request to $baseUrl$currentUserPath with token: ${_token!.substring(0, Math.min(10, _token!.length))}...',
       );
       final response = await client.get(
         Uri.parse('$baseUrl$currentUserPath'),
@@ -190,18 +408,103 @@ Network connection error. Please check:
       );
       if (response.statusCode == 200) {
         final responseBody = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint('✅ Current user validated successfully');
+
+        // Update backup info with fresh data
+        await prefs.setString('user_id', responseBody['userId'].toString());
+        await prefs.setString('user_role', responseBody['role'] ?? 'USER');
+        await prefs.setBool('is_logged_in', true);
+        await prefs.setString('login_time', DateTime.now().toIso8601String());
+
         return {
           'userId': (responseBody['userId'] as num).toInt(),
           'role': responseBody['role'] as String? ?? 'USER',
         };
       } else {
-        debugPrint('Invalid token, clearing token');
+        debugPrint('❌ Invalid token, checking for backup login info');
+
+        // Check if we have backup login info
+        final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+        final userId = prefs.getString('user_id');
+        final userRole = prefs.getString('user_role');
+
+        if (isLoggedIn && userId != null) {
+          debugPrint(
+            '🔄 Found backup login info, attempting to restore session',
+          );
+
+          // For development builds, try to get a fresh test token
+          if (kDebugMode) {
+            try {
+              debugPrint('🔑 Attempting to get fresh test token');
+              final testTokenResponse = await getTestToken101();
+              if (testTokenResponse != null &&
+                  testTokenResponse['token'] != null) {
+                debugPrint('✅ Session restored with test token');
+                return {
+                  'userId': int.parse(userId),
+                  'role': userRole ?? 'USER',
+                };
+              }
+            } catch (e) {
+              debugPrint('❌ Error getting test token: $e');
+            }
+          }
+
+          // Return the user info from backup
+          debugPrint('🔄 Returning user data from backup login info');
+          return {'userId': int.parse(userId), 'role': userRole ?? 'USER'};
+        }
+
+        debugPrint('No valid backup login info, clearing token');
         await _clearToken();
         return null;
       }
     } catch (e) {
-      debugPrint('Error getting current user: $e');
-      await _clearToken();
+      debugPrint('❌ Error getting current user: $e');
+
+      // Check if we have backup login info
+      final prefs = await SharedPreferences.getInstance();
+      final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+      final userId = prefs.getString('user_id');
+      final userRole = prefs.getString('user_role');
+
+      if (isLoggedIn && userId != null) {
+        debugPrint('🔄 Network error but found backup login info');
+
+        // For development builds, try to get a fresh test token on network errors
+        if (kDebugMode) {
+          try {
+            debugPrint(
+              '🔑 Attempting to get fresh test token due to network error',
+            );
+            final testTokenResponse = await getTestToken101();
+            if (testTokenResponse != null &&
+                testTokenResponse['token'] != null) {
+              debugPrint(
+                '✅ Session restored with test token despite network error',
+              );
+              return {'userId': int.parse(userId), 'role': userRole ?? 'USER'};
+            }
+          } catch (e) {
+            debugPrint('❌ Error getting test token: $e');
+          }
+        }
+
+        // Return the user info from backup during network errors
+        debugPrint(
+          '🔄 Returning user data from backup login info during network error',
+        );
+        return {'userId': int.parse(userId), 'role': userRole ?? 'USER'};
+      }
+
+      // Don't clear token on network errors, only on auth errors
+      if (e.toString().contains('401') || e.toString().contains('403')) {
+        debugPrint('Auth error, clearing token');
+        await _clearToken();
+      } else {
+        debugPrint('Network error, keeping token');
+      }
       return null;
     }
   }
@@ -308,8 +611,28 @@ Network connection error. Please check:
   }
 
   Future<void> logout() async {
-    debugPrint('Logging out, clearing token');
-    await _clearToken();
+    debugPrint('Logging out, clearing all auth data');
+
+    try {
+      // Try to call logout endpoint if available
+      if (_token != null) {
+        try {
+          final response = await client.post(
+            Uri.parse('$baseUrl/api/users/logout'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_token',
+            },
+          );
+          debugPrint('Server logout response: ${response.statusCode}');
+        } catch (e) {
+          debugPrint('Error calling server logout (continuing anyway): $e');
+        }
+      }
+    } finally {
+      // Always clear local token data regardless of server response
+      await _clearToken();
+    }
   }
 
   Future<Map<String, dynamic>> updateDemographics(
@@ -824,135 +1147,67 @@ Network connection error. Please check:
       debugPrint('No token available for getting messages');
     }
     debugPrint('Getting messages for user $userId');
-    final response = await client.get(
-      Uri.parse('$baseUrl/api/users/$userId/messages'),
-      headers: headers,
-    );
+
+    final apiUrl = '$baseUrl/api/users/$userId/messages';
+    debugPrint('API URL for messages: $apiUrl');
+
+    final response = await client.get(Uri.parse(apiUrl), headers: headers);
     debugPrint(
-      'Get messages response: status=${response.statusCode}, body=${response.body}',
+      '🔍 GET MESSAGES RESPONSE: status=${response.statusCode}, body length=${response.body.length}',
     );
+
+    // Print the first 500 characters of the response for debugging
+    debugPrint(
+      'First 500 chars of response: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}',
+    );
+
     if (response.statusCode == 200) {
-      final responseData = jsonDecode(response.body);
-      // Extract messages from response - could be in a 'messages' field or directly in the response
-      final List<dynamic> rawMessages =
-          responseData is Map && responseData.containsKey('messages')
-              ? responseData['messages'] as List
-              : responseData as List;
+      try {
+        List<dynamic> data = jsonDecode(response.body);
+        debugPrint('✅ Successfully decoded JSON with ${data.length} messages');
 
-      // Log the raw message data for debugging
-      debugPrint('🔍 DETAILED MESSAGE DEBUGGING:');
-      debugPrint('📊 Messages response structure: ${responseData.runtimeType}');
-      if (responseData is Map) {
-        debugPrint('📊 Response fields: ${responseData.keys.join(', ')}');
-      }
-      debugPrint('📊 Got ${rawMessages.length} messages from server');
-
-      // Check first couple of messages (to avoid flooding logs)
-      for (int i = 0; i < Math.min(3, rawMessages.length); i++) {
-        final msg = rawMessages[i];
-        debugPrint('📝 Message $i:');
-        debugPrint('   Keys: ${msg.keys.join(', ')}');
-
-        // Check media-related fields
-        if (msg['mediaType'] != null || msg['media_type'] != null) {
-          final mediaType = msg['mediaType'] ?? msg['media_type'];
-          final mediaUrl = msg['mediaUrl'] ?? msg['media_url'];
-          debugPrint('   📊 Media type: $mediaType');
-          debugPrint('   🔗 Media URL: $mediaUrl');
-
-          // Specifically check for thumbnail fields
-          debugPrint('   Has thumbnailUrl? ${msg.containsKey('thumbnailUrl')}');
+        // IMPORTANT: Log ALL messages to verify what we're getting from the API
+        debugPrint('=============== ALL MESSAGES FROM API ===============');
+        for (int i = 0; i < data.length; i++) {
+          final msg = data[i];
           debugPrint(
-            '   Has thumbnail_url? ${msg.containsKey('thumbnail_url')}',
+            '📄 Message $i - ID: ${msg['id']}, Content: ${msg['content']}',
           );
-          if (msg.containsKey('thumbnailUrl')) {
-            debugPrint('   🖼️ thumbnailUrl: ${msg['thumbnailUrl']}');
-          }
-          if (msg.containsKey('thumbnail_url')) {
-            debugPrint('   🖼️ thumbnail_url: ${msg['thumbnail_url']}');
-          }
 
-          // Look for any keys containing 'thumbnail' (case insensitive)
-          final thumbnailKeys =
-              msg.keys
-                  .where((k) => k.toLowerCase().contains('thumbnail'))
-                  .toList();
-          if (thumbnailKeys.isNotEmpty) {
+          // Log key fields that might cause issues
+          final keys = msg.keys.toList();
+          debugPrint('   Keys: ${keys.join(", ")}');
+          debugPrint('   Timestamp: ${msg['timestamp']}');
+          debugPrint('   FamilyId: ${msg['familyId']}');
+
+          if (msg['mediaType'] != null) {
             debugPrint(
-              '   📸 Found thumbnail-related keys: ${thumbnailKeys.join(', ')}',
+              '   Media: ${msg['mediaType']}, URL: ${msg['mediaUrl']}',
             );
-            for (final key in thumbnailKeys) {
-              debugPrint('   📸 $key = ${msg[key]}');
+            if (msg['thumbnailUrl'] != null) {
+              debugPrint('   Thumbnail: ${msg['thumbnailUrl']}');
+            } else {
+              debugPrint('   ⚠️ No thumbnailUrl found for video message');
             }
-          } else if (mediaType == 'video') {
-            debugPrint('   ⚠️ Video without any thumbnail field');
           }
+
+          // Add separators between messages for clarity
+          debugPrint('   --------------------');
         }
+        debugPrint('=============== END MESSAGES ===============');
+
+        return List<Map<String, dynamic>>.from(data);
+      } catch (e) {
+        debugPrint('❌ ERROR PARSING MESSAGES JSON: $e');
+        // Try to print more of the response to debug
+        debugPrint('ERROR RESPONSE BODY: ${response.body}');
+        throw Exception('Failed to parse messages: $e');
       }
-
-      final messages = rawMessages.cast<Map<String, dynamic>>();
-
-      // Process each message to ensure it has proper ID information
-      for (var message in messages) {
-        // Check if this message has a backend-provided ID
-        if (message.containsKey('id') && message['id'] != null) {
-          debugPrint('Message has backend id: ${message['id']}');
-
-          // Add a flag to indicate this is a real backend ID (for easier checking)
-          message['hasValidId'] = true;
-        }
-        // Check if this message has a messageId that can be used instead
-        else if (message.containsKey('messageId') &&
-            message['messageId'] != null) {
-          message['id'] = message['messageId'];
-          message['hasValidId'] = true;
-          debugPrint('Mapped messageId to id: ${message['id']}');
-        }
-        // If neither id nor messageId is present, generate a fake ID but mark it
-        else {
-          final timestamp = message['timestamp'] as String?;
-          final senderId = message['senderId'] as int?;
-
-          if (timestamp != null && senderId != null) {
-            var idBase = '$timestamp-$senderId';
-            final generatedId = idBase.hashCode.abs();
-            message['id'] = generatedId;
-            message['hasValidId'] = false;
-            message['generatedId'] = true;
-            debugPrint(
-              'Generated placeholder id for message without ID: $generatedId',
-            );
-          } else {
-            // Fallback - use current timestamp as ID
-            message['id'] = DateTime.now().millisecondsSinceEpoch;
-            message['hasValidId'] = false;
-            message['generatedId'] = true;
-            debugPrint('Generated fallback id for message: ${message['id']}');
-          }
-        }
-
-        // Initialize engagement metrics to prevent null errors in the UI
-        message['reactionCounts'] = message['reactionCounts'] ?? {};
-        message['commentCount'] = message['commentCount'] ?? 0;
-        message['viewCount'] = message['viewCount'] ?? 0;
-
-        // Debug: Log important fields of each message
-        debugPrint('Message keys: ${message.keys.toList().join(', ')}');
-      }
-
-      // Enhanced logging for media content
-      for (var message in messages) {
-        if (message.containsKey('mediaUrl') && message['mediaUrl'] != null) {
-          debugPrint(
-            'Message with media: ${message['mediaType']} - ${message['mediaUrl']}',
-          );
-          debugPrint('Full media URL: $baseUrl${message['mediaUrl']}');
-        }
-      }
-
-      return messages;
     } else {
-      throw Exception('Failed to get messages: ${response.body}');
+      debugPrint(
+        '❌ Error getting messages: ${response.statusCode}, ${response.body}',
+      );
+      throw Exception('Failed to load messages: ${response.statusCode}');
     }
   }
 
@@ -2309,5 +2564,35 @@ Network connection error. Please check:
 
     debugPrint('❌ No working thumbnail URL found');
     return null;
+  }
+
+  // Get test token for debugging purposes
+  Future<Map<String, dynamic>?> getTestToken101() async {
+    try {
+      debugPrint('Getting test token from $baseUrl/api/users/test-token-101');
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/users/test-token-101'),
+        headers: {'Accept': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('Successfully received test token');
+        final data = json.decode(response.body);
+
+        // Save the token for future usage
+        if (data['token'] != null) {
+          await _saveToken(data['token']);
+        }
+
+        return data;
+      } else {
+        debugPrint('Failed to get test token: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error getting test token: $e');
+      return null;
+    }
   }
 }

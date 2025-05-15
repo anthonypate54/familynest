@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'profile_screen.dart';
 import '../services/api_service.dart';
 import 'home_screen.dart';
@@ -70,7 +70,7 @@ class LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final response = await widget.apiService.loginUser(
+      final response = await widget.apiService.login(
         _emailController.text,
         _passwordController.text,
       );

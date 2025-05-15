@@ -7,10 +7,12 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 class VideoPlayerScreen extends StatefulWidget {
   final String videoUrl;
   final bool isLocalFile;
+  final String? baseUrl;
 
   const VideoPlayerScreen({
     required this.videoUrl,
     this.isLocalFile = false,
+    this.baseUrl,
     Key? key,
   }) : super(key: key);
 
@@ -37,10 +39,66 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         debugPrint('Initializing video player with local file: $videoPath');
         _videoPlayerController = VideoPlayerController.file(File(videoPath));
       } else {
+        // Handle different URL formats carefully
+        String fullVideoUrl;
+
+        if (widget.videoUrl.startsWith('http')) {
+          // URL is already absolute
+          fullVideoUrl = widget.videoUrl;
+          debugPrint('Using absolute URL: $fullVideoUrl');
+        } else if (widget.videoUrl.startsWith('/')) {
+          // URL is relative path starting with slash, needs base URL
+          if (widget.baseUrl != null) {
+            fullVideoUrl = '${widget.baseUrl}${widget.videoUrl}';
+            debugPrint(
+              'Converting relative URL with slash to absolute: $fullVideoUrl',
+            );
+          } else {
+            // If no base URL provided, attempt to create a valid URL
+            fullVideoUrl = 'http://localhost${widget.videoUrl}';
+            debugPrint(
+              '⚠️ No base URL provided for relative path. Using fallback: $fullVideoUrl',
+            );
+          }
+        } else {
+          // No leading slash, still needs base URL
+          if (widget.baseUrl != null) {
+            fullVideoUrl = '${widget.baseUrl}/${widget.videoUrl}';
+            debugPrint(
+              'Converting relative URL without slash to absolute: $fullVideoUrl',
+            );
+          } else {
+            // If no base URL provided, attempt to create a valid URL
+            fullVideoUrl = 'http://localhost/${widget.videoUrl}';
+            debugPrint(
+              '⚠️ No base URL provided for relative path. Using fallback: $fullVideoUrl',
+            );
+          }
+        }
+
+        // Final check to ensure it has http:// prefix
+        if (!fullVideoUrl.startsWith('http')) {
+          debugPrint(
+            '⚠️ WARNING: URL still doesn\'t start with http: $fullVideoUrl',
+          );
+          fullVideoUrl =
+              'http://' + fullVideoUrl.replaceFirst(RegExp(r'^//'), '');
+          debugPrint('Fixed URL: $fullVideoUrl');
+        }
+
         debugPrint(
-          'Initializing video player with network URL: ${widget.videoUrl}',
+          '🎥 Initializing video player with network URL: $fullVideoUrl',
         );
-        _videoPlayerController = VideoPlayerController.network(widget.videoUrl);
+
+        // Try to parse and create the URI
+        try {
+          final videoUri = Uri.parse(fullVideoUrl);
+          debugPrint('Video URI: $videoUri');
+          _videoPlayerController = VideoPlayerController.network(fullVideoUrl);
+        } catch (e) {
+          debugPrint('Error parsing video URL: $e');
+          throw Exception('Invalid video URL: $fullVideoUrl');
+        }
       }
 
       await _videoPlayerController.initialize();

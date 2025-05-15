@@ -205,10 +205,42 @@ class HomeScreenState extends State<HomeScreen>
           File(processedPath),
         );
       } else {
-        debugPrint('Initializing network video: $videoUrl');
-        _inlineVideoController = VideoPlayerController.networkUrl(
-          Uri.parse(videoUrl),
-        );
+        // Ensure we have an absolute URL, never a relative path
+        String fullVideoUrl;
+        if (videoUrl.startsWith('http')) {
+          // URL is already absolute
+          fullVideoUrl = videoUrl;
+        } else if (videoUrl.startsWith('/')) {
+          // URL is relative path starting with slash, needs base URL
+          fullVideoUrl = '${widget.apiService.baseUrl}$videoUrl';
+          debugPrint('Converting relative URL to absolute: $fullVideoUrl');
+        } else {
+          // Fallback with slash if needed
+          fullVideoUrl = '${widget.apiService.baseUrl}/$videoUrl';
+          debugPrint(
+            'Converting relative URL (no leading slash) to absolute: $fullVideoUrl',
+          );
+        }
+
+        // Extra validation to ensure the URL is valid
+        if (!fullVideoUrl.startsWith('http')) {
+          debugPrint('⚠️ WARNING: URL doesn\'t start with http: $fullVideoUrl');
+          fullVideoUrl =
+              'http://' + fullVideoUrl.replaceFirst(RegExp(r'^//'), '');
+          debugPrint('Fixed URL: $fullVideoUrl');
+        }
+
+        debugPrint('🎥 Initializing network video with URL: $fullVideoUrl');
+
+        // Try to initialize with the full URL as an absolute URL
+        try {
+          final videoUri = Uri.parse(fullVideoUrl);
+          debugPrint('Video URI: $videoUri');
+          _inlineVideoController = VideoPlayerController.networkUrl(videoUri);
+        } catch (e) {
+          debugPrint('Error parsing video URL: $e');
+          throw Exception('Invalid video URL: $fullVideoUrl');
+        }
       }
 
       // Initialize the controller and then create the Chewie controller
@@ -370,10 +402,13 @@ class HomeScreenState extends State<HomeScreen>
         });
       }
 
-      // On first load only, scroll to bottom after a delay
+      // On first load only, scroll to bottom once after a delay
+      // Fix: Only attempt to scroll if still in first load state
       if (_isFirstLoad) {
-        _isFirstLoad = false;
-        Future.delayed(const Duration(milliseconds: 500), () {
+        _isFirstLoad =
+            false; // Set this immediately to prevent multiple attempts
+        // Single scroll attempt with a short delay to let the UI render
+        WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             _scrollToBottom();
           }
@@ -396,7 +431,12 @@ class HomeScreenState extends State<HomeScreen>
 
   // Improved scroll to bottom to show newest messages at the bottom
   void _scrollToBottom() {
-    debugPrint('Scrolling to bottom to show newest messages');
+    // Only attempt to scroll if the widget is mounted and controller exists
+    if (!mounted || _scrollController == null) {
+      return;
+    }
+
+    // Check if the controller has clients before attempting to scroll
     if (_scrollController.hasClients) {
       try {
         // In a reversed list, we need to scroll to minimum extent (0)
@@ -405,19 +445,11 @@ class HomeScreenState extends State<HomeScreen>
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
-        debugPrint('Scroll to bottom executed');
       } catch (e) {
         debugPrint('Error scrolling to bottom: $e');
       }
-    } else {
-      debugPrint('ScrollController has no clients, cannot scroll');
-      // Schedule a scroll once the controller has clients
-      Future.delayed(Duration(milliseconds: 500), () {
-        if (mounted) {
-          _scrollToBottom();
-        }
-      });
     }
+    // No else case with future.delayed - that was causing the infinite loop
   }
 
   // Add a method to refresh the cached photo URL
@@ -446,71 +478,78 @@ class HomeScreenState extends State<HomeScreen>
   }
 
   // Modify the refresh messages function to also refresh photo cache
-  Future<void> _refreshMessages({bool shouldScrollToBottom = false}) async {
-    if (!mounted) return;
-
-    debugPrint(
-      'Refreshing messages (shouldScrollToBottom: $shouldScrollToBottom)',
-    );
-    setState(() {
-      _isLoading = true;
-      _loadError = null;
-    });
-
-    // Also refresh the photo cache
-    await _refreshUserPhotoCache();
+  Future<void> _refreshMessages({bool shouldScrollToBottom = true}) async {
+    debugPrint('==========================================');
+    debugPrint('🔄 _refreshMessages CALLED');
+    debugPrint('🔄 Loading messages for user ${widget.userId}');
+    debugPrint('🔄 Current message count in state: ${_messages.length}');
 
     try {
-      final messages = await _loadMessages();
-      if (!mounted) return;
-
-      final hasNewMessages = messages.length > _lastMessageCount;
-
-      debugPrint(
-        'Refresh complete: ${messages.length} messages (previous count: $_lastMessageCount)',
-      );
-      if (hasNewMessages) {
-        debugPrint('New messages detected during refresh');
-      }
-
       setState(() {
-        _messagesFuture = Future.value(messages);
-        _messages = messages; // Update our in-memory list
-        if (hasNewMessages) {
-          _lastMessageCount = messages.length;
-          _updateRefreshTimestamp();
-        }
+        _isLoading = true;
+        _loadError = null;
       });
 
-      // Check all video thumbnails after refreshing
-      if (messages.isNotEmpty) {
-        // Delay slightly to let the UI render first
-        Future.delayed(const Duration(milliseconds: 200), () {
-          if (mounted) {
-            _checkAllVideoThumbnails(messages);
-          }
-        });
+      final freshMessages = await _loadMessages();
+
+      // DEBUG: Log message IDs to check for duplicates
+      debugPrint('🔍 New messages from API: ${freshMessages.length}');
+
+      // Store seen message IDs to filter out duplicates
+      final Set<int> seenMessageIds = {};
+      final List<Map<String, dynamic>> deduplicatedMessages = [];
+
+      // Process messages and remove duplicates
+      for (var message in freshMessages) {
+        // Get the message ID safely handling different types
+        final messageId =
+            message['id'] is int
+                ? message['id'] as int
+                : int.tryParse(message['id'].toString()) ?? -1;
+
+        // Only include the message if we haven't seen this ID before
+        if (!seenMessageIds.contains(messageId)) {
+          seenMessageIds.add(messageId);
+          deduplicatedMessages.add(message);
+        } else {
+          debugPrint('⚠️ Detected duplicate message with ID: $messageId');
+        }
       }
 
-      if (shouldScrollToBottom || hasNewMessages) {
-        // Add a small delay to ensure the ListView has rebuilt
-        await Future.delayed(const Duration(milliseconds: 200));
+      debugPrint(
+        '🔍 After deduplication: ${deduplicatedMessages.length} messages',
+      );
 
-        // Force scrolling to show newest message
+      // Add offline messages (these have negative IDs to avoid collision)
+      final combinedMessages = [...deduplicatedMessages, ..._offlineMessages];
+
+      // Sort by timestamp, newest first (for reverse ListView)
+      combinedMessages.sort((a, b) {
+        final aTime =
+            a['timestamp'] is String
+                ? DateTime.parse(a['timestamp'])
+                : DateTime.fromMillisecondsSinceEpoch(a['timestamp'] as int);
+        final bTime =
+            b['timestamp'] is String
+                ? DateTime.parse(b['timestamp'])
+                : DateTime.fromMillisecondsSinceEpoch(b['timestamp'] as int);
+        return bTime.compareTo(aTime); // Newest first
+      });
+
+      setState(() {
+        _isLoading = false;
+        _messages = combinedMessages;
+        _isInitialMessagesLoaded = true;
+        _lastMessageCount = combinedMessages.length;
+      });
+
+      debugPrint('🔄 Messages updated. New count: ${_messages.length}');
+
+      if (shouldScrollToBottom) {
+        // Only call once to avoid chaining many scroll attempts
         _scrollToBottom();
 
-        // Add extra attempts with delays
-        Future.delayed(const Duration(milliseconds: 200), () {
-          if (mounted) _scrollToBottom();
-        });
-
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) _scrollToBottom();
-        });
-
-        Future.delayed(const Duration(milliseconds: 1200), () {
-          if (mounted) _scrollToBottom();
-        });
+        // No more multiple delayed attempts
       }
     } catch (e) {
       debugPrint('Error refreshing messages: $e');
@@ -522,8 +561,14 @@ class HomeScreenState extends State<HomeScreen>
   }
 
   Future<List<Map<String, dynamic>>> _loadMessages() async {
+    debugPrint('==========================================');
+    debugPrint('🔍 _loadMessages CALLED');
+    debugPrint('🔍 Fetching messages from API for user ${widget.userId}');
+
     try {
+      debugPrint('🔍 Calling api_service.getMessages()');
       final response = await widget.apiService.getMessages(widget.userId);
+      debugPrint('🔍 API returned ${response.length} messages');
 
       // Debug API response - detailed logging
       debugPrint('======== MESSAGE API RESPONSE ========');
@@ -548,226 +593,13 @@ class HomeScreenState extends State<HomeScreen>
         if (sampleMsg.containsKey('senderPhoto')) {
           debugPrint('senderPhoto: ${sampleMsg['senderPhoto']}');
         }
-
-        // Check if there's a nested sender object
-        if (sampleMsg.containsKey('sender') && sampleMsg['sender'] is Map) {
-          debugPrint('FOUND NESTED SENDER OBJECT:');
-          final sender = sampleMsg['sender'] as Map;
-          debugPrint('Sender keys: ${sender.keys.join(', ')}');
-          if (sender.containsKey('photoUrl')) {
-            debugPrint('sender.photoUrl: ${sender['photoUrl']}');
-          }
-        }
-
-        // Look for any keys containing 'photo', 'image', 'avatar' case-insensitive
-        final photoRelatedKeys =
-            sampleMsg.keys
-                .where(
-                  (key) =>
-                      key.toLowerCase().contains('photo') ||
-                      key.toLowerCase().contains('image') ||
-                      key.toLowerCase().contains('avatar'),
-                )
-                .toList();
-
-        if (photoRelatedKeys.isNotEmpty) {
-          debugPrint('📸 POTENTIAL PHOTO FIELDS FOUND:');
-          for (final key in photoRelatedKeys) {
-            debugPrint('$key: ${sampleMsg[key]}');
-          }
-        } else {
-          debugPrint('⚠️ NO PHOTO-RELATED FIELDS FOUND IN MESSAGE');
-
-          // Since no photo fields were found, let's try to fetch user profiles
-          debugPrint(
-            '🔍 Attempting to fetch first 3 sender profiles to check for photos...',
-          );
-
-          // Get a sample of unique sender IDs (up to 3)
-          final Set<int> uniqueSenderIds = {};
-          for (var msg in response.take(10)) {
-            if (msg.containsKey('senderId') &&
-                msg['senderId'] != null &&
-                uniqueSenderIds.length < 3) {
-              final senderId = msg['senderId'];
-              if (senderId is int) {
-                uniqueSenderIds.add(senderId);
-              } else if (senderId is String) {
-                try {
-                  uniqueSenderIds.add(int.parse(senderId));
-                } catch (e) {
-                  debugPrint('⚠️ Failed to parse senderId: $senderId');
-                }
-              }
-            }
-          }
-
-          // Fetch profile data for the sample senders
-          debugPrint(
-            '🔍 Found ${uniqueSenderIds.length} unique sender IDs to check',
-          );
-          for (final senderId in uniqueSenderIds) {
-            try {
-              final senderData = await widget.apiService.getUserById(senderId);
-              debugPrint(
-                '👤 Sender $senderId data: ${senderData.keys.join(', ')}',
-              );
-
-              if (senderData.containsKey('photoUrl')) {
-                debugPrint(
-                  '📸 Found photo for user $senderId: ${senderData['photoUrl']}',
-                );
-              } else {
-                debugPrint('⚠️ No photoUrl found for user $senderId');
-              }
-            } catch (e) {
-              debugPrint('⚠️ Error fetching sender $senderId profile: $e');
-            }
-          }
-        }
-      }
-      debugPrint('====================================');
-
-      // For any offline messages, try to find matching server messages
-      final List<Map<String, dynamic>> mergedList = List.from(response);
-
-      // Enrich messages with sender photos
-      debugPrint('🖼️ ENRICHING MESSAGES WITH SENDER PHOTOS');
-
-      // Create a map to cache user data so we don't fetch the same user multiple times
-      final Map<int, Map<String, dynamic>> userDataCache = {};
-
-      // Collect all unique sender IDs
-      final Set<int> uniqueSenderIds = {};
-      for (var message in mergedList) {
-        if (message.containsKey('senderId') && message['senderId'] != null) {
-          try {
-            final int senderId =
-                message['senderId'] is int
-                    ? message['senderId']
-                    : int.parse(message['senderId'].toString());
-            uniqueSenderIds.add(senderId);
-          } catch (e) {
-            debugPrint('⚠️ Error parsing senderId: ${message['senderId']}');
-          }
-        }
       }
 
-      debugPrint(
-        '🔍 Found ${uniqueSenderIds.length} unique senders to fetch photos for',
-      );
-
-      // Fetch user data for all unique senders
-      for (final senderId in uniqueSenderIds) {
-        try {
-          final userData = await widget.apiService.getUserById(senderId);
-          userDataCache[senderId] = userData;
-          debugPrint('✅ Cached user data for sender $senderId');
-        } catch (e) {
-          debugPrint('⚠️ Error fetching data for sender $senderId: $e');
-        }
-      }
-
-      // Enrich each message with sender photo URL
-      int enrichedCount = 0;
-      for (var message in mergedList) {
-        if (message.containsKey('senderId') && message['senderId'] != null) {
-          try {
-            final int senderId =
-                message['senderId'] is int
-                    ? message['senderId']
-                    : int.parse(message['senderId'].toString());
-
-            if (userDataCache.containsKey(senderId)) {
-              final userData = userDataCache[senderId]!;
-
-              // Check if user has a photo
-              if (userData.containsKey('photoUrl') &&
-                  userData['photoUrl'] != null &&
-                  userData['photoUrl'].toString().isNotEmpty) {
-                // Add the photo URL to the message
-                message['senderPhoto'] = userData['photoUrl'];
-                enrichedCount++;
-                debugPrint(
-                  '📸 Added photo URL for message from sender $senderId: ${userData['photoUrl']}',
-                );
-              } else {
-                // If photoUrl doesn't exist, check for avatar, image, or photo fields
-                for (var key in userData.keys) {
-                  if ((key.toLowerCase().contains('photo') ||
-                          key.toLowerCase().contains('image') ||
-                          key.toLowerCase().contains('avatar')) &&
-                      userData[key] != null &&
-                      userData[key].toString().isNotEmpty) {
-                    message['senderPhoto'] = userData[key];
-                    enrichedCount++;
-                    debugPrint(
-                      '📸 Added alternative photo field ($key) for sender $senderId: ${userData[key]}',
-                    );
-                    break;
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            debugPrint('⚠️ Error enriching message with photo: $e');
-            // Skip enriching this message
-          }
-        }
-      }
-
-      debugPrint('📊 Enriched $enrichedCount messages with sender photos');
-
-      // Log each message's photo field for debugging
-      for (var message in mergedList.take(5)) {
-        // Only log first 5 for brevity
-        final senderId = message['senderId'];
-        final hasSenderPhoto =
-            message.containsKey('senderPhoto') &&
-            message['senderPhoto'] != null;
-        debugPrint(
-          'Message from sender $senderId | Has photo: $hasSenderPhoto | ${hasSenderPhoto ? 'URL: ${message['senderPhoto']}' : 'No photo URL'}',
-        );
-      }
-
-      if (_offlineMessages.isNotEmpty) {
-        // Keep offline messages that don't have a matching ID in the response
-        for (var offlineMsg in _offlineMessages) {
-          final String content = offlineMsg['content'] ?? '';
-          final bool hasDuplicate = response.any(
-            (msg) =>
-                msg['content'] == content &&
-                msg['senderId'] == widget.userId &&
-                (DateTime.parse(msg['timestamp']).millisecondsSinceEpoch -
-                        (offlineMsg['timestamp'] as int)) <
-                    60000,
-          ); // 1 minute tolerance
-
-          if (!hasDuplicate) {
-            mergedList.add(offlineMsg);
-          }
-        }
-      }
-
-      // Sort by timestamp (descending)
-      mergedList.sort((a, b) {
-        // Handle different timestamp formats (string from server vs. int from offline)
-        final int timestampA =
-            a['timestamp'] is String
-                ? DateTime.parse(a['timestamp']).millisecondsSinceEpoch
-                : a['timestamp'] as int;
-        final int timestampB =
-            b['timestamp'] is String
-                ? DateTime.parse(b['timestamp']).millisecondsSinceEpoch
-                : b['timestamp'] as int;
-
-        // Descending order (newest first)
-        return timestampB.compareTo(timestampA);
-      });
-
-      return mergedList;
+      debugPrint('==========================================');
+      return response;
     } catch (e) {
-      return _offlineMessages;
+      debugPrint('⚠️ ERROR LOADING MESSAGES: $e');
+      rethrow;
     }
   }
 
@@ -1715,8 +1547,43 @@ class HomeScreenState extends State<HomeScreen>
                   child: FutureBuilder<List<Map<String, dynamic>>>(
                     future: _messagesFuture ?? _loadMessages(),
                     builder: (context, snapshot) {
-                      // If we have already loaded messages in memory, use those directly
-                      if (_isInitialMessagesLoaded) {
+                      // Add extensive debugging to track the message flow issue
+                      debugPrint('==========================================');
+                      debugPrint('🔍 HOME SCREEN - FUTURE BUILDER STATE:');
+                      debugPrint(
+                        '🔍 Connection state: ${snapshot.connectionState}',
+                      );
+                      debugPrint('🔍 Has error: ${snapshot.hasError}');
+                      if (snapshot.hasError) {
+                        debugPrint('🔍 Error: ${snapshot.error}');
+                      }
+                      debugPrint('🔍 Has data: ${snapshot.hasData}');
+                      debugPrint(
+                        '🔍 Data length: ${snapshot.data?.length ?? 0}',
+                      );
+                      debugPrint(
+                        '🔍 _isInitialMessagesLoaded: $_isInitialMessagesLoaded',
+                      );
+                      debugPrint(
+                        '🔍 Current _messages length: ${_messages.length}',
+                      );
+                      debugPrint('==========================================');
+
+                      // Check message data structure if available
+                      if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+                        final firstMessage = snapshot.data!.first;
+                        debugPrint('FIRST MESSAGE DATA:');
+                        debugPrint('ID: ${firstMessage['id']}');
+                        debugPrint('Content: ${firstMessage['content']}');
+                        debugPrint('Timestamp: ${firstMessage['timestamp']}');
+                        debugPrint('Keys: ${firstMessage.keys.join(', ')}');
+                      }
+
+                      // If we have already loaded messages in memory AND the list is not empty, use those
+                      if (_isInitialMessagesLoaded && _messages.isNotEmpty) {
+                        debugPrint(
+                          '✅ Using cached messages (${_messages.length})',
+                        );
                         return _buildMessagesListView(_messages);
                       }
 
@@ -1751,16 +1618,31 @@ class HomeScreenState extends State<HomeScreen>
                         );
                       }
 
-                      // Get messages from snapshot if not loaded yet
+                      // Get messages from snapshot if available
                       final messages = snapshot.data ?? [];
+                      debugPrint(
+                        '📊 Got ${messages.length} messages from snapshot',
+                      );
 
-                      // Store in our in-memory list
-                      if (messages.isNotEmpty && !_isInitialMessagesLoaded) {
-                        _messages = messages;
-                        _isInitialMessagesLoaded = true;
+                      // Critical fix: Always update our in-memory list if we got data from the API
+                      if (messages.isNotEmpty) {
+                        debugPrint(
+                          '🔄 Updating _messages with ${messages.length} messages from API',
+                        );
+                        // Use setState to ensure UI refreshes with new message data
+                        if (mounted) {
+                          setState(() {
+                            _messages = messages;
+                            _isInitialMessagesLoaded = true;
+                          });
+                        } else {
+                          _messages = messages;
+                          _isInitialMessagesLoaded = true;
+                        }
                       }
 
                       if (messages.isEmpty) {
+                        debugPrint('⚠️ No messages available to display');
                         return RefreshIndicator(
                           onRefresh: () async {
                             await _refreshMessages(shouldScrollToBottom: true);
@@ -2493,6 +2375,30 @@ class HomeScreenState extends State<HomeScreen>
   // Update to show the ListView in reverse, with newest at bottom
   Widget _buildMessagesListView(List<Map<String, dynamic>> messages) {
     debugPrint('📱 Building messages list with ${messages.length} messages');
+    debugPrint('==========================================');
+    debugPrint('🔍 _buildMessagesListView CALLED');
+    debugPrint('🔍 Messages count: ${messages.length}');
+
+    if (messages.isEmpty) {
+      debugPrint(
+        '⚠️ WARNING: Empty messages list passed to _buildMessagesListView',
+      );
+      return Center(
+        child: Text(
+          'No messages to display',
+          style: TextStyle(color: Colors.white),
+        ),
+      );
+    }
+
+    // Log first few message IDs for debugging
+    debugPrint('🔍 First few message IDs:');
+    for (var i = 0; i < (messages.length > 5 ? 5 : messages.length); i++) {
+      debugPrint(
+        '   - Message $i: ID=${messages[i]['id']}, Content="${messages[i]['content']}"',
+      );
+    }
+    debugPrint('==========================================');
 
     // Debug check for thumbnails
     for (var message in messages.take(5)) {

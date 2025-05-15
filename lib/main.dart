@@ -15,21 +15,34 @@ import 'components/bottom_navigation.dart';
 import 'controllers/bottom_navigation_controller.dart';
 import 'utils/custom_tab_view.dart';
 import 'dart:convert'; // For JSON parsing
+import 'dart:io' show Platform; // For platform detection
 import 'package:http/http.dart' as http; // For HTTP requests
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Clear the image cache at startup to ensure fresh thumbnails
+  await DefaultCacheManager().emptyCache();
+  CachedNetworkImage.evictFromCache('thumbnailCacheKey');
+  PaintingBinding.instance.imageCache.clear();
+
+  // Load initial configuration
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  String baseUrl = prefs.getString('baseUrl') ?? 'http://localhost:8080';
+
   // Initialize app configuration
   final config = AppConfig();
 
-  // For development purposes, you can override the base URL here
-  // This would be read from environment variables in a CI/CD pipeline
-  if (const bool.fromEnvironment('USE_LOCAL_API')) {
-    config.setCustomBaseUrl(
-      const String.fromEnvironment(
-        'API_URL',
-        defaultValue: 'http://localhost:8080',
-      ),
-    );
+  // Set platform-specific URLs
+  if (Platform.isAndroid) {
+    // For Android, use the special emulator IP
+    print('Detected Android platform - using 10.0.0.81:8080');
+    config.setCustomBaseUrl('http://10.0.0.81:8080');
+  } else {
+    config.setCustomBaseUrl(baseUrl);
   }
 
   // You could also set different environments based on build flags
@@ -48,13 +61,17 @@ void main() {
   if (kDebugMode) {
     print('Initializing app with baseUrl: ${config.baseUrl}');
     print('Environment: $environment');
+    print('Platform: ${Platform.operatingSystem}');
+    print('Is Android: ${Platform.isAndroid}');
   }
 
-  runApp(const MyApp());
+  runApp(MyApp(initialRoute: '/'));
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+  final String initialRoute;
+
+  const MyApp({super.key, required this.initialRoute});
 
   @override
   MyAppState createState() => MyAppState();
@@ -76,11 +93,49 @@ class MyAppState extends State<MyApp> {
 
   Future<Map<String, dynamic>?> _initialize() async {
     debugPrint('Starting initialization');
-    await apiService.initialize();
-    debugPrint('ApiService initialized, checking for current user');
-    final user = await apiService.getCurrentUser();
-    debugPrint('Current user result: $user');
-    return user;
+
+    try {
+      // Initialize the API service, including loading tokens
+      await apiService.initialize();
+
+      // Check for saved preferences to see if we have any token data
+      final prefs = await SharedPreferences.getInstance();
+      final hasToken = prefs.containsKey('auth_token');
+      final hasBackupToken = prefs.containsKey('auth_token_backup');
+      final tokenSaveTime = prefs.getString('token_save_time');
+
+      debugPrint('SharedPreferences has token: $hasToken');
+      debugPrint('SharedPreferences has backup token: $hasBackupToken');
+      if (tokenSaveTime != null) {
+        debugPrint('Token was last saved at: $tokenSaveTime');
+      }
+
+      if (hasToken || hasBackupToken) {
+        // If there's a token, attempt to get current user
+        debugPrint('Found saved token, checking for current user');
+        try {
+          final user = await apiService.getCurrentUser();
+
+          if (user != null) {
+            debugPrint('✅ Auto-login successful with saved token');
+            return user;
+          } else {
+            debugPrint('⚠️ Saved token is invalid, will need to login again');
+            return null;
+          }
+        } catch (e) {
+          debugPrint('⚠️ Error validating saved token: $e');
+          return null;
+        }
+      } else {
+        debugPrint('No saved token, user will need to login');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('❌ Error during initialization: $e');
+      // Continue to login screen on error
+      return null;
+    }
   }
 
   @override
@@ -161,7 +216,7 @@ class MainAppContainerState extends State<MainAppContainer> {
   final PageController _pageController = PageController();
 
   // THUMBNAIL TEST VARIABLES
-  bool _showThumbnailTest = true; // Set to true to display the test
+  bool _showThumbnailTest = false; // Set to true to display the test
   String? _testThumbnailUrl;
   String? _testVideoUrl;
   String? _testErrorMessage;
@@ -172,9 +227,9 @@ class MainAppContainerState extends State<MainAppContainer> {
     super.initState();
 
     // Run the thumbnail test if enabled
-    if (_showThumbnailTest) {
-      _testThumbnails();
-    }
+    //  if (_showThumbnailTest) {
+    //   _testThumbnails();
+    //  }
 
     // Initialize all screens
     _screens = [
@@ -221,7 +276,7 @@ class MainAppContainerState extends State<MainAppContainer> {
   // THUMBNAIL TEST METHOD
   Future<void> _testThumbnails() async {
     setState(() {
-      _isTestLoading = true;
+      _isTestLoading = false;
       _testErrorMessage = null;
     });
 
@@ -271,11 +326,9 @@ class MainAppContainerState extends State<MainAppContainer> {
               }
 
               setState(() {
-                _testThumbnailUrl = fullThumbnailUrl;
                 _testVideoUrl = videoUrl;
                 _isTestLoading = false;
               });
-              print('Found thumbnailUrl: $_testThumbnailUrl');
               return;
             }
           }
@@ -508,6 +561,7 @@ class MainAppContainerState extends State<MainAppContainer> {
                                     (context) => VideoPlayerScreen(
                                       videoUrl: _testVideoUrl!,
                                       isLocalFile: false,
+                                      baseUrl: widget.apiService.baseUrl,
                                     ),
                               ),
                             );
