@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'profile_screen.dart';
 import '../services/api_service.dart';
 import 'home_screen.dart';
 import '../utils/page_transitions.dart';
 import '../main.dart'; // Import to access MainAppContainer
-import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   final ApiService apiService;
@@ -33,6 +32,12 @@ class LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    // Add a slight delay to let the UI initialize before checking login
+    Future.delayed(Duration(milliseconds: 300), () {
+      if (mounted) {
+        _checkLoggedInUser();
+      }
+    });
   }
 
   @override
@@ -45,15 +50,71 @@ class LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  Future<void> _checkLoggedInUser() async {
+    try {
+      debugPrint('LOGIN_SCREEN: Starting auto-login check...');
+
+      // First check if explicitly logged out (for debug mode)
+      if (kDebugMode) {
+        final prefs = await SharedPreferences.getInstance();
+        final wasExplicitlyLoggedOut =
+            prefs.getBool('explicitly_logged_out') ?? false;
+
+        if (wasExplicitlyLoggedOut) {
+          debugPrint(
+            'LOGIN_SCREEN: Skipping auto-login check in debug mode due to explicit logout flag',
+          );
+          return; // Stay on login screen
+        }
+      }
+
+      final user = await widget.apiService.getCurrentUser();
+
+      if (user != null && mounted) {
+        // Extra validation - make sure we have a valid user ID
+        final userId = user['userId'];
+        final userRole = user['role'] ?? 'USER';
+
+        debugPrint(
+          'LOGIN_SCREEN: Auto-login successful, userId: $userId, role: $userRole',
+        );
+
+        // Only navigate if we have a valid user ID
+        if (userId != null) {
+          debugPrint('LOGIN_SCREEN: Navigating to MainAppContainer');
+          slidePushReplacement(
+            context,
+            MainAppContainer(
+              apiService: widget.apiService,
+              userId: userId,
+              userRole: userRole,
+            ),
+          );
+        } else {
+          debugPrint('LOGIN_SCREEN: Not navigating - userId is null');
+        }
+      } else {
+        // No valid login found
+        debugPrint(
+          'LOGIN_SCREEN: No valid login credentials found, staying at login screen',
+        );
+      }
+    } catch (e) {
+      // Handle any errors during auto-login check
+      debugPrint('LOGIN_SCREEN: Error during auto-login check: $e');
+      // Stay on login screen
+    }
+  }
+
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
     try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = '';
+      });
+
       final response = await widget.apiService.login(
         _emailController.text,
         _passwordController.text,
@@ -61,6 +122,12 @@ class LoginScreenState extends State<LoginScreen> {
 
       if (response != null) {
         if (!mounted) return;
+
+        // Clear the explicitly_logged_out flag
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('explicitly_logged_out', false);
+
+        debugPrint('Login successful, navigating to main app');
         slidePushReplacement(
           context,
           MainAppContainer(
@@ -75,13 +142,16 @@ class LoginScreenState extends State<LoginScreen> {
         });
       }
     } catch (e) {
+      debugPrint('Login error: $e');
       setState(() {
-        _errorMessage = 'An error occurred. Please try again.';
+        _errorMessage = 'An error occurred during login. Please try again.';
       });
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -95,7 +165,7 @@ class LoginScreenState extends State<LoginScreen> {
         firstName: _firstNameController.text,
         lastName: _lastNameController.text,
         userRole: _selectedRole,
-        photoPath: null, // No photo upload
+        photoPath: null,
       );
       debugPrint('Registration successful, userId: ${result['userId']}');
       if (!mounted) return;
@@ -325,84 +395,6 @@ class LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-                        // Development testing buttons (only in debug mode)
-                        if (kDebugMode)
-                          Column(
-                            children: [
-                              const SizedBox(height: 16),
-                              const Divider(),
-                              const Text(
-                                "Debug Tools",
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  TextButton(
-                                    onPressed: () {
-                                      // Fill with test user credentials
-                                      _emailController.text =
-                                          "john.doe@example.com";
-                                      _passwordController.text = "password123";
-                                    },
-                                    child: const Text(
-                                      "Use Test Account",
-                                      style: TextStyle(color: Colors.blue),
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () async {
-                                      setState(() {
-                                        _errorMessage = "Testing network...";
-                                        _isLoading = true;
-                                      });
-
-                                      try {
-                                        // Try to access a known endpoint with the current server URL (might be a fallback)
-                                        final currentUrl =
-                                            widget.apiService.currentServerUrl;
-                                        final testUrl =
-                                            '$currentUrl/api/users/test';
-
-                                        debugPrint(
-                                          '🔍 Testing connection to $testUrl',
-                                        );
-                                        // Try all possible server fallbacks
-                                        await widget.apiService.tryNextServer();
-
-                                        final response = await http
-                                            .get(
-                                              Uri.parse(testUrl),
-                                              headers: {
-                                                'Accept': 'application/json',
-                                              },
-                                            )
-                                            .timeout(
-                                              const Duration(seconds: 10),
-                                            );
-
-                                        setState(() {
-                                          _isLoading = false;
-                                          _errorMessage =
-                                              "Network: ${response.statusCode} - ${response.body}";
-                                        });
-                                      } catch (e) {
-                                        setState(() {
-                                          _isLoading = false;
-                                          _errorMessage = "Network error: $e";
-                                        });
-                                      }
-                                    },
-                                    child: const Text(
-                                      "Test Network",
-                                      style: TextStyle(color: Colors.orange),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
                       ],
                     ),
                   ),

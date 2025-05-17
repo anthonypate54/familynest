@@ -2398,158 +2398,140 @@ class HomeScreenState extends State<HomeScreen>
 
     try {
       // First, verify user has a valid family for message posting
-      final userData = await widget.apiService.getUserById(widget.userId);
-      if (!mounted) return; // Check if widget is still mounted after async call
+      // Declare variables outside the inner try block to fix scoping
+      Map<String, dynamic>? userData;
+      Map<String, dynamic>? optimisticMessage;
+      bool? success;
 
-      if (userData['familyId'] == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'You need to be in a family to send messages. Please create or join a family first.',
+      try {
+        userData = await widget.apiService.getUserById(widget.userId);
+        if (!mounted)
+          return; // Check if widget is still mounted after async call
+
+        if (userData['familyId'] == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'You need to be in a family to send messages. Please create or join a family first.',
+              ),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
             ),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 5),
-          ),
+          );
+          return;
+        }
+
+        // Clear the input field immediately
+        _messageController.clear();
+
+        // Fix: Check for both photoUrl and photo fields
+        if (_cachedUserPhotoUrl == null) {
+          final photoUrl = userData['photoUrl'] ?? userData['photo'];
+          if (photoUrl != null) {
+            _cachedUserPhotoUrl = photoUrl;
+            debugPrint('📸 Updated cached photo URL: $_cachedUserPhotoUrl');
+          }
+        }
+
+        // Using the optimistic approach - add it to offline messages first
+        optimisticMessage = {
+          'id': DateTime.now().millisecondsSinceEpoch,
+          'content': messageContent,
+          'senderId': widget.userId,
+          'senderUsername': userData['username'] ?? 'Unknown',
+          'senderFirstName': userData['firstName'] ?? 'User',
+          'senderLastName': userData['lastName'] ?? '',
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'status': 'sending',
+          'senderPhoto': _cachedUserPhotoUrl, // Use cached photo URL
+          'familyId': userData['familyId'],
+          'familyName': userData['familyDetails']?['name'] ?? 'Unknown Family',
+          'offlineMessage': true,
+        };
+
+        // Add to offline messages and update UI immediately
+        setState(() {
+          // Insert at beginning of offline messages
+          _offlineMessages.insert(0, optimisticMessage!);
+
+          // Insert at beginning of displayed messages
+          _messages.insert(0, optimisticMessage);
+        });
+
+        // Scroll after state update
+        _scrollToBottom();
+
+        // Now send to server
+        success = await widget.apiService.postMessage(
+          widget.userId,
+          messageContent,
+          familyId: userData['familyId'], // Always pass explicit family ID
         );
+
+        if (!mounted) return; // Check mounted after async call
+      } catch (e) {
+        // Handle authentication errors gracefully
+        if (e.toString().contains('Not authenticated')) {
+          debugPrint('Authentication error in _postSimpleTextMessage: $e');
+          // User is no longer authenticated, clear UI but don't show error
+          return;
+        }
+
+        // Show error for other exceptions
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
         return;
       }
 
-      // Clear the input field immediately
-      _messageController.clear();
-
-      // Fix: Check for both photoUrl and photo fields
-      if (_cachedUserPhotoUrl == null) {
-        final photoUrl = userData['photoUrl'] ?? userData['photo'];
-        if (photoUrl != null) {
-          _cachedUserPhotoUrl = photoUrl;
-          debugPrint('📸 Updated cached photo URL: $_cachedUserPhotoUrl');
-        }
-      }
-
-      // Using the optimistic approach - add it to offline messages first
-      final optimisticMessage = {
-        'id': DateTime.now().millisecondsSinceEpoch,
-        'content': messageContent,
-        'senderId': widget.userId,
-        'senderUsername': userData['username'] ?? 'Unknown',
-        'senderFirstName': userData['firstName'] ?? 'User',
-        'senderLastName': userData['lastName'] ?? '',
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-        'status': 'sending',
-        'senderPhoto': _cachedUserPhotoUrl, // Use cached photo URL
-        'familyId': userData['familyId'],
-        'familyName': userData['familyDetails']?['name'] ?? 'Unknown Family',
-        'offlineMessage': true,
-      };
-
-      // Add to offline messages and update UI immediately
-      setState(() {
-        // Insert at beginning of offline messages
-        _offlineMessages.insert(0, optimisticMessage);
-
-        // Insert at beginning of displayed messages
-        _messages.insert(0, optimisticMessage);
-      });
-
-      // Scroll after state update
-      _scrollToBottom();
-
-      // Now send to server
-      final bool success = await widget.apiService.postMessage(
-        widget.userId,
-        messageContent,
-        familyId: userData['familyId'], // Always pass explicit family ID
-      );
-
-      if (!mounted) return; // Check mounted after async call
-
-      if (success) {
-        // Show success toast
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Message sent successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 1),
-          ),
-        );
-
-        // Verify message is in database
-        try {
-          final checkMessages = await widget.apiService.getMessages(
-            widget.userId,
-          );
-
-          if (!mounted) return; // Check mounted after async call
-
-          final foundMessage = checkMessages.any(
-            (m) =>
-                m['content'] == messageContent &&
-                m['senderId'] == widget.userId,
-          );
-
-          if (foundMessage) {
-            // Message successfully saved - just update the status of our optimistic message
-            setState(() {
-              // Find the optimistic message
-              final messageIndex = _offlineMessages.indexWhere(
-                (msg) => msg['id'] == optimisticMessage['id'],
-              );
-
-              if (messageIndex >= 0) {
-                // Remove from offline messages since it's confirmed on server
-                _offlineMessages.removeAt(messageIndex);
-              }
-
-              // Update the message in the in-memory list to show it as confirmed
-              final index = _messages.indexWhere(
-                (msg) => msg['id'] == optimisticMessage['id'],
-              );
-              if (index >= 0) {
-                // Update the message to show it's confirmed
-                _messages[index] = {
-                  ..._messages[index],
-                  'status': 'sent',
-                  'offlineMessage': false,
-                  'hasValidId': true,
-                };
-              }
-            });
-
-            // No need for scrolling here - message is already in view
-          } else {
-            // Only do a full refresh if we can't find the message
-            _refreshMessages(shouldScrollToBottom: true);
-          }
-        } catch (e) {
-          // Continue anyway
-        }
-      } else {
-        // Mark failed in our offline messages list so user knows it didn't go through
+      // Update the status of the optimistic message after server response
+      if (success == true && optimisticMessage != null && mounted) {
         setState(() {
-          final index = _offlineMessages.indexWhere(
-            (msg) => msg['id'] == optimisticMessage['id'],
+          final index = _messages.indexWhere(
+            (msg) =>
+                msg['offlineMessage'] == true &&
+                msg['content'] == messageContent,
           );
-          if (index >= 0) {
-            _offlineMessages[index]['status'] = 'failed';
+          if (index != -1) {
+            _messages[index]['status'] = 'sent';
           }
 
-          // Update the message in the in-memory list to show it as failed
-          final msgIndex = _messages.indexWhere(
-            (msg) => msg['id'] == optimisticMessage['id'],
+          final offlineIndex = _offlineMessages.indexWhere(
+            (msg) =>
+                msg['offlineMessage'] == true &&
+                msg['content'] == messageContent,
           );
-          if (msgIndex >= 0) {
-            // Update the message to show it's failed
-            _messages[msgIndex] = {..._messages[msgIndex], 'status': 'failed'};
+          if (offlineIndex != -1) {
+            _offlineMessages[offlineIndex]['status'] = 'sent';
           }
         });
+        _refreshMessages(shouldScrollToBottom: false);
+      } else if (success == false && optimisticMessage != null && mounted) {
+        // Mark message as failed
+        setState(() {
+          final index = _messages.indexWhere(
+            (msg) =>
+                msg['offlineMessage'] == true &&
+                msg['content'] == messageContent,
+          );
+          if (index != -1) {
+            _messages[index]['status'] = 'failed';
+          }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to send message. Please try again.'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
+          final offlineIndex = _offlineMessages.indexWhere(
+            (msg) =>
+                msg['offlineMessage'] == true &&
+                msg['content'] == messageContent,
+          );
+          if (offlineIndex != -1) {
+            _offlineMessages[offlineIndex]['status'] = 'failed';
+          }
+        });
       }
     } catch (e) {
       if (!mounted)

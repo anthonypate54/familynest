@@ -20,6 +20,7 @@ import 'package:http/http.dart' as http; // For HTTP requests
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:async'; // For Timer
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -120,6 +121,22 @@ class MyAppState extends State<MyApp> {
     try {
       // Check for saved preferences to see if we have any token data
       final prefs = await SharedPreferences.getInstance();
+
+      // In debug mode, set the explicitly_logged_out flag to true
+      // to prevent auto-login on first run
+      if (kDebugMode) {
+        await prefs.setBool('explicitly_logged_out', true);
+        debugPrint(
+          'DEBUG MODE: Set explicitly_logged_out flag to prevent auto-login',
+        );
+
+        // For a clean slate in debug mode, clear credentials
+        await prefs.remove('auth_token');
+        await prefs.remove('auth_token_backup');
+        await prefs.remove('user_id');
+        await prefs.remove('is_logged_in');
+        debugPrint('DEBUG MODE: Clearing saved credentials for fresh login');
+      }
 
       // Log contents of SharedPreferences at app start
       debugPrint('📋 MAIN.DART - SHARED PREFERENCES AT APP START:');
@@ -293,6 +310,9 @@ class MainAppContainerState extends State<MainAppContainer> {
   String? _testErrorMessage;
   bool _isTestLoading = false;
 
+  // Add a timer instance variable to allow cancellation
+  Timer? _authCheckTimer;
+
   @override
   void initState() {
     super.initState();
@@ -342,6 +362,62 @@ class MainAppContainerState extends State<MainAppContainer> {
     _navigationController.refreshUserFamiliesCallback = () {
       debugPrint('Family data refresh requested');
     };
+
+    // Start an immediate check to ensure we're authenticated
+    _checkAuthenticationState();
+
+    // Periodically check if we're still authenticated
+    // This will prevent app from remaining in a broken state after logout
+    _authCheckTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      _checkAuthenticationState();
+    });
+  }
+
+  // Check if we're still authenticated
+  Future<void> _checkAuthenticationState() async {
+    try {
+      // If token is missing or invalid, this will throw an exception
+      final user = await widget.apiService.getCurrentUser();
+
+      // If we got null but didn't throw an exception, we're not authenticated
+      if (user == null && mounted) {
+        debugPrint('Authentication check failed - redirecting to login');
+        _redirectToLogin();
+      }
+    } catch (e) {
+      if (e.toString().contains('401') ||
+          e.toString().contains('403') ||
+          e.toString().contains('Not authenticated')) {
+        debugPrint('Authentication error detected: $e');
+        if (mounted) {
+          _redirectToLogin();
+        }
+      } else {
+        // For other errors (like network issues), don't redirect
+        debugPrint('Non-authentication error in periodic check: $e');
+      }
+    }
+  }
+
+  // Redirect to login screen
+  void _redirectToLogin() {
+    // Use a delayed call to avoid build issues
+    Future.delayed(Duration.zero, () {
+      if (!mounted) return;
+
+      // Use Navigator.pushAndRemoveUntil to completely clear the navigation stack
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) => LoginScreen(apiService: widget.apiService),
+        ),
+        (route) => false, // Remove all previous routes
+      );
+    });
   }
 
   // THUMBNAIL TEST METHOD
@@ -502,6 +578,8 @@ class MainAppContainerState extends State<MainAppContainer> {
 
   @override
   void dispose() {
+    // Cancel the timer to prevent memory leaks
+    _authCheckTimer?.cancel();
     _pageController.dispose();
     super.dispose();
   }

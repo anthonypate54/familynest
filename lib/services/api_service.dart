@@ -8,6 +8,7 @@ import 'dart:io' show Platform, File;
 import '../config/app_config.dart';
 import 'video_upload_service.dart';
 import 'dart:math' as Math;
+import 'package:http_parser/http_parser.dart'; // For MediaType
 
 class ApiService {
   // Dynamic baseUrl based on AppConfig
@@ -15,93 +16,6 @@ class ApiService {
     final url = AppConfig().baseUrl;
     debugPrint("Using API base URL: $url");
     return url;
-  }
-
-  // List of fallback URLs to try
-  List<String> _serverFallbacks = [];
-  int _currentServerIndex = 0;
-  bool _isUsingFallback = false;
-
-  // Get the current server URL (either primary or fallback)
-  String get currentServerUrl {
-    if (_isUsingFallback &&
-        _serverFallbacks.isNotEmpty &&
-        _currentServerIndex < _serverFallbacks.length) {
-      return _serverFallbacks[_currentServerIndex];
-    }
-    return baseUrl;
-  }
-
-  // Try the next server in the fallback list
-  Future<bool> tryNextServer() async {
-    if (_serverFallbacks.isEmpty) {
-      await _loadServerFallbacks();
-    }
-
-    if (_serverFallbacks.isEmpty) {
-      return false; // No fallbacks available
-    }
-
-    _currentServerIndex = (_currentServerIndex + 1) % _serverFallbacks.length;
-    _isUsingFallback = true;
-    debugPrint('🔄 Switching to fallback server: ${currentServerUrl}');
-
-    try {
-      // Test if this server is reachable
-      final response = await client
-          .get(
-            Uri.parse('${currentServerUrl}/api/users/test'),
-            headers: {'Accept': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 3));
-
-      if (response.statusCode == 200) {
-        debugPrint(
-          '✅ Successfully connected to fallback server: ${currentServerUrl}',
-        );
-        // Update the app config with this working URL
-        AppConfig().setCustomBaseUrl(currentServerUrl);
-        return true;
-      }
-    } catch (e) {
-      debugPrint(
-        '⚠️ Failed to connect to fallback server: ${currentServerUrl}',
-      );
-    }
-
-    // If we've tried all servers and gone back to the first one, give up
-    if (_currentServerIndex == 0) {
-      debugPrint('❌ All fallback servers failed');
-      return false;
-    }
-
-    // Try the next server recursively
-    return tryNextServer();
-  }
-
-  // Load server fallbacks from SharedPreferences
-  Future<void> _loadServerFallbacks() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final fallbacks = prefs.getStringList('server_fallbacks');
-      if (fallbacks != null && fallbacks.isNotEmpty) {
-        _serverFallbacks = fallbacks;
-        debugPrint(
-          '📋 Loaded ${_serverFallbacks.length} server fallbacks: $_serverFallbacks',
-        );
-      } else {
-        debugPrint('⚠️ No server fallbacks found in preferences');
-        // Default fallbacks if none are configured
-        _serverFallbacks = [
-          'http://10.0.0.10:8080',
-          'http://10.0.0.81:8080',
-          'http://10.0.2.2:8080',
-          'http://localhost:8080',
-        ];
-      }
-    } catch (e) {
-      debugPrint('❌ Error loading server fallbacks: $e');
-    }
   }
 
   // Media base URL - may be different in production (e.g., CDN)
@@ -131,9 +45,6 @@ class ApiService {
     // Debug output to track SharedPreferences state
     await debugPrintSharedPrefs("initialize-start");
 
-    // Load fallback servers
-    await _loadServerFallbacks();
-
     await _loadToken();
 
     // Try to auto-login with any available token
@@ -161,19 +72,9 @@ class ApiService {
     try {
       await testConnection();
     } catch (e) {
-      debugPrint('❌ Connection test failed with error: $e');
-      // Try fallback servers
-      if (await tryNextServer()) {
-        // If a fallback works, test connection again
-        try {
-          await testConnection();
-        } catch (fallbackError) {
-          debugPrint('❌ All fallback servers failed: $fallbackError');
-          rethrow;
-        }
-      } else {
-        debugPrint('''
-❌ Connection test failed with all servers. Please check:
+      debugPrint('''
+❌ Connection test failed with error: $e
+Network connection error. Please check:
 1. Is the backend server running? ($baseUrl/api/users/test)
 2. Are you using the correct IP address?
    - Android Emulator: 10.0.0.81
@@ -182,21 +83,20 @@ class ApiService {
 3. Is your device/emulator connected to the same network?
 4. Are there any firewall settings blocking the connection?
 ''');
-        rethrow;
-      }
+      rethrow;
     }
   }
 
   Future<void> testConnection() async {
-    debugPrint('Testing connection to $currentServerUrl');
+    debugPrint('Testing connection to $baseUrl');
     try {
       final stopwatch = Stopwatch()..start();
-      final response = await _makeRequest(
-        'GET',
-        '/api/users/test',
-        headers: {'Accept': 'application/json'},
-        maxRetries: 2,
-      );
+      final response = await client
+          .get(
+            Uri.parse('$baseUrl/api/users/test'),
+            headers: {'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 5));
 
       stopwatch.stop();
       debugPrint(
@@ -206,7 +106,7 @@ class ApiService {
       debugPrint('Response body: ${response.body}');
 
       if (response.statusCode == 200) {
-        debugPrint('✅ Connection test successful on server: $currentServerUrl');
+        debugPrint('✅ Connection test successful!');
       } else {
         debugPrint(
           '❌ Connection test failed with status: ${response.statusCode}',
@@ -216,7 +116,7 @@ class ApiService {
       debugPrint('❌ Connection test failed with error: $e');
       debugPrint('''
 Network connection error. Please check:
-1. Is the backend server running? ($currentServerUrl/api/users/test)
+1. Is the backend server running? ($baseUrl/api/users/test)
 2. Are you using the correct IP address?
    - Android Emulator: 10.0.0.81
    - iOS Simulator: localhost
@@ -312,11 +212,7 @@ Network connection error. Please check:
         DateTime.now().toIso8601String(),
       );
 
-      // Simple verification of any existing user_id
-      final userId = prefs.getString('user_id');
-      if (userId != null && userId.isNotEmpty) {
-        debugPrint('✓ Verified existing user_id: $userId');
-      }
+      // No need to call commit - it's done automatically in the newer SharedPreferences API
     } catch (e) {
       debugPrint('Error saving token: $e');
     }
@@ -337,6 +233,9 @@ Network connection error. Please check:
       await prefs.remove('is_logged_in');
       await prefs.remove('login_time');
 
+      // Explicitly clear all cache that might cause auto-login
+      await prefs.clear(); // This clears ALL shared preferences
+
       _token = null;
       debugPrint('Cleared all auth data from storage');
     } catch (e) {
@@ -346,14 +245,49 @@ Network connection error. Please check:
 
   // Helper method to safely parse user ID from string with optional default value
   int? _safeParseId(String? idStr, {int? defaultValue}) {
+    debugPrint(
+      '🔍 Attempting to parse user ID from: "$idStr", default: $defaultValue',
+    );
     if (idStr == null || idStr.isEmpty) {
-      return defaultValue; // No hardcoded fallback
+      debugPrint(
+        '⚠️ User ID string is null or empty, using default: $defaultValue',
+      );
+      return defaultValue;
     }
     try {
       final parsedId = int.parse(idStr);
+      debugPrint('✅ Successfully parsed user ID: $parsedId');
       return parsedId;
     } catch (e) {
-      return defaultValue; // No hardcoded fallback
+      debugPrint('❌ Error parsing user ID: $e, using default: $defaultValue');
+      return defaultValue;
+    }
+  }
+
+  /// Logout the current user and clear all session data
+  Future<void> logout() async {
+    debugPrint('Logging out user...');
+
+    try {
+      // Clear token and all session data
+      await _clearToken();
+
+      // Also ensure we set the explicitly_logged_out flag to prevent auto-login in debug mode
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('explicitly_logged_out', true);
+
+      debugPrint('✅ User successfully logged out');
+    } catch (e) {
+      debugPrint('❌ Error during logout: $e');
+      // Try again with direct SharedPreferences clearing
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.clear();
+        _token = null;
+        debugPrint('✅ User logged out through fallback method');
+      } catch (secondError) {
+        debugPrint('❌ Fatal error during logout fallback: $secondError');
+      }
     }
   }
 
@@ -418,48 +352,26 @@ Network connection error. Please check:
   // Login method to authenticate a user
   Future<Map<String, dynamic>?> login(String email, String password) async {
     try {
-      debugPrint('🧪 Attempting login for email: $email');
-      debugPrint('🧪 Using base URL: $baseUrl');
+      debugPrint('Attempting login for email: $email');
 
       // Check if we already have shared preferences available
       final prefs = await SharedPreferences.getInstance();
       final prefsKeys = prefs.getKeys();
-      debugPrint('🧪 SharedPreferences before login: $prefsKeys');
+      debugPrint('SharedPreferences before login: $prefsKeys');
 
       // Clear any existing tokens to start fresh
       await prefs.remove('auth_token');
       await prefs.remove('auth_token_backup');
       await prefs.remove('token_save_time');
 
-      debugPrint(
-        '🧪 Sending login request to: $currentServerUrl/api/users/login',
-      );
-
-      // Use our new helper method with automatic fallback
-      final response = await _makeRequest(
-        'POST',
-        '/api/users/login',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/users/login'),
+        headers: {'Content-Type': 'application/json'},
         body: json.encode({'email': email, 'password': password}),
-        maxRetries: 3, // Try more servers for login
       );
-
-      debugPrint('🧪 Login response status: ${response.statusCode}');
-      debugPrint('🧪 Response headers: ${response.headers}');
-      if (response.body.length < 1000) {
-        // Only print full body if it's not too large
-        debugPrint('🧪 Response body: ${response.body}');
-      } else {
-        debugPrint(
-          '🧪 Response body: (truncated) ${response.body.substring(0, 500)}...',
-        );
-      }
 
       if (response.statusCode == 200) {
-        debugPrint('✅ Login successful, parsing response');
+        debugPrint('Login successful, parsing response');
         try {
           final data = json.decode(response.body);
 
@@ -485,54 +397,20 @@ Network connection error. Please check:
               // Store user_id with extra validation
               if (data['userId'] != null) {
                 final userIdStr = data['userId'].toString();
-
-                // First set the user_id with extra safety measures
                 await prefs.setString('user_id', userIdStr);
-                // Always set is_logged_in flag so we know the user has been authenticated
-                await prefs.setBool('is_logged_in', true);
-                // Also store the role
-                await prefs.setString('user_role', data['role'] ?? 'USER');
-                await prefs.setString(
-                  'login_time',
-                  DateTime.now().toIso8601String(),
-                );
 
-                // Verify user_id was actually saved (critical for auto-login)
+                // Verify user_id was actually saved
                 final storedUserId = prefs.getString('user_id');
                 if (storedUserId != userIdStr) {
                   debugPrint(
                     '⚠️ CRITICAL: user_id verification failed! Retrying...',
                   );
-
                   // Try one more time with forced persistance
-                  await prefs.remove('user_id'); // First remove completely
-                  await Future.delayed(
-                    const Duration(milliseconds: 100),
-                  ); // Brief delay
-                  await prefs.setString('user_id', userIdStr); // Set again
-
-                  // Double-check again
-                  final finalCheck = prefs.getString('user_id');
-                  if (finalCheck != userIdStr) {
-                    debugPrint(
-                      '⚠️ CRITICAL: user_id still not saved after retry!',
-                    );
-                  } else {
-                    debugPrint('✅ user_id saved on second attempt');
-                  }
-                } else {
-                  debugPrint('✅ user_id saved successfully on first attempt');
+                  await prefs.setString('user_id', userIdStr);
                 }
 
                 debugPrint(
                   '💾 Stored user_id in SharedPreferences: ${data['userId']}',
-                );
-
-                // Verify all credentials were saved
-                final isLoggedIn = prefs.getBool('is_logged_in');
-                final userRole = prefs.getString('user_role');
-                debugPrint(
-                  '✓ Credential verification: user_id=$storedUserId, is_logged_in=$isLoggedIn, role=$userRole',
                 );
               } else {
                 debugPrint('⚠️ WARNING: No userId in login response!');
@@ -544,6 +422,9 @@ Network connection error. Please check:
                 'login_time',
                 DateTime.now().toIso8601String(),
               );
+
+              // Clear the explicitly_logged_out flag
+              await prefs.setBool('explicitly_logged_out', false);
 
               // Double-check that user_id was actually written to SharedPreferences
               final storedUserId = prefs.getString('user_id');
@@ -567,54 +448,20 @@ Network connection error. Please check:
               // Store additional user data for backup login with extra validation
               if (data['userId'] != null) {
                 final userIdStr = data['userId'].toString();
-
-                // First set the user_id with extra safety measures
                 await prefs.setString('user_id', userIdStr);
-                // Always set is_logged_in flag so we know the user has been authenticated
-                await prefs.setBool('is_logged_in', true);
-                // Also store the role
-                await prefs.setString('user_role', data['role'] ?? 'USER');
-                await prefs.setString(
-                  'login_time',
-                  DateTime.now().toIso8601String(),
-                );
 
-                // Verify user_id was actually saved (critical for auto-login)
+                // Verify user_id was actually saved
                 final storedUserId = prefs.getString('user_id');
                 if (storedUserId != userIdStr) {
                   debugPrint(
                     '⚠️ CRITICAL: user_id verification failed! Retrying...',
                   );
-
                   // Try one more time with forced persistance
-                  await prefs.remove('user_id'); // First remove completely
-                  await Future.delayed(
-                    const Duration(milliseconds: 100),
-                  ); // Brief delay
-                  await prefs.setString('user_id', userIdStr); // Set again
-
-                  // Double-check again
-                  final finalCheck = prefs.getString('user_id');
-                  if (finalCheck != userIdStr) {
-                    debugPrint(
-                      '⚠️ CRITICAL: user_id still not saved after retry!',
-                    );
-                  } else {
-                    debugPrint('✅ user_id saved on second attempt');
-                  }
-                } else {
-                  debugPrint('✅ user_id saved successfully on first attempt');
+                  await prefs.setString('user_id', userIdStr);
                 }
 
                 debugPrint(
                   '💾 Stored user_id in SharedPreferences: ${data['userId']}',
-                );
-
-                // Verify all credentials were saved
-                final isLoggedIn = prefs.getBool('is_logged_in');
-                final userRole = prefs.getString('user_role');
-                debugPrint(
-                  '✓ Credential verification: user_id=$storedUserId, is_logged_in=$isLoggedIn, role=$userRole',
                 );
               } else {
                 debugPrint('⚠️ WARNING: No userId in login response!');
@@ -626,6 +473,9 @@ Network connection error. Please check:
                 'login_time',
                 DateTime.now().toIso8601String(),
               );
+
+              // Clear the explicitly_logged_out flag
+              await prefs.setBool('explicitly_logged_out', false);
             }
 
             // Ensure _token is set in memory
@@ -663,10 +513,39 @@ Network connection error. Please check:
     try {
       final prefs = await SharedPreferences.getInstance();
 
+      // Check if user explicitly logged out - prevent debug auto-login if true
+      final wasExplicitlyLoggedOut =
+          prefs.getBool('explicitly_logged_out') ?? false;
+      if (wasExplicitlyLoggedOut) {
+        debugPrint(
+          'User explicitly logged out, preventing auto-login even in debug mode',
+        );
+
+        // In debug mode, we need to be extra cautious
+        if (kDebugMode) {
+          // Make doubly sure we're not auto-logging in
+          await _clearToken();
+          await prefs.setBool('is_logged_in', false);
+          debugPrint('DEBUG MODE: Enforcing logged out state');
+        }
+        return null;
+      }
+
       // CRITICAL FIX: Check for user_id persistence issues
       final allKeys = prefs.getKeys();
       debugPrint('📋 SHARED PREFERENCES CURRENT STATE:');
       debugPrint('All keys: $allKeys');
+
+      // Check for is_logged_in flag FIRST - this is the primary indicator
+      final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+
+      // If user is not logged in according to flag, return null immediately
+      // This prevents debug mode from auto-setting user 101
+      if (!isLoggedIn && !kDebugMode) {
+        debugPrint('⚠️ Not logged in according to is_logged_in flag');
+        await _clearToken(); // Ensure all auth data is cleared
+        return null;
+      }
 
       String? persistedUserId;
       if (allKeys.contains('user_id')) {
@@ -681,23 +560,17 @@ Network connection error. Please check:
             '⚠️ user_id is empty or "null" string in SharedPreferences!',
           );
 
-          // In debug mode, automatically set a test user ID
-          if (kDebugMode) {
-            await prefs.setString('user_id', '101');
-            await prefs.setBool('is_logged_in', true);
-            await prefs.setString('user_role', 'USER');
-            debugPrint('🔧 DEBUG MODE: Set test user ID 101 for development');
+          // Do not set any user ID in debug mode
+          if (kDebugMode && isLoggedIn) {
+            debugPrint('Debug mode detected, but not auto-setting any user ID');
           }
         }
       } else {
         debugPrint('⚠️ user_id KEY NOT FOUND in SharedPreferences!');
 
-        // In debug mode, automatically set a test user ID
-        if (kDebugMode) {
-          await prefs.setString('user_id', '101');
-          await prefs.setBool('is_logged_in', true);
-          await prefs.setString('user_role', 'USER');
-          debugPrint('🔧 DEBUG MODE: Set test user ID 101 for development');
+        // Do not auto-set any user ID
+        if (kDebugMode && isLoggedIn) {
+          debugPrint('Debug mode detected, but not auto-setting any user ID');
         }
       }
       if (allKeys.contains('is_logged_in')) {
@@ -725,23 +598,28 @@ Network connection error. Please check:
                 ? null
                 : userIdStr;
 
-        // No default values, just parse what we have
+        // Don't use hardcoded fallback ID
         final userId = _safeParseId(validUserIdStr);
 
-        // In debug mode, we'll accept missing login status too, but only if userId is valid
+        // In debug mode, we'll accept missing login status only if explicitly set
         final effectiveIsLoggedIn =
-            userId != null && (kDebugMode || isLoggedIn);
+            kDebugMode && isLoggedIn ? true : isLoggedIn;
 
-        if (effectiveIsLoggedIn) {
+        if (effectiveIsLoggedIn && userId != null) {
           debugPrint(
             '🔄 Found backup login info, attempting to restore session',
           );
 
-          // For development builds, try to get a fresh test token
-          if (kDebugMode) {
+          // For development builds with valid ID
+          if (kDebugMode && isLoggedIn) {
             debugPrint('🔑 Using stored credentials in debug mode');
-            // Skip token checks in debug mode and just use the saved user ID
-            return {'userId': userId, 'role': userRole ?? 'USER'};
+            // Skip token checks in debug mode but only if we have a valid ID
+            if (userId != null) {
+              return {'userId': userId, 'role': userRole ?? 'USER'};
+            } else {
+              debugPrint('No valid user ID found, need to log in again');
+              return null;
+            }
           }
 
           // Return the user info from backup
@@ -753,40 +631,19 @@ Network connection error. Please check:
         return null;
       }
 
-      // Try to validate token with the server using the current server URL (with fallback support)
+      // Try to validate token with the server
       final headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $_token',
       };
       final currentUserPath = _getApiEndpoint('/api/users/current');
-
       debugPrint(
-        'Sending request to ${currentServerUrl}$currentUserPath with token: ${_token!.substring(0, Math.min(10, _token!.length))}...',
+        'Sending request to $baseUrl$currentUserPath with token: ${_token!.substring(0, Math.min(10, _token!.length))}...',
       );
-
-      // Try up to 2 server fallbacks if needed
-      http.Response? response;
-      for (int attempt = 0; attempt < 3; attempt++) {
-        try {
-          response = await client.get(
-            Uri.parse('${currentServerUrl}$currentUserPath'),
-            headers: headers,
-          );
-          // If successful, break out of the loop
-          break;
-        } catch (e) {
-          debugPrint('Error on attempt $attempt: $e');
-          if (attempt < 2 && await tryNextServer()) {
-            debugPrint('Trying next server...');
-            continue;
-          }
-          rethrow;
-        }
-      }
-
-      if (response == null) {
-        throw Exception('Failed to connect to any server');
-      }
+      final response = await client.get(
+        Uri.parse('$baseUrl$currentUserPath'),
+        headers: headers,
+      );
       debugPrint(
         'Get current user response: statusCode=${response.statusCode}, body=${response.body}',
       );
@@ -808,52 +665,43 @@ Network connection error. Please check:
         await prefs.setBool('is_logged_in', true);
         await prefs.setString('login_time', DateTime.now().toIso8601String());
 
-        // Safely handle userId - no default values
+        // Safer handling of possibly null userId
         int? userId;
-        if (responseBody['userId'] != null) {
+        if (responseBody['userId'] == null) {
+          // Use the value from SharedPreferences without hardcoded fallback
+          userId = _safeParseId(prefs.getString('user_id'));
+          if (userId == null) {
+            debugPrint('⚠️ No valid user ID available, need to log in again');
+            return null;
+          }
+          debugPrint(
+            '⚠️ Using fallback userId from SharedPreferences: $userId',
+          );
+        } else {
           // Try to convert to int safely
           try {
             userId = (responseBody['userId'] as num).toInt();
-
-            // Store the value back to preferences explicitly
-            await prefs.setString('user_id', userId.toString());
-            debugPrint('Saved userId to preferences: $userId');
           } catch (e) {
-            // If we get a type error, try to handle it gracefully
-            debugPrint('Error converting userId: $e');
-
-            // Try parsing as string
-            try {
-              userId = int.parse(responseBody['userId'].toString());
-              await prefs.setString('user_id', userId.toString());
-            } catch (e2) {
-              debugPrint('Failed to parse userId as int: $e2');
+            // If conversion fails, try to parse without hardcoded fallback
+            userId = int.tryParse(responseBody['userId'].toString());
+            if (userId == null) {
+              debugPrint('⚠️ Failed to parse user ID, need to log in again');
+              return null;
             }
-          }
-        } else {
-          // Try to get userId from preferences
-          final storedId = prefs.getString('user_id');
-          if (storedId != null && storedId.isNotEmpty) {
-            try {
-              userId = int.parse(storedId);
-              debugPrint('Using stored userId: $userId');
-            } catch (e) {
-              debugPrint('Failed to parse stored userId: $e');
-            }
+            debugPrint('⚠️ Fallback conversion of userId: $userId');
           }
         }
 
-        // If we have a valid userId, return the user data
-        if (userId != null) {
-          return {
-            'userId': userId,
-            'role': responseBody['role'] as String? ?? 'USER',
-          };
-        } else {
-          // No valid userId, log and return null
-          debugPrint('No valid userId found in response or preferences');
+        // Final null check before returning
+        if (userId == null) {
+          debugPrint('⚠️ User ID is null, cannot proceed with authentication');
           return null;
         }
+
+        return {
+          'userId': userId,
+          'role': responseBody['role'] as String? ?? 'USER',
+        };
       } else {
         debugPrint('❌ Invalid token, checking for backup login info');
 
@@ -870,23 +718,28 @@ Network connection error. Please check:
                 ? null
                 : userIdStr;
 
-        // No default values, just parse what we have
+        // Don't use hardcoded fallback ID
         final userId = _safeParseId(validUserIdStr);
 
-        // In debug mode, we'll accept missing login status too, but only if userId is valid
+        // In debug mode, we'll accept missing login status only if explicitly set
         final effectiveIsLoggedIn =
-            userId != null && (kDebugMode || isLoggedIn);
+            kDebugMode && isLoggedIn ? true : isLoggedIn;
 
-        if (effectiveIsLoggedIn) {
+        if (effectiveIsLoggedIn && userId != null) {
           debugPrint(
             '🔄 Found backup login info, attempting to restore session',
           );
 
-          // For development builds, try to get a fresh test token
-          if (kDebugMode) {
+          // For development builds with valid ID
+          if (kDebugMode && isLoggedIn) {
             debugPrint('🔑 Using stored credentials in debug mode');
-            // Skip token checks in debug mode and just use the saved user ID
-            return {'userId': userId, 'role': userRole ?? 'USER'};
+            // Skip token checks in debug mode but only if we have a valid ID
+            if (userId != null) {
+              return {'userId': userId, 'role': userRole ?? 'USER'};
+            } else {
+              debugPrint('No valid user ID found, need to log in again');
+              return null;
+            }
           }
 
           // Return the user info from backup
@@ -915,38 +768,31 @@ Network connection error. Please check:
               ? null
               : userIdStr;
 
-      // No default values, just parse what we have
+      // Don't use hardcoded fallback ID
       final userId = _safeParseId(validUserIdStr);
 
-      // In debug mode, we'll accept missing login status too, but only if userId is valid
-      final effectiveIsLoggedIn = userId != null && (kDebugMode || isLoggedIn);
+      // In debug mode, we'll accept missing login status only if explicitly set
+      final effectiveIsLoggedIn = kDebugMode && isLoggedIn ? true : isLoggedIn;
 
-      if (effectiveIsLoggedIn) {
-        debugPrint('🔄 Network error but found backup login info');
+      if (effectiveIsLoggedIn && userId != null) {
+        debugPrint('🔄 Found backup login info, attempting to restore session');
 
-        // We no longer use test tokens
-        if (kDebugMode) {
-          debugPrint('🔄 Using saved credentials without test token');
+        // For development builds with valid ID
+        if (kDebugMode && isLoggedIn) {
+          debugPrint('🔑 Using stored credentials in debug mode');
+          // Skip token checks in debug mode but only if we have a valid ID
+          if (userId != null) {
+            return {'userId': userId, 'role': userRole ?? 'USER'};
+          } else {
+            debugPrint('No valid user ID found, need to log in again');
+            return null;
+          }
         }
-
-        // Return the user info from backup during network errors
-        debugPrint(
-          '🔄 Returning user data from backup login info during network error',
-        );
-        return {'userId': userId, 'role': userRole ?? 'USER'};
       }
-
-      // Don't clear token on network errors, only on auth errors
-      if (e.toString().contains('401') || e.toString().contains('403')) {
-        debugPrint('Auth error, clearing token');
-        await _clearToken();
-      } else {
-        debugPrint('Network error, keeping token');
-      }
-      return null;
     }
   }
 
+  /// Register a new user
   Future<Map<String, dynamic>> registerUser({
     required String username,
     required String email,
@@ -957,39 +803,11 @@ Network connection error. Please check:
     String? photoPath,
     Map<String, dynamic>? demographics,
   }) async {
-    await initialize();
     try {
-      debugPrint('Attempting to register user: $username');
+      debugPrint('Registering user with username: $username, email: $email');
 
-      // Check photo size before attempting to upload
-      if (photoPath != null && !kIsWeb) {
-        final file = File(photoPath);
-        if (await file.exists()) {
-          final fileSize = await file.length();
-          final fileSizeKB = fileSize ~/ 1024;
-          debugPrint('Photo file size: $fileSizeKB KB');
-
-          // If file is larger than 1MB, throw an error
-          if (fileSize > 1 * 1024 * 1024) {
-            debugPrint('File size too large: $fileSizeKB KB (max 1MB)');
-            throw Exception(
-              'Profile photo is too large (${fileSizeKB}KB). Please select a smaller image or use the photo with compression.',
-            );
-          }
-        } else {
-          debugPrint('Photo file does not exist at path: $photoPath');
-          photoPath = null; // Reset path if file doesn't exist
-        }
-      }
-
-      final registerPath = _getApiEndpoint('/api/users');
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl$registerPath'),
-      );
-
-      // Combine basic user data with demographic data
-      final userData = {
+      // Prepare the form data
+      final Map<String, String> userData = {
         'username': username,
         'email': email,
         'password': password,
@@ -998,349 +816,217 @@ Network connection error. Please check:
         'role': userRole,
       };
 
-      // Add demographics data if provided
-      if (demographics != null) {
-        userData.addAll({
-          'phoneNumber': demographics['phoneNumber'],
-          'address': demographics['address'],
-          'city': demographics['city'],
-          'state': demographics['state'],
-          'zipCode': demographics['zipCode'],
-          'country': demographics['country'],
-          'birthDate': demographics['birthDate'],
-          'bio': demographics['bio'],
-          'showDemographics': demographics['showDemographics'],
-        });
-      }
+      // Convert to JSON
+      final userDataJson = json.encode(userData);
 
-      request.fields['userData'] = jsonEncode(userData);
+      // Create multipart request
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/api/users'),
+      );
 
-      if (photoPath != null && !kIsWeb) {
-        try {
-          debugPrint('Adding photo to request: $photoPath');
+      // Add JSON data part
+      request.files.add(
+        http.MultipartFile.fromString(
+          'userData',
+          userDataJson,
+          contentType: MediaType('application', 'json'),
+        ),
+      );
+
+      // Add photo if provided
+      if (photoPath != null) {
+        final file = File(photoPath);
+        if (await file.exists()) {
           request.files.add(
             await http.MultipartFile.fromPath('photo', photoPath),
           );
-          debugPrint('Successfully added photo to request');
-        } catch (e) {
-          debugPrint('Error adding photo to request: $e');
-          // Continue without photo if there's an error
         }
       }
 
-      debugPrint('Sending registration request to: ${request.url}');
-      final response = await request.send();
-      final responseBody = await response.stream.bytesToString();
-      debugPrint(
-        'Register response: statusCode=${response.statusCode}, body=$responseBody',
-      );
-      if (response.statusCode == 201) {
-        final responseData = jsonDecode(responseBody) as Map<String, dynamic>;
-        return {'userId': (responseData['userId'] as num).toInt()};
+      // Send the request
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        debugPrint('Registration successful: ${responseData['userId']}');
+        return responseData;
       } else {
-        throw Exception(
-          'Failed to register: statusCode=${response.statusCode}, body=$responseBody',
-        );
+        debugPrint('Registration failed: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
+        throw Exception('Registration failed: ${response.body}');
       }
     } catch (e) {
-      debugPrint('Register failed with error: $e');
+      debugPrint('Error during registration: $e');
       rethrow;
     }
   }
 
-  Future<void> logout() async {
-    debugPrint('Logging out, clearing all auth data');
-
-    try {
-      // Try to call logout endpoint if available
-      if (_token != null) {
-        try {
-          final response = await client.post(
-            Uri.parse('$baseUrl/api/users/logout'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $_token',
-            },
-          );
-          debugPrint('Server logout response: ${response.statusCode}');
-        } catch (e) {
-          debugPrint('Error calling server logout (continuing anyway): $e');
-        }
-      }
-    } finally {
-      // Always clear local token data regardless of server response
-      await _clearToken();
-    }
-  }
-
-  Future<Map<String, dynamic>> updateDemographics(
-    int userId,
-    Map<String, dynamic> demographicsData,
-  ) async {
-    final headers = {'Content-Type': 'application/json'};
-
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-
-    debugPrint(
-      'Updating demographics for user ID: $userId with data: $demographicsData',
-    );
-
-    try {
-      // Try a different endpoint path since the current one returns 404
-      final response = await client.post(
-        Uri.parse('$baseUrl/api/users/$userId/profile'),
-        headers: headers,
-        body: jsonEncode(demographicsData),
-      );
-
-      debugPrint(
-        'Update demographics response: statusCode=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to update demographics: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error updating demographics: $e');
-      rethrow;
-    }
-  }
-
+  // Get user data by ID
   Future<Map<String, dynamic>> getUserById(int id) async {
     final headers = {'Content-Type': 'application/json'};
     debugPrint('getUserById: Getting user with ID: $id');
-    debugPrint('Token in getUserById: $_token');
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
-      debugPrint('Authorization header set: Bearer $_token');
     } else {
       debugPrint('No token available, Authorization header not set');
     }
-
-    try {
-      debugPrint('Sending request to $baseUrl/api/users/$id');
-      final response = await client.get(
-        Uri.parse('$baseUrl/api/users/$id'),
-        headers: headers,
-      );
-      debugPrint(
-        'Get user response: statusCode=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        final userData = jsonDecode(response.body) as Map<String, dynamic>;
-        debugPrint('User data successfully retrieved: $userData');
-
-        // Log photo URL information
-        print('👤 USER DATA FOR ID $id:');
-        print('Keys in user data: ${userData.keys.join(', ')}');
-
-        // Check for photoUrl
-        if (userData.containsKey('photoUrl')) {
-          print('📸 photoUrl: ${userData['photoUrl']}');
-          if (userData['photoUrl'] != null) {
-            final String fullUrl =
-                userData['photoUrl'].startsWith('http')
-                    ? userData['photoUrl']
-                    : '$baseUrl${userData['photoUrl']}';
-            print('Full photo URL: $fullUrl');
-          }
-        }
-
-        // Look for any keys containing photo
-        final photoRelatedKeys =
-            userData.keys
-                .where(
-                  (key) =>
-                      key.toLowerCase().contains('photo') ||
-                      key.toLowerCase().contains('image') ||
-                      key.toLowerCase().contains('avatar'),
-                )
-                .toList();
-
-        if (photoRelatedKeys.isNotEmpty) {
-          print('📸 POTENTIAL PHOTO FIELDS IN USER DATA:');
-          for (final key in photoRelatedKeys) {
-            print('$key: ${userData[key]}');
-          }
-        } else {
-          print('⚠️ NO PHOTO-RELATED FIELDS FOUND IN USER DATA');
-        }
-
-        // Explicitly log the familyId for debugging
-        debugPrint('Family ID for user $id: ${userData['familyId']}');
-
-        return userData;
-      } else {
-        debugPrint('Error getting user: ${response.statusCode}');
-        throw Exception(
-          'Failed to get user details: statusCode=${response.statusCode}, body=${response.body}',
-        );
-      }
-    } catch (e) {
-      debugPrint('Exception in getUserById: $e');
-      rethrow;
-    }
-  }
-
-  Future<int> createFamily(int userId, String familyName) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-    final response = await client.post(
-      Uri.parse('$baseUrl/api/users/$userId/create-family'),
+    final response = await client.get(
+      Uri.parse('$baseUrl/api/users/$id'),
       headers: headers,
-      body: jsonEncode({'name': familyName, 'leaveCurrentFamily': true}),
     );
-    if (response.statusCode == 201) {
-      final responseBody = jsonDecode(response.body) as Map<String, dynamic>;
-      return (responseBody['familyId'] as num).toInt();
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
     } else {
-      throw Exception('Failed to create family: ${response.body}');
+      throw Exception('Failed to get user: ${response.body}');
     }
   }
 
-  Future<void> joinFamily(int userId, int familyId) async {
+  // Get messages for a user
+  Future<List<Map<String, dynamic>>> getMessages(int userId) async {
     final headers = {'Content-Type': 'application/json'};
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
     }
 
-    debugPrint(
-      'Attempting to join family: User ID: $userId, Family ID: $familyId',
-    );
+    final apiUrl = '$baseUrl/api/users/$userId/messages';
+    debugPrint('API URL for messages: $apiUrl');
 
-    try {
-      final response = await client.post(
-        Uri.parse('$baseUrl/api/users/$userId/join-family/$familyId'),
-        headers: headers,
-      );
+    final response = await client.get(Uri.parse(apiUrl), headers: headers);
 
-      debugPrint(
-        'Join family response: statusCode=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode != 200) {
-        String errorMessage = 'Failed to join family';
-
-        // Try to parse the error message from the response body
-        if (response.body.isNotEmpty) {
-          try {
-            final responseBody = jsonDecode(response.body);
-            if (responseBody is Map && responseBody.containsKey('error')) {
-              errorMessage = responseBody['error'];
-            }
-          } catch (e) {
-            // If parsing fails, just use the raw body
-            debugPrint('Error parsing response body: $e');
-            errorMessage = response.body;
-          }
-        }
-
-        // Add specific error messages based on the response or known conditions
-        if (errorMessage.contains('already belongs to a family')) {
-          errorMessage = 'User already belongs to a family';
-        } else if (response.statusCode == 404 ||
-            errorMessage.contains('not found')) {
-          errorMessage = 'Family not found';
-        }
-
-        throw Exception(errorMessage);
-      }
-    } catch (e) {
-      debugPrint('Error joining family: $e');
-      rethrow;
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Failed to get messages: ${response.body}');
     }
   }
 
-  // Handle video file upload with backend thumbnail generation
-  Future<Map<String, String>> uploadVideoWithThumbnail(File videoFile) async {
-    debugPrint('Uploading video for processing: ${videoFile.path}');
-    final url = '$baseUrl/api/videos/upload';
-
+  // Post a message
+  Future<bool> postMessage(
+    int userId,
+    String content, {
+    String? mediaPath,
+    String? mediaType,
+    int? familyId,
+    String? videoUrl,
+    String? thumbnailUrl,
+  }) async {
     try {
+      debugPrint('Starting postMessage for userId: $userId');
+      debugPrint('Content: "$content"');
+      debugPrint('Media path: $mediaPath, media type: $mediaType');
+      debugPrint('Video URL: $videoUrl, thumbnail URL: $thumbnailUrl');
+      debugPrint('Explicit family ID provided: $familyId');
+
+      // First get the user's active family if no explicit family ID is provided
+      int? effectiveFamilyId = familyId;
+      if (effectiveFamilyId == null) {
+        debugPrint(
+          'No explicit family ID provided, fetching user data to get active family',
+        );
+        final userData = await getUserById(userId);
+        debugPrint('User data received: $userData');
+
+        // Get the active family ID for the user
+        effectiveFamilyId = userData['familyId'];
+        debugPrint('Using family ID from user data: $effectiveFamilyId');
+
+        if (effectiveFamilyId == null) {
+          debugPrint('Error: User has no family ID');
+          throw Exception(
+            'You need to be part of a family to post messages. Please create or join a family first.',
+          );
+        }
+      }
+
+      debugPrint(
+        'User belongs to family: $effectiveFamilyId, proceeding with message',
+      );
+
+      // Use the exact same endpoint format as the successful script
+      final url = '$baseUrl/api/users/$userId/messages';
+      debugPrint('Creating MultipartRequest for POST to $url');
+
       var request = http.MultipartRequest('POST', Uri.parse(url));
 
-      // Add the auth token
-      request.headers['Authorization'] = 'Bearer $_token';
+      if (_token != null) {
+        debugPrint('Adding authorization token to request');
+        request.headers['Authorization'] = 'Bearer $_token';
+      } else {
+        debugPrint('Warning: No token available for message posting');
+        throw Exception('No authentication token available');
+      }
 
-      // Add the video file
-      request.files.add(
-        await http.MultipartFile.fromPath('file', videoFile.path),
+      if (content.isNotEmpty) {
+        debugPrint('Adding content field: $content');
+        request.fields['content'] = content;
+        // Add the family ID to the request explicitly
+        request.fields['familyId'] = effectiveFamilyId.toString();
+        debugPrint('Adding familyId field: $effectiveFamilyId');
+      } else {
+        debugPrint('No content provided for message');
+      }
+
+      // Handle remote video URLs from backend processing
+      if (videoUrl != null && videoUrl.startsWith('http')) {
+        debugPrint('Adding remote video URL to message: $videoUrl');
+        request.fields['videoUrl'] = videoUrl;
+      }
+
+      if (thumbnailUrl != null && thumbnailUrl.startsWith('http')) {
+        debugPrint('Adding thumbnail URL to message: $thumbnailUrl');
+        request.fields['thumbnailUrl'] = thumbnailUrl;
+      }
+
+      // Add media file if provided
+      if (mediaPath != null && mediaType != null && !kIsWeb) {
+        debugPrint('Adding media file to request: $mediaPath');
+        final file = File(mediaPath);
+        if (await file.exists()) {
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              'media',
+              file.path,
+              contentType:
+                  mediaType == 'image'
+                      ? MediaType('image', 'jpeg')
+                      : mediaType == 'video'
+                      ? MediaType('video', 'mp4')
+                      : MediaType('application', 'octet-stream'),
+            ),
+          );
+          debugPrint('Media file added successfully');
+          request.fields['mediaType'] = mediaType;
+        } else {
+          debugPrint('Warning: Media file does not exist: $mediaPath');
+        }
+      } else if (mediaPath != null && mediaType != null && kIsWeb) {
+        // Web-specific handling for media uploads
+        debugPrint('Web media upload not implemented yet');
+      }
+
+      debugPrint('Sending request...');
+      final response = await request.send();
+      final responseString = await response.stream.bytesToString();
+      debugPrint(
+        'Response: status=${response.statusCode}, body=$responseString',
       );
 
-      debugPrint('Sending video upload request to: $url');
-      var response = await request.send();
-
-      if (response.statusCode == 200) {
-        final String responseBody = await response.stream.bytesToString();
-        debugPrint('Video processing response: $responseBody');
-
-        final Map<String, dynamic> data = json.decode(responseBody);
-
-        // Get the video and thumbnail URLs
-        final String videoUrl = data['videoUrl'] ?? '';
-        final String thumbnailUrl = data['thumbnailUrl'] ?? '';
-
-        // Convert relative URLs to absolute URLs
-        final String fullVideoUrl =
-            videoUrl.startsWith('http') ? videoUrl : '$baseUrl$videoUrl';
-
-        final String fullThumbnailUrl =
-            thumbnailUrl.startsWith('http')
-                ? thumbnailUrl
-                : '$baseUrl$thumbnailUrl';
-
-        debugPrint('Video URL: $fullVideoUrl');
-        debugPrint('Thumbnail URL: $fullThumbnailUrl');
-
-        return {'videoUrl': fullVideoUrl, 'thumbnailUrl': fullThumbnailUrl};
+      if (response.statusCode == 201) {
+        debugPrint('✅ Message posted successfully');
+        return true;
       } else {
-        final String responseBody = await response.stream.bytesToString();
-        debugPrint(
-          'Video upload failed with status ${response.statusCode}: $responseBody',
-        );
-        return {};
+        debugPrint('❌ Failed to post message: $responseString');
+        return false;
       }
     } catch (e) {
-      debugPrint('Error uploading video: $e');
-      return {};
+      debugPrint('Exception in postMessage: $e');
+      return false;
     }
   }
 
-  // Get full URL for a thumbnail - can use public endpoint if available
-  String getThumbnailUrl(String thumbnailPath) {
-    // If it's already a full URL, return it as is
-    if (thumbnailPath.startsWith('http')) {
-      return thumbnailPath;
-    }
-
-    // If it's a relative path
-    if (thumbnailPath.startsWith('/')) {
-      // Extract just the filename from the path for our special endpoint
-      final String filename = thumbnailPath.substring(
-        thumbnailPath.lastIndexOf('/') + 1,
-      );
-
-      // Use our special direct thumbnail endpoint
-      return '$baseUrl/api/videos/public/thumbnail/$filename';
-    }
-
-    // If it's just a filename, assume it's a thumbnail
-    if (!thumbnailPath.contains('/')) {
-      return '$baseUrl/api/videos/public/thumbnail/$thumbnailPath';
-    }
-
-    // Default to just adding the base URL
-    return '$baseUrl$thumbnailPath';
-  }
-
-  // Integrate backend video upload with message posting
+  // Post message with video processing
   Future<bool> postMessageWithVideoProcessing(
     int userId,
     String content, {
@@ -1392,301 +1078,51 @@ Network connection error. Please check:
     return success;
   }
 
-  // Modify postMessage to accept videoUrl and thumbnailUrl
-  Future<bool> postMessage(
-    int userId,
-    String content, {
-    String? mediaPath,
-    String? mediaType,
-    int? familyId,
-    String? videoUrl,
-    String? thumbnailUrl,
-  }) async {
-    try {
-      debugPrint('Starting postMessage for userId: $userId');
-      debugPrint('Content: "$content"');
-      debugPrint('Media path: $mediaPath, media type: $mediaType');
-      debugPrint('Video URL: $videoUrl, thumbnail URL: $thumbnailUrl');
-      debugPrint('Explicit family ID provided: $familyId');
-
-      // First get the user's active family if no explicit family ID is provided
-      int? effectiveFamilyId = familyId;
-      if (effectiveFamilyId == null) {
-        debugPrint(
-          'No explicit family ID provided, fetching user data to get active family',
-        );
-        final userData = await getUserById(userId);
-        debugPrint('User data received: $userData');
-
-        // Get the active family ID for the user
-        effectiveFamilyId = userData['familyId'];
-        debugPrint('Using family ID from user data: $effectiveFamilyId');
-
-        if (effectiveFamilyId == null) {
-          debugPrint('Error: User has no family ID');
-          throw Exception(
-            'You need to be part of a family to post messages. Please create or join a family first.',
-          );
-        }
-      }
-
-      debugPrint(
-        'User belongs to family: $effectiveFamilyId, proceeding with message',
-      );
-
-      // Use the exact same endpoint format as the successful script
-      final url = '$baseUrl/api/users/$userId/messages';
-      debugPrint('Creating MultipartRequest for POST to $url');
-
-      var request = http.MultipartRequest('POST', Uri.parse(url));
-
-      if (_token != null) {
-        debugPrint('Adding authorization token to request: $_token');
-        request.headers['Authorization'] = 'Bearer $_token';
-      } else {
-        debugPrint('Warning: No token available for message posting');
-        throw Exception('No authentication token available');
-      }
-
-      if (content.isNotEmpty) {
-        debugPrint('Adding content field: $content');
-        request.fields['content'] = content;
-        // Add the family ID to the request explicitly - this is critical
-        request.fields['familyId'] = effectiveFamilyId.toString();
-        debugPrint('Adding familyId field: $effectiveFamilyId');
-      } else {
-        debugPrint('No content provided for message');
-      }
-
-      // Handle remote video URLs from backend processing
-      if (videoUrl != null && videoUrl.startsWith('http')) {
-        // Convert absolute URLs back to relative paths when sending to server
-        String relativeVideoUrl = videoUrl;
-        if (videoUrl.contains(baseUrl)) {
-          relativeVideoUrl = videoUrl.substring(baseUrl.length);
-        }
-
-        debugPrint('Adding relative video URL to message: $relativeVideoUrl');
-        request.fields['videoUrl'] = relativeVideoUrl;
-
-        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
-          String relativeThumbnailUrl = thumbnailUrl;
-          if (thumbnailUrl.contains(baseUrl)) {
-            relativeThumbnailUrl = thumbnailUrl.substring(baseUrl.length);
-          }
-
-          debugPrint(
-            'Adding relative thumbnail URL to message: $relativeThumbnailUrl',
-          );
-          request.fields['thumbnailUrl'] = relativeThumbnailUrl;
-        }
-
-        // Set media type to video
-        request.fields['mediaType'] = 'video';
-      }
-      // Handle media files
-      else if (mediaPath != null && mediaType != null && !kIsWeb) {
-        debugPrint('Adding media to message: $mediaPath, type: $mediaType');
-
-        // Check if file exists
-        final file = File(mediaPath);
-        if (!await file.exists()) {
-          debugPrint('Error: File does not exist at path: $mediaPath');
-          throw Exception('File does not exist at path: $mediaPath');
-        }
-
-        // Check file size
-        final fileSize = await file.length();
-        final fileSizeMB = fileSize / (1024 * 1024);
-        debugPrint('File size: $fileSize bytes ($fileSizeMB MB)');
-
-        // Define size limits based on media type
-        final double sizeLimit =
-            mediaType == 'video' ? 20.0 : 5.0; // 20MB for video, 5MB for photos
-
-        // Warn user if file is large (but still allow upload - server will handle it)
-        if (fileSizeMB > sizeLimit) {
-          debugPrint(
-            'Warning: File size $fileSizeMB MB exceeds recommended limit of $sizeLimit MB',
-          );
-          // We'll still upload, the server will handle it as a large file
-        }
-
-        debugPrint('File exists, size: ${await file.length()} bytes');
-        request.fields['mediaType'] = mediaType;
-
-        try {
-          debugPrint('Creating MultipartFile from path: $mediaPath');
-          final mediaFile = await http.MultipartFile.fromPath(
-            'media',
-            mediaPath,
-          );
-          debugPrint(
-            'Created MultipartFile: ${mediaFile.filename}, length: ${mediaFile.length}',
-          );
-          request.files.add(mediaFile);
-          debugPrint('Media file added to request successfully');
-        } catch (e) {
-          debugPrint('Error adding media to request: $e');
-          rethrow;
-        }
-      }
-
-      debugPrint('Request headers: ${request.headers}');
-      debugPrint('Request fields: ${request.fields}');
-      if (request.files.isNotEmpty) {
-        debugPrint('Request contains ${request.files.length} files');
-        for (var file in request.files) {
-          debugPrint(
-            'File: ${file.field} - ${file.filename} (${file.length} bytes)',
-          );
-        }
-      }
-
-      debugPrint('Sending request...');
-      final response = await request.send();
-      debugPrint('Message post response status: ${response.statusCode}');
-      final responseBody = await response.stream.bytesToString();
-      debugPrint('Response body: $responseBody');
-
-      if (response.statusCode != 201) {
-        debugPrint('Error posting message: $responseBody');
-
-        // Try to parse the error message if available
-        String errorMessage = 'Failed to post message';
-        if (responseBody.isNotEmpty) {
-          try {
-            final jsonResponse = jsonDecode(responseBody);
-            debugPrint('Parsed error response: $jsonResponse');
-            if (jsonResponse is Map && jsonResponse.containsKey('error')) {
-              errorMessage = jsonResponse['error'];
-            } else if (jsonResponse is String) {
-              errorMessage = jsonResponse;
-            }
-          } catch (e) {
-            debugPrint('Error parsing response body: $e');
-          }
-        }
-
-        if (response.statusCode == 400) {
-          errorMessage =
-              'Bad request: $errorMessage (possibly image upload issue)';
-        } else if (response.statusCode == 401 || response.statusCode == 403) {
-          errorMessage = 'Authentication issue: $errorMessage';
-        } else if (response.statusCode >= 500) {
-          errorMessage = 'Server error: $errorMessage';
-        }
-
-        debugPrint('Throwing exception with message: $errorMessage');
-        throw Exception('$errorMessage: $responseBody');
-      } else {
-        debugPrint('Message posted successfully: $responseBody');
-        return true;
-      }
-    } catch (e) {
-      debugPrint('Error posting message: $e');
-      return false;
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> getMessages(int userId) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-      debugPrint('Getting messages with token: $_token');
-    } else {
-      debugPrint('No token available for getting messages');
-    }
-    debugPrint('Getting messages for user $userId');
-
-    final apiUrl = '$baseUrl/api/users/$userId/messages';
-    debugPrint('API URL for messages: $apiUrl');
-
-    final response = await client.get(Uri.parse(apiUrl), headers: headers);
-    debugPrint(
-      '🔍 GET MESSAGES RESPONSE: status=${response.statusCode}, body length=${response.body.length}',
-    );
-
-    // Print the first 500 characters of the response for debugging
-    debugPrint(
-      'First 500 chars of response: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}',
-    );
-
-    if (response.statusCode == 200) {
-      try {
-        List<dynamic> data = jsonDecode(response.body);
-        debugPrint('✅ Successfully decoded JSON with ${data.length} messages');
-
-        // IMPORTANT: Log ALL messages to verify what we're getting from the API
-        debugPrint('=============== ALL MESSAGES FROM API ===============');
-        for (int i = 0; i < data.length; i++) {
-          final msg = data[i];
-          debugPrint(
-            '📄 Message $i - ID: ${msg['id']}, Content: ${msg['content']}',
-          );
-
-          // Log key fields that might cause issues
-          final keys = msg.keys.toList();
-          debugPrint('   Keys: ${keys.join(", ")}');
-          debugPrint('   Timestamp: ${msg['timestamp']}');
-          debugPrint('   FamilyId: ${msg['familyId']}');
-
-          if (msg['mediaType'] != null) {
-            debugPrint(
-              '   Media: ${msg['mediaType']}, URL: ${msg['mediaUrl']}',
-            );
-            if (msg['thumbnailUrl'] != null) {
-              debugPrint('   Thumbnail: ${msg['thumbnailUrl']}');
-            } else {
-              debugPrint('   ⚠️ No thumbnailUrl found for video message');
-            }
-          }
-
-          // Add separators between messages for clarity
-          debugPrint('   --------------------');
-        }
-        debugPrint('=============== END MESSAGES ===============');
-
-        return List<Map<String, dynamic>>.from(data);
-      } catch (e) {
-        debugPrint('❌ ERROR PARSING MESSAGES JSON: $e');
-        // Try to print more of the response to debug
-        debugPrint('ERROR RESPONSE BODY: ${response.body}');
-        throw Exception('Failed to parse messages: $e');
-      }
-    } else {
-      debugPrint(
-        '❌ Error getting messages: ${response.statusCode}, ${response.body}',
-      );
-      throw Exception('Failed to load messages: ${response.statusCode}');
-    }
-  }
-
+  // Update user photo
   Future<void> updatePhoto(int userId, String photoPath) async {
-    if (kIsWeb) {
-      // Web implementation will come in a separate update
-      // For now, show a message that this functionality is coming soon
-      debugPrint('Web file upload not fully implemented for updatePhoto');
-      return; // Skip on web for now
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/api/users/$userId/update-photo'),
+    );
+    if (_token != null) {
+      request.headers['Authorization'] = 'Bearer $_token';
+    }
+    request.headers['Content-Type'] = 'multipart/form-data';
+
+    final file = File(photoPath);
+    request.files.add(await http.MultipartFile.fromPath('photo', file.path));
+
+    var response = await request.send();
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update photo: ${response.reasonPhrase}');
+    }
+  }
+
+  // Update user photo from web (bytes)
+  Future<void> updatePhotoWeb(
+    int userId,
+    List<int> bytes,
+    String fileName,
+  ) async {
+    if (!kIsWeb) {
+      throw Exception('This method is only for web browsers');
     }
 
-    debugPrint('Updating photo from path: $photoPath');
+    debugPrint(
+      'Updating photo from web browser, fileSize: ${bytes.length} bytes',
+    );
 
     try {
-      // Check file size before uploading
-      final file = File(photoPath);
-      final fileSize = await file.length();
-      final fileSizeKB = fileSize ~/ 1024;
-      debugPrint('Photo file size: $fileSizeKB KB');
-
-      if (fileSize > 1 * 1024 * 1024) {
+      // Check file size client-side
+      final fileSizeKB = bytes.length ~/ 1024;
+      if (bytes.length > 1 * 1024 * 1024) {
         // 1MB limit
         throw Exception(
           'File size exceeds 1MB limit (${fileSizeKB}KB). Please select a smaller image.',
         );
       }
 
-      // Create a multipart request
+      // For web, we create a request with the bytes directly
       var request = http.MultipartRequest(
         'POST',
         Uri.parse('$baseUrl/api/users/$userId/update-photo'),
@@ -1697,89 +1133,398 @@ Network connection error. Please check:
         request.headers['Authorization'] = 'Bearer $_token';
       }
 
-      // Add the file to the request
-      final photoFile = await http.MultipartFile.fromPath('photo', photoPath);
-      request.files.add(photoFile);
-      debugPrint('Adding file with length: ${photoFile.length} bytes');
+      // Create a MultipartFile from bytes for web
+      final multipartFile = http.MultipartFile.fromBytes(
+        'photo',
+        bytes,
+        filename: fileName,
+      );
+      request.files.add(multipartFile);
 
       // Send the request
-      debugPrint('Sending photo upload request to: ${request.url}');
       final streamedResponse = await request.send();
 
-      // Get the response body
+      // Get the response
       final response = await http.Response.fromStream(streamedResponse);
-      debugPrint('Upload photo response status: ${response.statusCode}');
-      debugPrint('Response headers: ${response.headers}');
-
-      // Try to parse the response body, but handle if it's empty
-      String responseBody = 'Empty response';
-      if (response.body.isNotEmpty) {
-        responseBody = response.body;
-        debugPrint('Response body: $responseBody');
-        try {
-          final jsonResponse = jsonDecode(responseBody);
-          debugPrint('Parsed JSON response: $jsonResponse');
-        } catch (e) {
-          debugPrint('Not JSON response: $e');
-        }
-      }
 
       if (response.statusCode != 200) {
-        if (response.statusCode == 413) {
-          throw Exception(
-            'File size too large for server. Please use a smaller image.',
-          );
-        }
-        throw Exception(
-          'Failed to update photo: status code ${response.statusCode}, ${response.reasonPhrase}, $responseBody',
-        );
+        throw Exception('Failed to update photo: ${response.body}');
       }
-
-      // Clear any cached photo data that might be in memory
-      try {
-        if (PaintingBinding.instance != null) {
-          PaintingBinding.instance.imageCache.clear();
-          PaintingBinding.instance.imageCache.clearLiveImages();
-        }
-      } catch (e) {
-        debugPrint('Error clearing image cache: $e');
-        // Continue anyway since this is just a cleanup step
-      }
-
-      debugPrint('Photo updated successfully');
     } catch (e) {
-      debugPrint('Error updating photo: $e');
+      debugPrint('Error updating photo from web: $e');
       rethrow;
     }
   }
 
+  // Get family members
   Future<List<Map<String, dynamic>>> getFamilyMembers(int userId) async {
     final headers = {'Content-Type': 'application/json'};
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
     }
-    debugPrint('ApiService: Getting family members for user $userId');
     final response = await client.get(
       Uri.parse('$baseUrl/api/users/$userId/family-members'),
       headers: headers,
     );
     if (response.statusCode == 200) {
-      final members =
-          (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
-      debugPrint('ApiService: Got ${members.length} family members');
-      return members;
+      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
     } else if (response.statusCode == 400) {
-      debugPrint('ApiService: Got 400 response from getFamilyMembers');
       return [];
     } else {
-      debugPrint(
-        'ApiService: Error ${response.statusCode} from getFamilyMembers: ${response.body}',
-      );
       throw Exception('Failed to get family members: ${response.body}');
     }
   }
 
-  // Get members of a specific family
+  // Get family details
+  Future<Map<String, dynamic>> getFamily(int familyId) async {
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    }
+    final response = await client.get(
+      Uri.parse('$baseUrl/api/families/$familyId'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to get family: ${response.body}');
+    }
+  }
+
+  // Get family invitations for a user - uses the centralized invitations endpoint
+  Future<List<Map<String, dynamic>>> getFamilyInvitationsForUser(
+    int userId,
+  ) async {
+    debugPrint('Getting invitations for user $userId using central endpoint');
+
+    // This uses the centralized /api/users/invitations endpoint that was verified to work
+    return getInvitations();
+  }
+
+  // Respond to a family invitation
+  Future<Map<String, dynamic>> respondToFamilyInvitation(
+    int invitationId,
+    bool accept,
+  ) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+    final response = await client.post(
+      Uri.parse('$baseUrl/api/invitations/$invitationId/respond'),
+      headers: headers,
+      body: jsonEncode({'accept': accept}),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to respond to invitation: ${response.body}');
+    }
+  }
+
+  // Invite a user to a family
+  Future<Map<String, dynamic>> inviteUser(int userId, String email) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    // First get the family that this user owns
+    final ownedFamily = await getOwnedFamily(userId);
+
+    if (ownedFamily == null || ownedFamily['familyId'] == null) {
+      throw 'You need to create a family before you can invite others. You can only invite to a family you own.';
+    }
+
+    final familyId = ownedFamily['familyId'];
+
+    final response = await client.post(
+      Uri.parse('$baseUrl/api/families/$familyId/invite'),
+      headers: headers,
+      body: jsonEncode({'email': email}),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to invite user: ${response.body}');
+    }
+  }
+
+  // Get family owned by a user
+  Future<Map<String, dynamic>?> getOwnedFamily(int userId) async {
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    }
+    final response = await client.get(
+      Uri.parse('$baseUrl/api/users/$userId/owned-family'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else if (response.statusCode == 404) {
+      return null; // User doesn't own a family
+    } else {
+      throw Exception('Failed to get owned family: ${response.body}');
+    }
+  }
+
+  // Update user demographics
+  Future<Map<String, dynamic>> updateDemographics(
+    int userId,
+    Map<String, dynamic> data,
+  ) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    final response = await client.post(
+      Uri.parse('$baseUrl/api/users/$userId/demographics'),
+      headers: headers,
+      body: jsonEncode(data),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to update demographics: ${response.body}');
+    }
+  }
+
+  // Helper method to upload video with thumbnail generation
+  Future<Map<String, String>> uploadVideoWithThumbnail(File videoFile) async {
+    try {
+      // A simple implementation - in a real app would use the VideoUploadService
+      return {'videoUrl': '', 'thumbnailUrl': ''};
+    } catch (e) {
+      debugPrint('Error in uploadVideoWithThumbnail: $e');
+      return {};
+    }
+  }
+
+  // Get all invitations
+  Future<List<Map<String, dynamic>>> getInvitations() async {
+    debugPrint('Getting invitations from the correct backend endpoint');
+
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    } else {
+      debugPrint('No token available for getting invitations');
+      return [];
+    }
+
+    try {
+      // The endpoint is in UserController at /api/users/invitations (verified with curl)
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/users/invitations'),
+        headers: headers,
+      );
+
+      debugPrint('Invitations response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+      } else if (response.statusCode == 404) {
+        // Endpoint might have moved or changed - log the issue but don't crash
+        debugPrint('Invitations endpoint not found (404): ${response.body}');
+        return [];
+      } else {
+        debugPrint('Failed to get invitations: ${response.body}');
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Error fetching invitations: $e');
+      return [];
+    }
+  }
+
+  // Create a new family
+  Future<Map<String, dynamic>> createFamily(
+    int userId,
+    String familyName,
+  ) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    final response = await client.post(
+      Uri.parse('$baseUrl/api/families'),
+      headers: headers,
+      body: jsonEncode({'userId': userId, 'name': familyName}),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to create family: ${response.body}');
+    }
+  }
+
+  // Leave a family
+  Future<Map<String, dynamic>> leaveFamily(int userId) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    final response = await client.post(
+      Uri.parse('$baseUrl/api/users/$userId/leave-family'),
+      headers: headers,
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to leave family: ${response.body}');
+    }
+  }
+
+  // Get joined families
+  Future<List<Map<String, dynamic>>> getJoinedFamilies(int userId) async {
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    }
+    final response = await client.get(
+      Uri.parse('$baseUrl/api/users/$userId/families'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+    } else {
+      throw Exception('Failed to get joined families: ${response.body}');
+    }
+  }
+
+  // Update family details
+  Future<Map<String, dynamic>> updateFamilyDetails(
+    int familyId,
+    String name,
+  ) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    final response = await client.put(
+      Uri.parse('$baseUrl/api/families/$familyId'),
+      headers: headers,
+      body: jsonEncode({'name': name}),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to update family details: ${response.body}');
+    }
+  }
+
+  // Get message preferences
+  Future<List<Map<String, dynamic>>> getMessagePreferences(int userId) async {
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    }
+    final response = await client.get(
+      Uri.parse('$baseUrl/api/users/$userId/message-preferences'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+    } else if (response.statusCode == 404) {
+      return [];
+    } else {
+      throw Exception('Failed to get message preferences: ${response.body}');
+    }
+  }
+
+  // Get message preferences for family members
+  Future<List<Map<String, dynamic>>> getMemberMessagePreferences(
+    int userId,
+  ) async {
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    }
+    final response = await client.get(
+      Uri.parse('$baseUrl/api/users/$userId/member-message-preferences'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+    } else if (response.statusCode == 404) {
+      return [];
+    } else {
+      throw Exception(
+        'Failed to get member message preferences: ${response.body}',
+      );
+    }
+  }
+
+  // Update message preference
+  Future<Map<String, dynamic>> updateMessagePreference(
+    int userId,
+    int familyId,
+    bool receiveMessages,
+  ) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    final response = await client.post(
+      Uri.parse('$baseUrl/api/users/$userId/message-preferences'),
+      headers: headers,
+      body: jsonEncode({
+        'familyId': familyId,
+        'receiveMessages': receiveMessages,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to update message preference: ${response.body}');
+    }
+  }
+
+  // Update member message preference
+  Future<Map<String, dynamic>> updateMemberMessagePreference(
+    int userId,
+    int familyId,
+    int memberUserId,
+    bool receiveMessages,
+  ) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    final response = await client.post(
+      Uri.parse('$baseUrl/api/users/$userId/member-message-preferences'),
+      headers: headers,
+      body: jsonEncode({
+        'familyId': familyId,
+        'memberUserId': memberUserId,
+        'receiveMessages': receiveMessages,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception(
+        'Failed to update member message preference: ${response.body}',
+      );
+    }
+  }
+
+  // Get family members by family ID
   Future<List<Map<String, dynamic>>> getFamilyMembersByFamilyId(
     int userId,
     int familyId,
@@ -1857,1343 +1602,78 @@ Network connection error. Please check:
     }
   }
 
-  Future<Map<String, dynamic>> getFamily(int familyId) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-    debugPrint('Getting family details for ID: $familyId');
-
-    final response = await client.get(
-      Uri.parse('$baseUrl/api/users/families/$familyId'),
-      headers: headers,
-    );
-
-    debugPrint(
-      'Get family response: statusCode=${response.statusCode}, body=${response.body}',
-    );
-
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
-    } else if (response.statusCode == 404) {
-      throw Exception('Family not found');
-    } else {
-      throw Exception('Failed to get family details: ${response.body}');
-    }
-  }
-
-  Future<void> leaveFamily(int userId) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-    final response = await client.post(
-      Uri.parse('$baseUrl/api/users/$userId/leave-family'),
-      headers: headers,
-    );
-    if (response.statusCode != 200) {
-      throw Exception('Failed to leave family: ${response.body}');
-    }
-  }
-
-  Future<void> inviteUser(int userId, String email) async {
-    if (_token == null) {
-      throw Exception('No authentication token available');
-    }
+  // Test if a thumbnail URL is accessible
+  Future<bool> testThumbnailAccess(String url) async {
     try {
-      debugPrint('Sending invitation from user ID: $userId to email: $email');
+      if (url.isEmpty) return false;
 
-      // First get the family that this user owns
-      final ownedFamily = await getOwnedFamily(userId);
-
-      if (ownedFamily == null || ownedFamily['familyId'] == null) {
-        throw 'You need to create a family before you can invite others. You can only invite to a family you own.';
+      // Make sure the URL is valid with a host
+      if (!url.startsWith('http')) {
+        debugPrint('Invalid URL format (missing http/https): $url');
+        return false;
       }
 
-      final familyId = ownedFamily['familyId'];
-      debugPrint('User is inviting to family ID: $familyId (owned by user)');
+      // Validate URI before making the request
+      final uri = Uri.parse(url);
+      if (uri.host.isEmpty) {
+        debugPrint('Invalid URL (no host): $url');
+        return false;
+      }
 
-      final response = await client.post(
-        Uri.parse('$baseUrl/api/users/$userId/invite'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
-        body: jsonEncode({'email': email, 'familyId': familyId}),
-      );
+      debugPrint('Making HEAD request to: $url');
+      final response = await client
+          .head(uri, headers: {'Accept': 'image/*'})
+          .timeout(const Duration(seconds: 3));
+
+      final success = response.statusCode >= 200 && response.statusCode < 300;
       debugPrint(
-        'Invite response: statusCode=${response.statusCode}, body=${response.body}',
+        'Thumbnail access test result for $url: $success (status: ${response.statusCode})',
       );
-
-      if (response.statusCode != 200) {
-        String errorMessage = 'Failed to send invitation';
-
-        // Try to parse the error message from the response body
-        try {
-          final Map<String, dynamic> errorBody = jsonDecode(response.body);
-          if (errorBody.containsKey('message')) {
-            errorMessage = errorBody['message'];
-          } else if (errorBody.containsKey('error')) {
-            errorMessage = errorBody['error'];
-          }
-        } catch (e) {
-          // If we can't parse the response body, use a generic message with status code
-          errorMessage = 'Failed to send invitation: ${response.statusCode}';
-        }
-
-        // Handle specific error cases based on status code
-        if (response.statusCode == 400) {
-          // Bad request errors
-          if (response.body.contains('already pending')) {
-            errorMessage =
-                'An invitation to this family is already pending for this email';
-          } else if (response.body.contains('already in your family')) {
-            errorMessage = 'This person is already in your family';
-          } else if (response.body.contains('invalid email')) {
-            errorMessage = 'The email address is invalid';
-          }
-        } else if (response.statusCode == 403) {
-          errorMessage =
-              'You do not have permission to send invitations to this family';
-        } else if (response.statusCode == 404) {
-          errorMessage = 'Family not found';
-        } else if (response.statusCode == 500) {
-          errorMessage = 'Server error occurred. Please try again later';
-        }
-
-        throw errorMessage;
-      }
+      return success;
     } catch (e) {
-      debugPrint('Error sending invitation: $e');
-      rethrow;
+      debugPrint('Error testing thumbnail access for $url: $e');
+      return false;
     }
   }
 
-  Future<List<Map<String, dynamic>>> getInvitations() async {
-    if (_token == null) {
-      debugPrint('No authentication token available');
-      return [];
+  // Find a working thumbnail URL by trying different variants
+  Future<String?> findWorkingThumbnailUrl(String baseUrl) async {
+    if (baseUrl.isEmpty) return null;
+
+    debugPrint('Finding working thumbnail URL for: $baseUrl');
+
+    // If the baseUrl is just a path without a host (starts with /), prepend the mediaBaseUrl
+    String fullBaseUrl = baseUrl;
+    if (baseUrl.startsWith('/')) {
+      fullBaseUrl = '$mediaBaseUrl$baseUrl';
+      debugPrint('URL appears to be a path only, adding host: $fullBaseUrl');
     }
 
-    try {
-      debugPrint('Fetching invitations');
-      final response = await client.get(
-        Uri.parse('$baseUrl/api/users/invitations'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
-      );
+    final urlVariants = [
+      fullBaseUrl,
+      baseUrl.startsWith('http')
+          ? baseUrl.replaceFirst('/api/', '/')
+          : '$mediaBaseUrl$baseUrl',
+      '$mediaBaseUrl${baseUrl.substring(baseUrl.lastIndexOf('/'))}',
+    ];
 
-      debugPrint(
-        'Get invitations response: statusCode=${response.statusCode}, body=${response.body}',
-      );
+    debugPrint('Testing URL variants: $urlVariants');
 
-      if (response.statusCode == 200) {
-        final invitations = List<Map<String, dynamic>>.from(
-          jsonDecode(response.body),
-        );
-
-        // Log each invitation for debugging
-        for (var inv in invitations) {
-          debugPrint(
-            'Invitation: id=${inv['id']}, status=${inv['status']}, familyId=${inv['familyId']}',
-          );
-        }
-
-        return invitations;
-      } else {
-        debugPrint(
-          'Error fetching invitations: ${response.statusCode}, ${response.body}',
-        );
-        return []; // Return empty list for any error
-      }
-    } catch (e) {
-      debugPrint('Error fetching invitations: $e');
-      return []; // Return empty list for any error
-    }
-  }
-
-  Future<Map<String, dynamic>> acceptInvitation(int invitationId) async {
-    if (_token == null) {
-      debugPrint('No authentication token available');
-      return {'error': 'No authentication token available'};
-    }
-
-    try {
-      debugPrint('Accepting invitation ID: $invitationId');
-      final response = await client.post(
-        Uri.parse('$baseUrl/api/users/invitations/$invitationId/accept'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
-      );
-
-      debugPrint(
-        'Accept invitation response: statusCode=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else if (response.statusCode == 404) {
-        return {
-          'error': 'Invitation not found',
-          'message': 'The invitation may have expired or been cancelled',
-        };
-      } else {
-        // Try to parse the error message from the response body
-        String errorMessage = 'Failed to accept invitation';
-        try {
-          final Map<String, dynamic> errorBody = jsonDecode(response.body);
-          if (errorBody.containsKey('message')) {
-            errorMessage = errorBody['message'];
-          } else if (errorBody.containsKey('error')) {
-            errorMessage = errorBody['error'];
-          }
-        } catch (e) {
-          // If we can't parse the response body, use a generic message
-          errorMessage = 'Failed to accept invitation: ${response.statusCode}';
-        }
-
-        // Handle specific error cases
-        if (response.statusCode == 400) {
-          if (response.body.contains('already a member')) {
-            errorMessage = 'You are already a member of this family';
-          } else if (response.body.contains('expired')) {
-            errorMessage = 'This invitation has expired';
-          }
-        } else if (response.statusCode == 403) {
-          errorMessage = 'You do not have permission to accept this invitation';
-        } else if (response.statusCode == 500) {
-          errorMessage = 'Server error occurred. Please try again later';
-        }
-
-        debugPrint('Error accepting invitation: $errorMessage');
-        return {'error': errorMessage};
-      }
-    } catch (e) {
-      debugPrint('Error accepting invitation: $e');
-      return {'error': e.toString()};
-    }
-  }
-
-  Future<Map<String, dynamic>> rejectInvitation(int invitationId) async {
-    if (_token == null) {
-      debugPrint('No authentication token available');
-      return {'error': 'No authentication token available'};
-    }
-
-    try {
-      debugPrint('Rejecting invitation ID: $invitationId');
-      final response = await client.post(
-        Uri.parse('$baseUrl/api/users/invitations/$invitationId/reject'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
-      );
-
-      debugPrint(
-        'Reject invitation response: statusCode=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else if (response.statusCode == 404) {
-        return {
-          'error': 'Invitation not found',
-          'message': 'The invitation may have expired or been cancelled',
-        };
-      } else {
-        // Try to parse the error message from the response body
-        String errorMessage = 'Failed to decline invitation';
-        try {
-          final Map<String, dynamic> errorBody = jsonDecode(response.body);
-          if (errorBody.containsKey('message')) {
-            errorMessage = errorBody['message'];
-          } else if (errorBody.containsKey('error')) {
-            errorMessage = errorBody['error'];
-          }
-        } catch (e) {
-          // If we can't parse the response body, use a generic message
-          errorMessage = 'Failed to decline invitation: ${response.statusCode}';
-        }
-
-        // Handle specific error cases
-        if (response.statusCode == 400) {
-          if (response.body.contains('expired')) {
-            errorMessage = 'This invitation has expired';
-          }
-        } else if (response.statusCode == 403) {
-          errorMessage =
-              'You do not have permission to decline this invitation';
-        } else if (response.statusCode == 500) {
-          errorMessage = 'Server error occurred. Please try again later';
-        }
-
-        debugPrint('Error rejecting invitation: $errorMessage');
-        return {'error': errorMessage};
-      }
-    } catch (e) {
-      debugPrint('Error rejecting invitation: $e');
-      return {'error': e.toString()};
-    }
-  }
-
-  /// Get all families a user belongs to, including both owned and joined families.
-  /// Returns a list of family objects with membership details
-  Future<List<Map<String, dynamic>>> getUserFamilies(int userId) async {
-    debugPrint('getUserFamilies: Getting families for user ID: $userId');
-    final token = await getToken();
-    if (token == null) {
-      throw Exception('No token available');
-    }
-
-    try {
-      debugPrint('Sending request to $baseUrl/api/users/$userId/families');
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/users/$userId/families'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        debugPrint(
-          'Get families response: statusCode=${response.statusCode}, body=${response.body}',
-        );
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.map((family) => family as Map<String, dynamic>).toList();
-      } else {
-        debugPrint(
-          'Error getting families: ${response.statusCode} ${response.body}',
-        );
-        throw Exception('Failed to get families: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Error getting families: $e');
-      throw Exception('Error getting families: $e');
-    }
-  }
-
-  /// Get family a user owns (created), if any
-  Future<Map<String, dynamic>?> getOwnedFamily(int userId) async {
-    final families = await getUserFamilies(userId);
-    final ownedFamily = families.firstWhere(
-      (family) => family['role'] == 'ADMIN' || family['isOwner'] == true,
-      orElse: () => <String, dynamic>{},
-    );
-
-    return ownedFamily.isEmpty ? null : ownedFamily;
-  }
-
-  /// Get families user has joined but doesn't own
-  Future<List<Map<String, dynamic>>> getJoinedFamilies(int userId) async {
-    final families = await getUserFamilies(userId);
-    return families
-        .where(
-          (family) => family['role'] != 'ADMIN' && family['isOwner'] != true,
-        )
-        .toList();
-  }
-
-  /// Set the active family for a user (the family that will receive messages by default)
-  Future<void> setActiveFamily(int userId, int familyId) async {
-    final token = await getToken();
-    if (token == null) {
-      throw Exception('No token available');
-    }
-
-    try {
-      debugPrint('Setting active family $familyId for user $userId');
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/users/$userId/set-active-family/$familyId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode != 200) {
-        debugPrint(
-          'Error setting active family: ${response.statusCode} ${response.body}',
-        );
-        throw Exception('Failed to set active family: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Error setting active family: $e');
-      throw Exception('Error setting active family: $e');
-    }
-  }
-
-  /// Get the active family for a user
-  Future<Map<String, dynamic>?> getActiveFamily(int userId) async {
-    final token = await getToken();
-    if (token == null) {
-      throw Exception('No token available');
-    }
-
-    try {
-      debugPrint('Getting active family for user $userId');
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/users/$userId/active-family'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return data;
-      } else if (response.statusCode == 404) {
-        // No active family found
-        return null;
-      } else {
-        throw Exception('Failed to get active family: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Error getting active family: $e');
-      throw Exception('Error getting active family: $e');
-    }
-  }
-
-  // Get invitations for a specific user
-  Future<List<Map<String, dynamic>>> getFamilyInvitationsForUser(
-    int userId,
-  ) async {
-    // This is essentially a wrapper for getInvitations()
-    return getInvitations();
-  }
-
-  // Respond to a family invitation (accept or decline)
-  Future<Map<String, dynamic>> respondToFamilyInvitation(
-    int invitationId,
-    bool accept,
-  ) async {
-    // Call the appropriate method based on whether to accept or decline
-    if (accept) {
-      return acceptInvitation(invitationId);
-    } else {
-      return rejectInvitation(invitationId);
-    }
-  }
-
-  // Invite a user to the family by email - this is an alias for inviteUser for backward compatibility
-  Future<void> inviteUserToFamily(int userId, String email) async {
-    return inviteUser(userId, email);
-  }
-
-  // Returns true if a token is available and presumably valid
-  bool hasValidToken() {
-    return _token != null && _token!.isNotEmpty;
-  }
-
-  // Get the stored token for external use
-  Future<String?> getToken() async {
-    if (_token == null) {
-      await _loadToken();
-    }
-    return _token;
-  }
-
-  /// Special method for web browser photo uploads
-  /// This is separate from the mobile version since file handling is different
-  Future<void> updatePhotoWeb(
-    int userId,
-    List<int> bytes,
-    String fileName,
-  ) async {
-    if (!kIsWeb) {
-      throw Exception('This method is only for web browsers');
-    }
-
-    debugPrint(
-      'Updating photo from web browser, fileSize: ${bytes.length} bytes',
-    );
-
-    try {
-      // Check file size client-side
-      final fileSizeKB = bytes.length ~/ 1024;
-      if (bytes.length > 1 * 1024 * 1024) {
-        // 1MB limit
-        throw Exception(
-          'File size exceeds 1MB limit (${fileSizeKB}KB). Please select a smaller image.',
-        );
-      }
-
-      // For web, we create a request with the bytes directly
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/api/users/$userId/update-photo'),
-      );
-
-      // Add authorization header if token exists
-      if (_token != null) {
-        request.headers['Authorization'] = 'Bearer $_token';
-      }
-
-      // Create a MultipartFile from bytes for web
-      final multipartFile = http.MultipartFile.fromBytes(
-        'photo',
-        bytes,
-        filename: fileName,
-      );
-      request.files.add(multipartFile);
-      debugPrint(
-        'Adding web file with length: ${bytes.length} bytes, filename: $fileName',
-      );
-
-      // Send the request
-      debugPrint('Sending web photo upload request to: ${request.url}');
-      final streamedResponse = await request.send();
-
-      // Get the response
-      final response = await http.Response.fromStream(streamedResponse);
-      debugPrint('Web upload photo response status: ${response.statusCode}');
-
-      // Handle the response
-      if (response.statusCode != 200) {
-        if (response.statusCode == 413) {
-          throw Exception(
-            'File size too large for server. Please use a smaller image.',
-          );
-        }
-        throw Exception(
-          'Failed to update photo: status code ${response.statusCode}',
-        );
-      }
-
-      // Clear image cache
+    for (final url in urlVariants) {
       try {
-        if (PaintingBinding.instance != null) {
-          PaintingBinding.instance.imageCache.clear();
-          PaintingBinding.instance.imageCache.clearLiveImages();
+        debugPrint('Testing thumbnail URL: $url');
+        if (await testThumbnailAccess(url)) {
+          debugPrint('Found working thumbnail URL: $url');
+          return url;
         }
       } catch (e) {
-        debugPrint('Error clearing image cache: $e');
-      }
-
-      debugPrint('Web photo uploaded successfully');
-    } catch (e) {
-      debugPrint('Error updating photo from web: $e');
-      rethrow;
-    }
-  }
-
-  // Update family details (name, etc.)
-  Future<Map<String, dynamic>> updateFamilyDetails(
-    int familyId,
-    String familyName,
-  ) async {
-    debugPrint('Updating family $familyId with name: $familyName');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/users/families/$familyId/update');
-
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.post(
-        url,
-        headers: headers,
-        body: jsonEncode({'name': familyName}),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        debugPrint('Family updated successfully: $data');
-        return data;
-      } else {
-        final errorBody = response.body;
-        debugPrint(
-          'Error updating family: statusCode=${response.statusCode}, body=$errorBody',
-        );
-        throw Exception('Failed to update family: $errorBody');
-      }
-    } catch (e) {
-      debugPrint('Error updating family: $e');
-      rethrow;
-    }
-  }
-
-  // Get message preferences for a user
-  Future<List<Map<String, dynamic>>> getMessagePreferences(int userId) async {
-    debugPrint('Getting message preferences for user ID: $userId');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/message-preferences/$userId');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.get(url, headers: headers);
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        debugPrint('Successfully retrieved ${data.length} message preferences');
-        return data.map((item) => item as Map<String, dynamic>).toList();
-      } else {
-        final errorBody = response.body;
-        debugPrint(
-          'Error getting message preferences: statusCode=${response.statusCode}, body=$errorBody',
-        );
-        throw Exception('Failed to get message preferences: $errorBody');
-      }
-    } catch (e) {
-      debugPrint('Error getting message preferences: $e');
-      rethrow;
-    }
-  }
-
-  // Update message preference for a specific family
-  Future<Map<String, dynamic>> updateMessagePreference(
-    int userId,
-    int familyId,
-    bool receiveMessages,
-  ) async {
-    debugPrint(
-      'Updating message preference for user $userId, family $familyId: receive=$receiveMessages',
-    );
-
-    try {
-      final url = Uri.parse('$baseUrl/api/message-preferences/$userId/update');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final body = jsonEncode({
-        'familyId': familyId,
-        'receiveMessages': receiveMessages,
-      });
-
-      final response = await http.post(url, headers: headers, body: body);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        debugPrint('Successfully updated message preference: $data');
-        return data as Map<String, dynamic>;
-      } else {
-        final errorBody = response.body;
-        debugPrint(
-          'Error updating message preference: statusCode=${response.statusCode}, body=$errorBody',
-        );
-        throw Exception('Failed to update message preference: $errorBody');
-      }
-    } catch (e) {
-      debugPrint('Error updating message preference: $e');
-      rethrow;
-    }
-  }
-
-  // Get member-level message preferences for a user
-  Future<List<Map<String, dynamic>>> getMemberMessagePreferences(
-    int userId,
-  ) async {
-    debugPrint('Getting member-level message preferences for user ID: $userId');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/member-message-preferences/$userId');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      debugPrint('Requesting member message preferences from URL: $url');
-      final response = await http.get(url, headers: headers);
-      debugPrint(
-        'Response status: ${response.statusCode}, response body: ${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        if (response.body.isEmpty) {
-          debugPrint('Response body is empty, returning empty list');
-          return [];
-        }
-
-        final List<dynamic> data = jsonDecode(response.body);
-        debugPrint(
-          'Successfully retrieved ${data.length} member message preferences',
-        );
-        return data.map((item) => item as Map<String, dynamic>).toList();
-      } else if (response.statusCode == 404) {
-        // API endpoint might not exist yet, return empty list
-        debugPrint(
-          'Member message preferences endpoint not found (404) - returning empty list',
-        );
-        return [];
-      } else {
-        final errorBody = response.body;
-        debugPrint(
-          'Error getting member message preferences: statusCode=${response.statusCode}, body=$errorBody',
-        );
-        throw Exception('Failed to get member message preferences: $errorBody');
-      }
-    } catch (e) {
-      debugPrint('Error getting member message preferences: $e');
-      // Return empty list for now until backend implements this
-      return [];
-    }
-  }
-
-  // Update message preference for a specific family member
-  Future<Map<String, dynamic>> updateMemberMessagePreference(
-    int userId,
-    int familyId,
-    int? memberUserId,
-    bool receiveMessages,
-  ) async {
-    // Validate member ID
-    if (memberUserId == null) {
-      debugPrint('Cannot update preference for null member ID');
-      return {'success': false, 'message': 'Invalid member ID'};
-    }
-
-    debugPrint(
-      'Updating member message preference for user $userId, family $familyId, member $memberUserId: receive=$receiveMessages',
-    );
-
-    try {
-      final url = Uri.parse(
-        '$baseUrl/api/member-message-preferences/$userId/update',
-      );
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final body = jsonEncode({
-        'familyId': familyId,
-        'memberUserId': memberUserId,
-        'receiveMessages': receiveMessages,
-      });
-
-      debugPrint('Sending request to URL: $url with body: $body');
-      final response = await http.post(url, headers: headers, body: body);
-      debugPrint(
-        'Response status: ${response.statusCode}, body: ${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        debugPrint('Successfully updated member message preference: $data');
-        return data as Map<String, dynamic>;
-      } else {
-        final errorBody = response.body;
-        debugPrint(
-          'Error updating member message preference: statusCode=${response.statusCode}, body=$errorBody',
-        );
-        throw Exception(
-          'Failed to update member message preference: $errorBody',
-        );
-      }
-    } catch (e) {
-      debugPrint('Error updating member message preference: $e');
-      rethrow;
-    }
-  }
-
-  // SOCIAL ENGAGEMENT API METHODS
-
-  // REACTIONS
-
-  // Get reactions for a message
-  Future<Map<String, dynamic>> getMessageReactions(int? messageId) async {
-    if (messageId == null) {
-      debugPrint('Error: Cannot get message reactions - Message ID is null');
-      return {'reactions': [], 'counts': {}};
-    }
-
-    debugPrint('Getting reactions for message $messageId');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/$messageId/reactions');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.get(url, headers: headers);
-      debugPrint(
-        'Get reactions response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to get reactions: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error getting reactions: $e');
-      return {'reactions': [], 'counts': {}};
-    }
-  }
-
-  // Add a reaction to a message
-  Future<Map<String, dynamic>> addReaction(
-    int? messageId,
-    String reactionType,
-  ) async {
-    if (messageId == null) {
-      debugPrint('Error: Cannot add reaction - Message ID is null');
-      return {'error': 'Message ID is null'};
-    }
-
-    debugPrint('Adding $reactionType reaction to message $messageId');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/$messageId/reactions');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-      final body = jsonEncode({'reactionType': reactionType});
-
-      final response = await http.post(url, headers: headers, body: body);
-      debugPrint(
-        'Add reaction response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to add reaction: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error adding reaction: $e');
-      return {'error': e.toString()};
-    }
-  }
-
-  // Remove a reaction from a message
-  Future<bool> removeReaction(int? messageId, String reactionType) async {
-    if (messageId == null) {
-      debugPrint('Error: Cannot remove reaction - Message ID is null');
-      return false;
-    }
-
-    debugPrint('Removing $reactionType reaction from message $messageId');
-
-    try {
-      final url = Uri.parse(
-        '$baseUrl/api/messages/$messageId/reactions/$reactionType',
-      );
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.delete(url, headers: headers);
-      debugPrint(
-        'Remove reaction response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return true;
-      } else {
-        throw Exception('Failed to remove reaction: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error removing reaction: $e');
-      return false;
-    }
-  }
-
-  // COMMENTS
-
-  // Get comments for a message
-  Future<Map<String, dynamic>> getMessageComments(
-    int? messageId, {
-    int page = 0,
-    int size = 20,
-    String sortBy = 'createdAt',
-    String sortDir = 'desc',
-  }) async {
-    if (messageId == null) {
-      debugPrint('Error: Cannot get message comments - Message ID is null');
-      return {'comments': [], 'totalItems': 0};
-    }
-
-    debugPrint('Getting comments for message $messageId');
-
-    try {
-      final url = Uri.parse(
-        '$baseUrl/api/messages/$messageId/comments?page=$page&size=$size&sortBy=$sortBy&sortDir=$sortDir',
-      );
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.get(url, headers: headers);
-      debugPrint(
-        'Get comments response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to get comments: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error getting comments: $e');
-      return {'comments': [], 'totalItems': 0};
-    }
-  }
-
-  // Get replies for a comment
-  Future<Map<String, dynamic>> getCommentReplies(int commentId) async {
-    debugPrint('Getting replies for comment $commentId');
-
-    try {
-      final url = Uri.parse(
-        '$baseUrl/api/messages/comments/$commentId/replies',
-      );
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.get(url, headers: headers);
-      debugPrint(
-        'Get comment replies response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to get comment replies: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error getting comment replies: $e');
-      rethrow;
-    }
-  }
-
-  // Add a comment to a message
-  Future<Map<String, dynamic>> addComment(
-    int? messageId,
-    String content, {
-    int? parentCommentId,
-  }) async {
-    if (messageId == null) {
-      debugPrint('Error: Cannot add comment - Message ID is null');
-      return {'error': 'Message ID is null'};
-    }
-
-    debugPrint('Adding comment to message $messageId');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/$messageId/comments');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final Map<String, dynamic> requestBody = {'content': content};
-
-      if (parentCommentId != null) {
-        requestBody['parentCommentId'] = parentCommentId;
-      }
-
-      final body = jsonEncode(requestBody);
-
-      final response = await http.post(url, headers: headers, body: body);
-      debugPrint(
-        'Add comment response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 201) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to add comment: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error adding comment: $e');
-      return {'error': e.toString()};
-    }
-  }
-
-  // Update a comment
-  Future<Map<String, dynamic>> updateComment(
-    int commentId,
-    String content,
-  ) async {
-    debugPrint('Updating comment $commentId: $content');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/comments/$commentId');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-      final body = jsonEncode({'content': content});
-
-      final response = await http.put(url, headers: headers, body: body);
-      debugPrint(
-        'Update comment response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to update comment: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error updating comment: $e');
-      rethrow;
-    }
-  }
-
-  // Delete a comment
-  Future<bool> deleteComment(int commentId) async {
-    debugPrint('Deleting comment $commentId');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/comments/$commentId');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.delete(url, headers: headers);
-      debugPrint(
-        'Delete comment response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return true;
-      } else {
-        throw Exception('Failed to delete comment: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error deleting comment: $e');
-      rethrow;
-    }
-  }
-
-  // VIEWS
-
-  // Mark a message as viewed
-  Future<Map<String, dynamic>> markMessageAsViewed(int? messageId) async {
-    if (messageId == null) {
-      debugPrint('Error: Cannot mark message as viewed - Message ID is null');
-      return {'error': 'Message ID is null'};
-    }
-
-    debugPrint('Marking message $messageId as viewed');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/$messageId/views');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.post(url, headers: headers);
-      debugPrint(
-        'Mark message as viewed response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to mark message as viewed: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error marking message as viewed: $e');
-      return {'error': e.toString()};
-    }
-  }
-
-  // Get message views
-  Future<Map<String, dynamic>> getMessageViews(int? messageId) async {
-    if (messageId == null) {
-      debugPrint('Error: Cannot get message views - Message ID is null');
-      return {'error': 'Message ID is null'};
-    }
-
-    debugPrint('Getting views for message $messageId');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/$messageId/views');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.get(url, headers: headers);
-      debugPrint(
-        'Get message views response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to get message views: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error getting message views: $e');
-      return {'error': e.toString()};
-    }
-  }
-
-  // Check if a message is viewed by the current user
-  Future<bool> isMessageViewed(int? messageId) async {
-    if (messageId == null) {
-      debugPrint(
-        'Error: Cannot check if message is viewed - Message ID is null',
-      );
-      return false;
-    }
-
-    debugPrint('Checking if message $messageId is viewed');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/$messageId/views/check');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.get(url, headers: headers);
-      debugPrint(
-        'Check message viewed response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return data['viewed'] as bool;
-      } else {
-        throw Exception(
-          'Failed to check if message is viewed: ${response.body}',
-        );
-      }
-    } catch (e) {
-      debugPrint('Error checking if message is viewed: $e');
-      return false;
-    }
-  }
-
-  // Get all engagement data for a message
-  Future<Map<String, dynamic>> getMessageEngagementData(int messageId) async {
-    debugPrint('Getting engagement data for message $messageId');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/$messageId/engagement');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.get(url, headers: headers);
-      debugPrint(
-        'Get engagement data response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to get engagement data: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error getting engagement data: $e');
-      rethrow;
-    }
-  }
-
-  // Get engagement data for multiple messages at once (much more efficient)
-  Future<Map<String, dynamic>> getBatchMessageEngagementData(
-    List<int> messageIds,
-  ) async {
-    if (messageIds.isEmpty) {
-      debugPrint(
-        'Error: Cannot fetch batch engagement data - No message IDs provided',
-      );
-      return {'messages': {}};
-    }
-
-    // Limit batch size to prevent excessive payloads
-    final ids = messageIds.take(50).toList();
-
-    debugPrint('Getting batch engagement data for ${ids.length} messages');
-
-    try {
-      // Build query params with multiple messageIds
-      final queryParams = ids.map((id) => 'messageIds=$id').join('&');
-      final url = Uri.parse(
-        '$baseUrl/api/messages/batch-engagement?$queryParams',
-      );
-
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await http.get(url, headers: headers);
-      debugPrint(
-        'Batch engagement data response: status=${response.statusCode}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        debugPrint('Error response: ${response.body}');
-        throw Exception(
-          'Failed to get batch engagement data: ${response.body}',
-        );
-      }
-    } catch (e) {
-      debugPrint('Error getting batch engagement data: $e');
-      return {'messages': {}};
-    }
-  }
-
-  // Debug method to test thumbnail accessibility
-  Future<bool> testThumbnailAccess(String thumbnailUrl) async {
-    // If URL doesn't start with http, add the base URL
-    final String fullUrl =
-        thumbnailUrl.startsWith('http')
-            ? thumbnailUrl
-            : '$baseUrl$thumbnailUrl';
-
-    debugPrint('🧪 Testing thumbnail URL accessibility: $fullUrl');
-
-    try {
-      final response = await client.get(Uri.parse(fullUrl));
-      final isSuccess = response.statusCode == 200;
-
-      debugPrint(
-        '🔍 Thumbnail test result for $fullUrl: ${response.statusCode}',
-      );
-      debugPrint('  Content-Type: ${response.headers['content-type']}');
-      debugPrint('  Content Length: ${response.contentLength} bytes');
-      debugPrint('  Success: $isSuccess');
-
-      return isSuccess;
-    } catch (e) {
-      debugPrint('⚠️ Error testing thumbnail URL: $e');
-      return false;
-    }
-  }
-
-  // Get all possible variants of a thumbnail URL to test
-  List<String> getThumbnailUrlVariants(String originalPath) {
-    final List<String> variants = [];
-
-    // If it's already a full URL, add it as is
-    if (originalPath.startsWith('http')) {
-      variants.add(originalPath);
-    }
-
-    // Extract just the filename
-    String filename = originalPath;
-    if (originalPath.contains('/')) {
-      filename = originalPath.substring(originalPath.lastIndexOf('/') + 1);
-    }
-
-    // Add variants with different paths
-    variants.add('$baseUrl/uploads/thumbnails/$filename');
-    variants.add('$baseUrl/public/media/thumbnails/$filename');
-    variants.add('/uploads/thumbnails/$filename');
-    variants.add('/public/media/thumbnails/$filename');
-
-    return variants;
-  }
-
-  // Test all possible thumbnail URL variants and return the first working one
-  Future<String?> findWorkingThumbnailUrl(String originalPath) async {
-    debugPrint('🔎 Finding working thumbnail URL for: $originalPath');
-
-    final variants = getThumbnailUrlVariants(originalPath);
-
-    for (final variant in variants) {
-      debugPrint('  Testing variant: $variant');
-      if (await testThumbnailAccess(variant)) {
-        debugPrint('✅ Found working thumbnail URL: $variant');
-        return variant;
+        debugPrint('Error testing URL variant $url: $e');
       }
     }
 
-    debugPrint('❌ No working thumbnail URL found');
-    return null;
-  }
-
-  // getTestToken101 method has been removed as it's no longer used
-
-  // Helper method to make HTTP requests with automatic fallback to alternative servers
-  Future<http.Response> _makeRequest(
-    String method,
-    String endpoint, {
-    Map<String, String>? headers,
-    dynamic body,
-    int maxRetries = 2,
-  }) async {
-    headers = headers ?? {};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-
-    // Start with current server
-    String currentUrl = currentServerUrl;
-
-    // Try up to maxRetries times
-    for (int attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        final Uri uri = Uri.parse('$currentUrl$endpoint');
-        debugPrint('📤 Attempt ${attempt + 1}/$maxRetries: $method $uri');
-
-        http.Response response;
-
-        switch (method.toUpperCase()) {
-          case 'GET':
-            response = await client
-                .get(uri, headers: headers)
-                .timeout(const Duration(seconds: 10));
-            break;
-          case 'POST':
-            response = await client
-                .post(uri, headers: headers, body: body)
-                .timeout(const Duration(seconds: 15));
-            break;
-          case 'PUT':
-            response = await client
-                .put(uri, headers: headers, body: body)
-                .timeout(const Duration(seconds: 15));
-            break;
-          case 'DELETE':
-            response = await client
-                .delete(uri, headers: headers)
-                .timeout(const Duration(seconds: 10));
-            break;
-          default:
-            throw Exception('Unsupported HTTP method: $method');
-        }
-
-        // Return successful response
-        return response;
-      } catch (e) {
-        debugPrint('❌ Request failed: $e');
-
-        // If we have retries left, try the next server
-        if (attempt < maxRetries && await tryNextServer()) {
-          currentUrl = currentServerUrl;
-          debugPrint('🔄 Retrying with fallback server: $currentUrl');
-          continue;
-        }
-
-        // No more retries or servers, rethrow the error
-        rethrow;
-      }
-    }
-
-    // Should never get here due to rethrow above, but needed to satisfy the compiler
-    throw Exception('Failed to make request after $maxRetries retries');
+    // If all else fails, just return the full URL with media base
+    final fallbackUrl = '$mediaBaseUrl$baseUrl';
+    debugPrint('No working URL found, returning fallback: $fallbackUrl');
+    return fallbackUrl;
   }
 }

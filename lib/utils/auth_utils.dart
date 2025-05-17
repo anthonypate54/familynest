@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../screens/login_screen.dart';
 import '../utils/page_transitions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthUtils {
   /// Show confirmation dialog and handle logout if confirmed
@@ -38,13 +39,65 @@ class AuthUtils {
 
     if (confirmLogout) {
       debugPrint('Logging out...');
-      await apiService.logout();
+
+      // Show a loading dialog to prevent interaction during logout
       if (context.mounted) {
-        // Use Navigator.pushAndRemoveUntil to clear the navigation stack
-        slidePushAndRemoveUntil(
-          context,
-          LoginScreen(apiService: apiService),
-          (route) => false, // This predicate removes all routes
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return const Dialog(
+              child: Padding(
+                padding: EdgeInsets.all(20.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(width: 20),
+                    Text("Logging out..."),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      }
+
+      // Clear authentication data
+      await apiService.logout();
+
+      // Verify the token was actually cleared
+      final prefs = await SharedPreferences.getInstance();
+      final hasToken = prefs.containsKey('auth_token');
+      final hasUserId = prefs.containsKey('user_id');
+
+      if (hasToken || hasUserId) {
+        debugPrint(
+          '⚠️ WARNING: Some auth data still exists after logout, forcing cleanup',
+        );
+        // Force manual cleanup if needed
+        await prefs.remove('auth_token');
+        await prefs.remove('auth_token_backup');
+        await prefs.remove('user_id');
+        await prefs.remove('user_role');
+        await prefs.remove('is_logged_in');
+        await prefs.remove('login_time');
+      }
+
+      // Short delay to ensure all pending operations complete
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (context.mounted) {
+        // Dismiss the loading dialog
+        Navigator.of(context).pop();
+
+        // Use Navigator.pushAndRemoveUntil to properly clear the navigation stack
+        // and ensure a fresh Login screen
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => LoginScreen(apiService: apiService),
+          ),
+          (route) => false, // This removes all previous routes
         );
       }
       return true;
