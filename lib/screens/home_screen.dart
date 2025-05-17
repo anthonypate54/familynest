@@ -38,6 +38,8 @@ class HomeScreenState extends State<HomeScreen>
   XFile? _selectedMediaFile;
   String? _selectedMediaType;
   VideoPlayerController? _videoController;
+  // Store the local thumbnail for selected videos
+  File? _selectedVideoThumbnail;
   int _lastMessageCount = 0;
   final ScrollController _scrollController = ScrollController();
   bool _isFirstLoad = true;
@@ -205,42 +207,10 @@ class HomeScreenState extends State<HomeScreen>
           File(processedPath),
         );
       } else {
-        // Ensure we have an absolute URL, never a relative path
-        String fullVideoUrl;
-        if (videoUrl.startsWith('http')) {
-          // URL is already absolute
-          fullVideoUrl = videoUrl;
-        } else if (videoUrl.startsWith('/')) {
-          // URL is relative path starting with slash, needs base URL
-          fullVideoUrl = '${widget.apiService.baseUrl}$videoUrl';
-          debugPrint('Converting relative URL to absolute: $fullVideoUrl');
-        } else {
-          // Fallback with slash if needed
-          fullVideoUrl = '${widget.apiService.baseUrl}/$videoUrl';
-          debugPrint(
-            'Converting relative URL (no leading slash) to absolute: $fullVideoUrl',
-          );
-        }
-
-        // Extra validation to ensure the URL is valid
-        if (!fullVideoUrl.startsWith('http')) {
-          debugPrint('⚠️ WARNING: URL doesn\'t start with http: $fullVideoUrl');
-          fullVideoUrl =
-              'http://' + fullVideoUrl.replaceFirst(RegExp(r'^//'), '');
-          debugPrint('Fixed URL: $fullVideoUrl');
-        }
-
-        debugPrint('🎥 Initializing network video with URL: $fullVideoUrl');
-
-        // Try to initialize with the full URL as an absolute URL
-        try {
-          final videoUri = Uri.parse(fullVideoUrl);
-          debugPrint('Video URI: $videoUri');
-          _inlineVideoController = VideoPlayerController.networkUrl(videoUri);
-        } catch (e) {
-          debugPrint('Error parsing video URL: $e');
-          throw Exception('Invalid video URL: $fullVideoUrl');
-        }
+        debugPrint('Initializing network video: $videoUrl');
+        _inlineVideoController = VideoPlayerController.networkUrl(
+          Uri.parse(videoUrl),
+        );
       }
 
       // Initialize the controller and then create the Chewie controller
@@ -402,13 +372,10 @@ class HomeScreenState extends State<HomeScreen>
         });
       }
 
-      // On first load only, scroll to bottom once after a delay
-      // Fix: Only attempt to scroll if still in first load state
+      // On first load only, scroll to bottom after a delay
       if (_isFirstLoad) {
-        _isFirstLoad =
-            false; // Set this immediately to prevent multiple attempts
-        // Single scroll attempt with a short delay to let the UI render
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+        _isFirstLoad = false;
+        Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
             _scrollToBottom();
           }
@@ -431,12 +398,7 @@ class HomeScreenState extends State<HomeScreen>
 
   // Improved scroll to bottom to show newest messages at the bottom
   void _scrollToBottom() {
-    // Only attempt to scroll if the widget is mounted and controller exists
-    if (!mounted || _scrollController == null) {
-      return;
-    }
-
-    // Check if the controller has clients before attempting to scroll
+    debugPrint('Scrolling to bottom to show newest messages');
     if (_scrollController.hasClients) {
       try {
         // In a reversed list, we need to scroll to minimum extent (0)
@@ -445,11 +407,19 @@ class HomeScreenState extends State<HomeScreen>
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
+        debugPrint('Scroll to bottom executed');
       } catch (e) {
         debugPrint('Error scrolling to bottom: $e');
       }
+    } else {
+      debugPrint('ScrollController has no clients, cannot scroll');
+      // Schedule a scroll once the controller has clients
+      Future.delayed(Duration(milliseconds: 500), () {
+        if (mounted) {
+          _scrollToBottom();
+        }
+      });
     }
-    // No else case with future.delayed - that was causing the infinite loop
   }
 
   // Add a method to refresh the cached photo URL
@@ -478,78 +448,71 @@ class HomeScreenState extends State<HomeScreen>
   }
 
   // Modify the refresh messages function to also refresh photo cache
-  Future<void> _refreshMessages({bool shouldScrollToBottom = true}) async {
-    debugPrint('==========================================');
-    debugPrint('🔄 _refreshMessages CALLED');
-    debugPrint('🔄 Loading messages for user ${widget.userId}');
-    debugPrint('🔄 Current message count in state: ${_messages.length}');
+  Future<void> _refreshMessages({bool shouldScrollToBottom = false}) async {
+    if (!mounted) return;
+
+    debugPrint(
+      'Refreshing messages (shouldScrollToBottom: $shouldScrollToBottom)',
+    );
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    // Also refresh the photo cache
+    await _refreshUserPhotoCache();
 
     try {
-      setState(() {
-        _isLoading = true;
-        _loadError = null;
-      });
+      final messages = await _loadMessages();
+      if (!mounted) return;
 
-      final freshMessages = await _loadMessages();
-
-      // DEBUG: Log message IDs to check for duplicates
-      debugPrint('🔍 New messages from API: ${freshMessages.length}');
-
-      // Store seen message IDs to filter out duplicates
-      final Set<int> seenMessageIds = {};
-      final List<Map<String, dynamic>> deduplicatedMessages = [];
-
-      // Process messages and remove duplicates
-      for (var message in freshMessages) {
-        // Get the message ID safely handling different types
-        final messageId =
-            message['id'] is int
-                ? message['id'] as int
-                : int.tryParse(message['id'].toString()) ?? -1;
-
-        // Only include the message if we haven't seen this ID before
-        if (!seenMessageIds.contains(messageId)) {
-          seenMessageIds.add(messageId);
-          deduplicatedMessages.add(message);
-        } else {
-          debugPrint('⚠️ Detected duplicate message with ID: $messageId');
-        }
-      }
+      final hasNewMessages = messages.length > _lastMessageCount;
 
       debugPrint(
-        '🔍 After deduplication: ${deduplicatedMessages.length} messages',
+        'Refresh complete: ${messages.length} messages (previous count: $_lastMessageCount)',
       );
-
-      // Add offline messages (these have negative IDs to avoid collision)
-      final combinedMessages = [...deduplicatedMessages, ..._offlineMessages];
-
-      // Sort by timestamp, newest first (for reverse ListView)
-      combinedMessages.sort((a, b) {
-        final aTime =
-            a['timestamp'] is String
-                ? DateTime.parse(a['timestamp'])
-                : DateTime.fromMillisecondsSinceEpoch(a['timestamp'] as int);
-        final bTime =
-            b['timestamp'] is String
-                ? DateTime.parse(b['timestamp'])
-                : DateTime.fromMillisecondsSinceEpoch(b['timestamp'] as int);
-        return bTime.compareTo(aTime); // Newest first
-      });
+      if (hasNewMessages) {
+        debugPrint('New messages detected during refresh');
+      }
 
       setState(() {
-        _isLoading = false;
-        _messages = combinedMessages;
-        _isInitialMessagesLoaded = true;
-        _lastMessageCount = combinedMessages.length;
+        _messagesFuture = Future.value(messages);
+        _messages = messages; // Update our in-memory list
+        if (hasNewMessages) {
+          _lastMessageCount = messages.length;
+          _updateRefreshTimestamp();
+        }
       });
 
-      debugPrint('🔄 Messages updated. New count: ${_messages.length}');
+      // Check all video thumbnails after refreshing
+      if (messages.isNotEmpty) {
+        // Delay slightly to let the UI render first
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted) {
+            _checkAllVideoThumbnails(messages);
+          }
+        });
+      }
 
-      if (shouldScrollToBottom) {
-        // Only call once to avoid chaining many scroll attempts
+      if (shouldScrollToBottom || hasNewMessages) {
+        // Add a small delay to ensure the ListView has rebuilt
+        await Future.delayed(const Duration(milliseconds: 200));
+
+        // Force scrolling to show newest message
         _scrollToBottom();
 
-        // No more multiple delayed attempts
+        // Add extra attempts with delays
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted) _scrollToBottom();
+        });
+
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) _scrollToBottom();
+        });
+
+        Future.delayed(const Duration(milliseconds: 1200), () {
+          if (mounted) _scrollToBottom();
+        });
       }
     } catch (e) {
       debugPrint('Error refreshing messages: $e');
@@ -561,14 +524,8 @@ class HomeScreenState extends State<HomeScreen>
   }
 
   Future<List<Map<String, dynamic>>> _loadMessages() async {
-    debugPrint('==========================================');
-    debugPrint('🔍 _loadMessages CALLED');
-    debugPrint('🔍 Fetching messages from API for user ${widget.userId}');
-
     try {
-      debugPrint('🔍 Calling api_service.getMessages()');
       final response = await widget.apiService.getMessages(widget.userId);
-      debugPrint('🔍 API returned ${response.length} messages');
 
       // Debug API response - detailed logging
       debugPrint('======== MESSAGE API RESPONSE ========');
@@ -593,13 +550,226 @@ class HomeScreenState extends State<HomeScreen>
         if (sampleMsg.containsKey('senderPhoto')) {
           debugPrint('senderPhoto: ${sampleMsg['senderPhoto']}');
         }
+
+        // Check if there's a nested sender object
+        if (sampleMsg.containsKey('sender') && sampleMsg['sender'] is Map) {
+          debugPrint('FOUND NESTED SENDER OBJECT:');
+          final sender = sampleMsg['sender'] as Map;
+          debugPrint('Sender keys: ${sender.keys.join(', ')}');
+          if (sender.containsKey('photoUrl')) {
+            debugPrint('sender.photoUrl: ${sender['photoUrl']}');
+          }
+        }
+
+        // Look for any keys containing 'photo', 'image', 'avatar' case-insensitive
+        final photoRelatedKeys =
+            sampleMsg.keys
+                .where(
+                  (key) =>
+                      key.toLowerCase().contains('photo') ||
+                      key.toLowerCase().contains('image') ||
+                      key.toLowerCase().contains('avatar'),
+                )
+                .toList();
+
+        if (photoRelatedKeys.isNotEmpty) {
+          debugPrint('📸 POTENTIAL PHOTO FIELDS FOUND:');
+          for (final key in photoRelatedKeys) {
+            debugPrint('$key: ${sampleMsg[key]}');
+          }
+        } else {
+          debugPrint('⚠️ NO PHOTO-RELATED FIELDS FOUND IN MESSAGE');
+
+          // Since no photo fields were found, let's try to fetch user profiles
+          debugPrint(
+            '🔍 Attempting to fetch first 3 sender profiles to check for photos...',
+          );
+
+          // Get a sample of unique sender IDs (up to 3)
+          final Set<int> uniqueSenderIds = {};
+          for (var msg in response.take(10)) {
+            if (msg.containsKey('senderId') &&
+                msg['senderId'] != null &&
+                uniqueSenderIds.length < 3) {
+              final senderId = msg['senderId'];
+              if (senderId is int) {
+                uniqueSenderIds.add(senderId);
+              } else if (senderId is String) {
+                try {
+                  uniqueSenderIds.add(int.parse(senderId));
+                } catch (e) {
+                  debugPrint('⚠️ Failed to parse senderId: $senderId');
+                }
+              }
+            }
+          }
+
+          // Fetch profile data for the sample senders
+          debugPrint(
+            '🔍 Found ${uniqueSenderIds.length} unique sender IDs to check',
+          );
+          for (final senderId in uniqueSenderIds) {
+            try {
+              final senderData = await widget.apiService.getUserById(senderId);
+              debugPrint(
+                '👤 Sender $senderId data: ${senderData.keys.join(', ')}',
+              );
+
+              if (senderData.containsKey('photoUrl')) {
+                debugPrint(
+                  '📸 Found photo for user $senderId: ${senderData['photoUrl']}',
+                );
+              } else {
+                debugPrint('⚠️ No photoUrl found for user $senderId');
+              }
+            } catch (e) {
+              debugPrint('⚠️ Error fetching sender $senderId profile: $e');
+            }
+          }
+        }
+      }
+      debugPrint('====================================');
+
+      // For any offline messages, try to find matching server messages
+      final List<Map<String, dynamic>> mergedList = List.from(response);
+
+      // Enrich messages with sender photos
+      debugPrint('🖼️ ENRICHING MESSAGES WITH SENDER PHOTOS');
+
+      // Create a map to cache user data so we don't fetch the same user multiple times
+      final Map<int, Map<String, dynamic>> userDataCache = {};
+
+      // Collect all unique sender IDs
+      final Set<int> uniqueSenderIds = {};
+      for (var message in mergedList) {
+        if (message.containsKey('senderId') && message['senderId'] != null) {
+          try {
+            final int senderId =
+                message['senderId'] is int
+                    ? message['senderId']
+                    : int.parse(message['senderId'].toString());
+            uniqueSenderIds.add(senderId);
+          } catch (e) {
+            debugPrint('⚠️ Error parsing senderId: ${message['senderId']}');
+          }
+        }
       }
 
-      debugPrint('==========================================');
-      return response;
+      debugPrint(
+        '🔍 Found ${uniqueSenderIds.length} unique senders to fetch photos for',
+      );
+
+      // Fetch user data for all unique senders
+      for (final senderId in uniqueSenderIds) {
+        try {
+          final userData = await widget.apiService.getUserById(senderId);
+          userDataCache[senderId] = userData;
+          debugPrint('✅ Cached user data for sender $senderId');
+        } catch (e) {
+          debugPrint('⚠️ Error fetching data for sender $senderId: $e');
+        }
+      }
+
+      // Enrich each message with sender photo URL
+      int enrichedCount = 0;
+      for (var message in mergedList) {
+        if (message.containsKey('senderId') && message['senderId'] != null) {
+          try {
+            final int senderId =
+                message['senderId'] is int
+                    ? message['senderId']
+                    : int.parse(message['senderId'].toString());
+
+            if (userDataCache.containsKey(senderId)) {
+              final userData = userDataCache[senderId]!;
+
+              // Check if user has a photo
+              if (userData.containsKey('photoUrl') &&
+                  userData['photoUrl'] != null &&
+                  userData['photoUrl'].toString().isNotEmpty) {
+                // Add the photo URL to the message
+                message['senderPhoto'] = userData['photoUrl'];
+                enrichedCount++;
+                debugPrint(
+                  '📸 Added photo URL for message from sender $senderId: ${userData['photoUrl']}',
+                );
+              } else {
+                // If photoUrl doesn't exist, check for avatar, image, or photo fields
+                for (var key in userData.keys) {
+                  if ((key.toLowerCase().contains('photo') ||
+                          key.toLowerCase().contains('image') ||
+                          key.toLowerCase().contains('avatar')) &&
+                      userData[key] != null &&
+                      userData[key].toString().isNotEmpty) {
+                    message['senderPhoto'] = userData[key];
+                    enrichedCount++;
+                    debugPrint(
+                      '📸 Added alternative photo field ($key) for sender $senderId: ${userData[key]}',
+                    );
+                    break;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('⚠️ Error enriching message with photo: $e');
+            // Skip enriching this message
+          }
+        }
+      }
+
+      debugPrint('📊 Enriched $enrichedCount messages with sender photos');
+
+      // Log each message's photo field for debugging
+      for (var message in mergedList.take(5)) {
+        // Only log first 5 for brevity
+        final senderId = message['senderId'];
+        final hasSenderPhoto =
+            message.containsKey('senderPhoto') &&
+            message['senderPhoto'] != null;
+        debugPrint(
+          'Message from sender $senderId | Has photo: $hasSenderPhoto | ${hasSenderPhoto ? 'URL: ${message['senderPhoto']}' : 'No photo URL'}',
+        );
+      }
+
+      if (_offlineMessages.isNotEmpty) {
+        // Keep offline messages that don't have a matching ID in the response
+        for (var offlineMsg in _offlineMessages) {
+          final String content = offlineMsg['content'] ?? '';
+          final bool hasDuplicate = response.any(
+            (msg) =>
+                msg['content'] == content &&
+                msg['senderId'] == widget.userId &&
+                (DateTime.parse(msg['timestamp']).millisecondsSinceEpoch -
+                        (offlineMsg['timestamp'] as int)) <
+                    60000,
+          ); // 1 minute tolerance
+
+          if (!hasDuplicate) {
+            mergedList.add(offlineMsg);
+          }
+        }
+      }
+
+      // Sort by timestamp (descending)
+      mergedList.sort((a, b) {
+        // Handle different timestamp formats (string from server vs. int from offline)
+        final int timestampA =
+            a['timestamp'] is String
+                ? DateTime.parse(a['timestamp']).millisecondsSinceEpoch
+                : a['timestamp'] as int;
+        final int timestampB =
+            b['timestamp'] is String
+                ? DateTime.parse(b['timestamp']).millisecondsSinceEpoch
+                : b['timestamp'] as int;
+
+        // Descending order (newest first)
+        return timestampB.compareTo(timestampA);
+      });
+
+      return mergedList;
     } catch (e) {
-      debugPrint('⚠️ ERROR LOADING MESSAGES: $e');
-      rethrow;
+      return _offlineMessages;
     }
   }
 
@@ -877,6 +1047,12 @@ class HomeScreenState extends State<HomeScreen>
               'file://${pickedFile.path}',
             );
 
+            // Store the thumbnail for later use when posting the message
+            _selectedVideoThumbnail = thumbnailFile;
+            debugPrint(
+              '📸 Generated and saved video thumbnail: ${thumbnailFile?.path}',
+            );
+
             // Build placeholder widget function
             Widget buildPlaceholderWidget() {
               if (thumbnailFile != null) {
@@ -1086,11 +1262,15 @@ class HomeScreenState extends State<HomeScreen>
 
       // Clear the input fields immediately for better UX
       _messageController.clear();
+      // Cache the thumbnail before clearing selections
+      final File? localThumbnail = _selectedVideoThumbnail;
+
       setState(() {
         _selectedMediaFile = null;
         _selectedMediaType = null;
         _videoController?.dispose();
         _videoController = null;
+        _selectedVideoThumbnail = null;
       });
 
       // Create an optimistic message to display immediately
@@ -1117,6 +1297,13 @@ class HomeScreenState extends State<HomeScreen>
         'sendingFailed': false,
         'familyId': userData['familyId'],
         'familyName': userData['familyName'] ?? 'My Family',
+        // Use local thumbnail path if available, otherwise mark for checking
+        'localThumbnailPath':
+            mediaType == 'video' && localThumbnail != null
+                ? localThumbnail.path
+                : null,
+        'checkingThumbnail':
+            mediaType == 'video' && mediaFile != null && localThumbnail == null,
       };
 
       // Add to offline messages and update UI immediately
@@ -1150,6 +1337,11 @@ class HomeScreenState extends State<HomeScreen>
       if (success) {
         debugPrint('*** MESSAGE POSTED SUCCESSFULLY ***');
         debugPrint('Content: "$messageContent"');
+
+        // Add this call to check for the thumbnail if this was a video message
+        if (mediaType == 'video' && mediaFile != null) {
+          _checkForVideoThumbnail(optimisticMessage);
+        }
 
         // Add debug check to verify the message in database
         try {
@@ -1290,6 +1482,73 @@ class HomeScreenState extends State<HomeScreen>
           duration: const Duration(seconds: 5),
         ),
       );
+    }
+  }
+
+  // Add this new function to check for video thumbnails
+  Future<void> _checkForVideoThumbnail(Map<String, dynamic> sentMessage) async {
+    // Set this message as "checking thumbnail" to show loading indicator
+    setState(() {
+      int index = _messages.indexWhere((msg) => msg['id'] == sentMessage['id']);
+      if (index >= 0) {
+        _messages[index]['checkingThumbnail'] = true;
+      }
+    });
+
+    try {
+      // We could add a delay here if needed
+      // await Future.delayed(const Duration(milliseconds: 800));
+
+      // Get the latest messages - no artificial delay
+      final messages = await widget.apiService.getMessages(widget.userId);
+      final newMessage = messages.firstWhere(
+        (msg) =>
+            msg['content'] == sentMessage['content'] &&
+            msg['senderId'] == widget.userId,
+        orElse: () => {},
+      );
+
+      // Update our message with thumbnail if available
+      setState(() {
+        int index = _messages.indexWhere(
+          (msg) => msg['id'] == sentMessage['id'],
+        );
+        if (index >= 0) {
+          if (newMessage.isNotEmpty && newMessage['thumbnailUrl'] != null) {
+            _messages[index]['thumbnailUrl'] = newMessage['thumbnailUrl'];
+            debugPrint(
+              '✅ Updated video thumbnail for message with server thumbnail',
+            );
+
+            // We'll keep the local thumbnail too - it might still be useful as a fallback
+            // but don't overwrite it if it already exists
+            if (newMessage['localThumbnailPath'] != null &&
+                _messages[index]['localThumbnailPath'] == null) {
+              _messages[index]['localThumbnailPath'] =
+                  newMessage['localThumbnailPath'];
+            }
+          } else {
+            debugPrint('❌ No server thumbnail found for message');
+
+            // Keep using local thumbnail if available
+            if (_messages[index]['localThumbnailPath'] != null) {
+              debugPrint('📸 Keeping local thumbnail as fallback');
+            }
+          }
+          // Either way, we're done checking
+          _messages[index]['checkingThumbnail'] = false;
+        }
+      });
+    } catch (e) {
+      debugPrint('Error checking thumbnail: $e');
+      setState(() {
+        int index = _messages.indexWhere(
+          (msg) => msg['id'] == sentMessage['id'],
+        );
+        if (index >= 0) {
+          _messages[index]['checkingThumbnail'] = false;
+        }
+      });
     }
   }
 
@@ -1547,43 +1806,8 @@ class HomeScreenState extends State<HomeScreen>
                   child: FutureBuilder<List<Map<String, dynamic>>>(
                     future: _messagesFuture ?? _loadMessages(),
                     builder: (context, snapshot) {
-                      // Add extensive debugging to track the message flow issue
-                      debugPrint('==========================================');
-                      debugPrint('🔍 HOME SCREEN - FUTURE BUILDER STATE:');
-                      debugPrint(
-                        '🔍 Connection state: ${snapshot.connectionState}',
-                      );
-                      debugPrint('🔍 Has error: ${snapshot.hasError}');
-                      if (snapshot.hasError) {
-                        debugPrint('🔍 Error: ${snapshot.error}');
-                      }
-                      debugPrint('🔍 Has data: ${snapshot.hasData}');
-                      debugPrint(
-                        '🔍 Data length: ${snapshot.data?.length ?? 0}',
-                      );
-                      debugPrint(
-                        '🔍 _isInitialMessagesLoaded: $_isInitialMessagesLoaded',
-                      );
-                      debugPrint(
-                        '🔍 Current _messages length: ${_messages.length}',
-                      );
-                      debugPrint('==========================================');
-
-                      // Check message data structure if available
-                      if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-                        final firstMessage = snapshot.data!.first;
-                        debugPrint('FIRST MESSAGE DATA:');
-                        debugPrint('ID: ${firstMessage['id']}');
-                        debugPrint('Content: ${firstMessage['content']}');
-                        debugPrint('Timestamp: ${firstMessage['timestamp']}');
-                        debugPrint('Keys: ${firstMessage.keys.join(', ')}');
-                      }
-
-                      // If we have already loaded messages in memory AND the list is not empty, use those
-                      if (_isInitialMessagesLoaded && _messages.isNotEmpty) {
-                        debugPrint(
-                          '✅ Using cached messages (${_messages.length})',
-                        );
+                      // If we have already loaded messages in memory, use those directly
+                      if (_isInitialMessagesLoaded) {
                         return _buildMessagesListView(_messages);
                       }
 
@@ -1618,31 +1842,16 @@ class HomeScreenState extends State<HomeScreen>
                         );
                       }
 
-                      // Get messages from snapshot if available
+                      // Get messages from snapshot if not loaded yet
                       final messages = snapshot.data ?? [];
-                      debugPrint(
-                        '📊 Got ${messages.length} messages from snapshot',
-                      );
 
-                      // Critical fix: Always update our in-memory list if we got data from the API
-                      if (messages.isNotEmpty) {
-                        debugPrint(
-                          '🔄 Updating _messages with ${messages.length} messages from API',
-                        );
-                        // Use setState to ensure UI refreshes with new message data
-                        if (mounted) {
-                          setState(() {
-                            _messages = messages;
-                            _isInitialMessagesLoaded = true;
-                          });
-                        } else {
-                          _messages = messages;
-                          _isInitialMessagesLoaded = true;
-                        }
+                      // Store in our in-memory list
+                      if (messages.isNotEmpty && !_isInitialMessagesLoaded) {
+                        _messages = messages;
+                        _isInitialMessagesLoaded = true;
                       }
 
                       if (messages.isEmpty) {
-                        debugPrint('⚠️ No messages available to display');
                         return RefreshIndicator(
                           onRefresh: () async {
                             await _refreshMessages(shouldScrollToBottom: true);
@@ -1886,49 +2095,39 @@ class HomeScreenState extends State<HomeScreen>
 
       // If user has a family ID but no family name, try to fix it
       if (familyId != null && (familyName == null || familyName.isEmpty)) {
-        // Try to get family details
+        // Try to get family details - silently attempt without showing errors
         try {
           final family = await widget.apiService.getFamily(familyId);
           if (!mounted) return; // Check if still mounted after async call
 
           final String retrievedFamilyName = family['name'] ?? 'My Family';
 
-          // If we found a name, update the UI
+          // If we found a name, update the UI with a subtle message
           if (retrievedFamilyName.isNotEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Family name updated to: $retrievedFamilyName'),
-                duration: const Duration(seconds: 2),
-              ),
-            );
+            debugPrint('Family name retrieved: $retrievedFamilyName');
+            // Only show a message if family name was completely missing before
+            if (familyName == null || familyName.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Connected to family: $retrievedFamilyName'),
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
           }
         } catch (e) {
-          // If we can't get the family, it might be invalid - warn the user
-          if (!mounted)
-            return; // Check if still mounted after catching exception
+          // Log the error but don't show it to the user during normal usage
+          debugPrint('Error fetching family details: $e');
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                'Could not get your family details. Messages may not work correctly.',
-              ),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 5),
-            ),
-          );
+          // Only show error if this is a critical feature for the current user
+          // and you're sure they need to know about it
+          // For normal usage, we'll just log it silently
         }
       }
     } catch (e) {
-      // Error checking family data
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error checking family data: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      // Log the error but don't show it to the user during normal usage
+      debugPrint('Error checking family data: $e');
     }
   }
 
@@ -2375,30 +2574,6 @@ class HomeScreenState extends State<HomeScreen>
   // Update to show the ListView in reverse, with newest at bottom
   Widget _buildMessagesListView(List<Map<String, dynamic>> messages) {
     debugPrint('📱 Building messages list with ${messages.length} messages');
-    debugPrint('==========================================');
-    debugPrint('🔍 _buildMessagesListView CALLED');
-    debugPrint('🔍 Messages count: ${messages.length}');
-
-    if (messages.isEmpty) {
-      debugPrint(
-        '⚠️ WARNING: Empty messages list passed to _buildMessagesListView',
-      );
-      return Center(
-        child: Text(
-          'No messages to display',
-          style: TextStyle(color: Colors.white),
-        ),
-      );
-    }
-
-    // Log first few message IDs for debugging
-    debugPrint('🔍 First few message IDs:');
-    for (var i = 0; i < (messages.length > 5 ? 5 : messages.length); i++) {
-      debugPrint(
-        '   - Message $i: ID=${messages[i]['id']}, Content="${messages[i]['content']}"',
-      );
-    }
-    debugPrint('==========================================');
 
     // Debug check for thumbnails
     for (var message in messages.take(5)) {
@@ -2771,8 +2946,8 @@ class HomeScreenState extends State<HomeScreen>
                                               _currentlyPlayingVideoId ==
                                               message['id'];
 
-                                          // Check if there's a server-provided thumbnail URL
-                                          final hasThumbnailUrl =
+                                          // Check if there's a server-provided thumbnail URL or local thumbnail
+                                          final hasServerThumbnailUrl =
                                               (message['thumbnailUrl'] !=
                                                       null &&
                                                   message['thumbnailUrl']
@@ -2784,13 +2959,30 @@ class HomeScreenState extends State<HomeScreen>
                                                       .toString()
                                                       .isNotEmpty);
 
-                                          // Handle both camelCase and snake_case versions
+                                          // Check if there's a locally generated thumbnail path
+                                          final hasLocalThumbnail =
+                                              message['localThumbnailPath'] !=
+                                                  null &&
+                                              message['localThumbnailPath']
+                                                  .toString()
+                                                  .isNotEmpty;
+
+                                          final hasThumbnailUrl =
+                                              hasServerThumbnailUrl ||
+                                              hasLocalThumbnail;
+
+                                          // Handle both camelCase and snake_case versions for server URL
                                           final String actualThumbnailUrl =
                                               message['thumbnailUrl']
                                                   ?.toString() ??
                                               message['thumbnail_url']
                                                   ?.toString() ??
                                               '';
+
+                                          // Get local thumbnail path if available
+                                          final String? localThumbnailPath =
+                                              message['localThumbnailPath']
+                                                  ?.toString();
 
                                           // Debug logging for thumbnail URLs
                                           debugPrint(
@@ -2806,6 +2998,12 @@ class HomeScreenState extends State<HomeScreen>
                                             debugPrint(
                                               'Thumbnail URL: $actualThumbnailUrl',
                                             );
+
+                                            if (hasLocalThumbnail) {
+                                              debugPrint(
+                                                '📸 Using LOCAL thumbnail: $localThumbnailPath',
+                                              );
+                                            }
 
                                             // Test thumbnail URL variants in the background
                                             widget.apiService
@@ -2837,9 +3035,17 @@ class HomeScreenState extends State<HomeScreen>
                                             'Message keys: ${message.keys.join(', ')}',
                                           );
 
-                                          // Default video placeholder or thumbnail from server
+                                          // Check if we're actively checking for a thumbnail
+                                          final bool isCheckingThumbnail =
+                                              message['checkingThumbnail'] ==
+                                              true;
+                                          final bool thumbnailFailed =
+                                              message['thumbnailFailed'] ==
+                                              true;
+
+                                          // Default video placeholder - server thumbnail, local thumbnail, or generic placeholder
                                           final Widget defaultPlaceholder =
-                                              hasThumbnailUrl
+                                              hasServerThumbnailUrl
                                                   ? CachedNetworkImage(
                                                     imageUrl:
                                                         actualThumbnailUrl
@@ -2942,6 +3148,50 @@ class HomeScreenState extends State<HomeScreen>
                                                         ),
                                                       );
                                                     },
+                                                  )
+                                                  : hasLocalThumbnail
+                                                  ? Image.file(
+                                                    File(localThumbnailPath!),
+                                                    width:
+                                                        MediaQuery.of(
+                                                          context,
+                                                        ).size.width *
+                                                        0.7,
+                                                    height: 200,
+                                                    fit: BoxFit.cover,
+                                                    errorBuilder: (
+                                                      context,
+                                                      error,
+                                                      stackTrace,
+                                                    ) {
+                                                      debugPrint(
+                                                        '❌ Error loading local thumbnail: $error',
+                                                      );
+                                                      return _buildDefaultVideoPlaceholder();
+                                                    },
+                                                  )
+                                                  : isCheckingThumbnail
+                                                  ? SizedBox(
+                                                    width:
+                                                        MediaQuery.of(
+                                                          context,
+                                                        ).size.width *
+                                                        0.7, // Match video width
+                                                    height:
+                                                        200, // Match video height
+                                                    child: Center(
+                                                      child: SizedBox(
+                                                        width: 50,
+                                                        height: 50,
+                                                        child: CircularProgressIndicator(
+                                                          valueColor:
+                                                              AlwaysStoppedAnimation<
+                                                                Color
+                                                              >(Colors.blue),
+                                                          strokeWidth: 3,
+                                                        ),
+                                                      ),
+                                                    ),
                                                   )
                                                   : Container(
                                                     width:

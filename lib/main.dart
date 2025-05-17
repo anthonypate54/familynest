@@ -38,9 +38,32 @@ void main() async {
 
   // Set platform-specific URLs
   if (Platform.isAndroid) {
-    // For Android, use the special emulator IP
-    print('Detected Android platform - using 10.0.0.81:8080');
-    config.setCustomBaseUrl('http://10.0.0.81:8080');
+    // For real Android devices, try multiple possible addresses for the server
+    print('📱 Android device detected - setting up multiple server fallbacks');
+
+    // Create a list of possible server addresses to try
+    final servers = [
+      'http://10.0.0.10:8080', // WiFi IP
+      'http://10.0.0.81:8080', // Ethernet IP
+      'http://192.168.1.1:8080', // Common router address
+      'http://host.docker.internal:8080', // Docker host name
+      'http://10.0.2.2:8080', // Standard emulator address
+    ];
+
+    // Instead of setting just one URL, store all options in shared preferences
+    prefs.setStringList('server_fallbacks', servers);
+
+    // Set the first one as the primary baseUrl
+    config.setCustomBaseUrl(servers[0]);
+
+    // Print troubleshooting info
+    print('🌐 Server fallbacks configured: $servers');
+    print('📋 NETWORK TROUBLESHOOTING:');
+    print('1. Make sure your backend server is running');
+    print('2. Ensure your phone and computer are on the same WiFi network');
+    print(
+      '3. App will try multiple server addresses until it finds one that works',
+    );
   } else {
     config.setCustomBaseUrl(baseUrl);
   }
@@ -95,40 +118,73 @@ class MyAppState extends State<MyApp> {
     debugPrint('Starting initialization');
 
     try {
+      // Check for saved preferences to see if we have any token data
+      final prefs = await SharedPreferences.getInstance();
+
+      // Log contents of SharedPreferences at app start
+      debugPrint('📋 MAIN.DART - SHARED PREFERENCES AT APP START:');
+      final allKeys = prefs.getKeys();
+      debugPrint('  All keys: $allKeys');
+      if (allKeys.contains('user_id')) {
+        final userId = prefs.getString('user_id');
+        debugPrint('  user_id = "$userId"');
+      } else {
+        debugPrint('  ⚠️ user_id KEY NOT FOUND!');
+      }
+
       // Initialize the API service, including loading tokens
       await apiService.initialize();
 
       // Check for saved preferences to see if we have any token data
-      final prefs = await SharedPreferences.getInstance();
       final hasToken = prefs.containsKey('auth_token');
       final hasBackupToken = prefs.containsKey('auth_token_backup');
+      final hasUserId = prefs.containsKey('user_id');
+      final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
       final tokenSaveTime = prefs.getString('token_save_time');
 
       debugPrint('SharedPreferences has token: $hasToken');
       debugPrint('SharedPreferences has backup token: $hasBackupToken');
+      debugPrint('SharedPreferences has user_id: $hasUserId');
+      debugPrint('SharedPreferences isLoggedIn flag: $isLoggedIn');
       if (tokenSaveTime != null) {
         debugPrint('Token was last saved at: $tokenSaveTime');
       }
 
-      if (hasToken || hasBackupToken) {
-        // If there's a token, attempt to get current user
-        debugPrint('Found saved token, checking for current user');
+      // Try auto-login if we have any authentication data
+      if (hasToken || hasBackupToken || (hasUserId && isLoggedIn)) {
+        // If there's a token or stored user credentials, attempt to get current user
+        debugPrint('Found saved credentials, checking for current user');
         try {
           final user = await apiService.getCurrentUser();
 
           if (user != null) {
-            debugPrint('✅ Auto-login successful with saved token');
+            debugPrint('✅ Auto-login successful with saved credentials');
             return user;
           } else {
-            debugPrint('⚠️ Saved token is invalid, will need to login again');
+            debugPrint(
+              '⚠️ Saved credentials are invalid, will need to login again',
+            );
             return null;
           }
         } catch (e) {
-          debugPrint('⚠️ Error validating saved token: $e');
+          debugPrint('⚠️ Error validating saved credentials: $e');
+
+          // Try to get more information about the error
+          if (e.toString().contains('type \'Null\'')) {
+            debugPrint(
+              '❌ Null type error detected - likely a problem with user_id parsing',
+            );
+          } else if (e.toString().contains('SocketException')) {
+            debugPrint('❌ Network error - check your internet connection');
+          } else if (e.toString().contains('401') ||
+              e.toString().contains('403')) {
+            debugPrint('❌ Authentication error - token might be expired');
+          }
+
           return null;
         }
       } else {
-        debugPrint('No saved token, user will need to login');
+        debugPrint('No saved credentials, user will need to login');
         return null;
       }
     } catch (e) {
@@ -169,20 +225,35 @@ class MyAppState extends State<MyApp> {
       home: FutureBuilder<Map<String, dynamic>?>(
         future: _initializationFuture,
         builder: (context, snapshot) {
+          // Always show loading indicator while checking credentials
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Loading your account...'),
+                  ],
+                ),
+              ),
             );
           }
+
+          // When authentication check is complete
           final user = snapshot.data;
           if (user != null) {
+            // If authentication succeeded, show the main app
             return MainAppContainer(
-              apiService: apiService, // Reuse the same instance
+              apiService: apiService,
               userId: user['userId'],
               userRole: user['role'] ?? 'USER',
             );
           }
-          return LoginScreen(apiService: apiService); // Reuse the same instance
+
+          // Only show login screen if authentication failed
+          return LoginScreen(apiService: apiService);
         },
       ),
     );
@@ -561,7 +632,6 @@ class MainAppContainerState extends State<MainAppContainer> {
                                     (context) => VideoPlayerScreen(
                                       videoUrl: _testVideoUrl!,
                                       isLocalFile: false,
-                                      baseUrl: widget.apiService.baseUrl,
                                     ),
                               ),
                             );

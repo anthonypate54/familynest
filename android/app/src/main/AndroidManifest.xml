@@ -14,10 +14,7 @@
         android:enableOnBackInvokedCallback="true"
         android:requestLegacyExternalStorage="true"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:usesCleartextTraffic="true"
-        android:preserveLegacyExternalStorage="true"
-        android:allowBackup="true"
-        android:fullBackupContent="@xml/backup_rules">
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

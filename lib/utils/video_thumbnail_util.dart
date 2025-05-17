@@ -36,26 +36,11 @@ class VideoThumbnailUtil {
 
       debugPrint('Generating new thumbnail for video: $videoPath');
 
-      // Process the path depending on format
-      String processedPath;
-
-      if (videoPath.startsWith('file://')) {
-        // Handle file:// prefix for local files
-        processedPath = videoPath.replaceFirst('file://', '');
-        debugPrint('Processing local file path: $processedPath');
-      } else if (videoPath.startsWith('/')) {
-        // Handle relative URLs
-        processedPath = 'http://10.0.0.81:8080$videoPath';
-        debugPrint('Converting relative path to absolute URL: $processedPath');
-      } else if (!videoPath.startsWith('http')) {
-        // Assume it's a local file path without file:// prefix
-        processedPath = videoPath;
-        debugPrint('Using local file path as is: $processedPath');
-      } else {
-        // Already an absolute URL
-        processedPath = videoPath;
-        debugPrint('Using absolute URL as is: $processedPath');
-      }
+      // Handle file:// prefix for local files
+      final String processedPath =
+          videoPath.startsWith('file://')
+              ? videoPath.replaceFirst('file://', '')
+              : videoPath;
 
       // Try using video_compress first
       try {
@@ -113,28 +98,8 @@ class VideoThumbnailUtil {
 
       // Check if path is URL or file
       if (processedPath.startsWith('http')) {
-        debugPrint(
-          'Initializing video controller with absolute URL: $processedPath',
-        );
         controller = VideoPlayerController.networkUrl(Uri.parse(processedPath));
-      } else if (processedPath.startsWith('/')) {
-        // Handle relative URL - try to construct a full URL
-        // This is a best-effort approach since we don't have apiService here
-        final String fullUrl = 'http://10.0.0.81:8080$processedPath';
-        debugPrint(
-          'Converting relative URL to absolute for thumbnail: $fullUrl',
-        );
-        controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl));
-      } else if (processedPath.startsWith('file://')) {
-        // Handle file:// URLs properly
-        final String filePath = processedPath.replaceFirst('file://', '');
-        debugPrint('Initializing video controller with local file: $filePath');
-        controller = VideoPlayerController.file(File(filePath));
       } else {
-        // Assume it's a file path
-        debugPrint(
-          'Initializing video controller with file path: $processedPath',
-        );
         controller = VideoPlayerController.file(File(processedPath));
       }
 

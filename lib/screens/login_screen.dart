@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'profile_screen.dart';
 import '../services/api_service.dart';
 import 'home_screen.dart';
 import '../utils/page_transitions.dart';
 import '../main.dart'; // Import to access MainAppContainer
+import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 class LoginScreen extends StatefulWidget {
   final ApiService apiService;
@@ -31,7 +33,6 @@ class LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _checkLoggedInUser();
   }
 
   @override
@@ -42,23 +43,6 @@ class LoginScreenState extends State<LoginScreen> {
     _firstNameController.dispose();
     _lastNameController.dispose();
     super.dispose();
-  }
-
-  Future<void> _checkLoggedInUser() async {
-    final user = await widget.apiService.getCurrentUser();
-    if (user != null && mounted) {
-      debugPrint(
-        'Auto-login successful, userId: ${user['userId']}, role: ${user['role']}',
-      );
-      slidePushReplacement(
-        context,
-        MainAppContainer(
-          apiService: widget.apiService,
-          userId: user['userId'],
-          userRole: user['role'] ?? 'USER',
-        ),
-      );
-    }
   }
 
   Future<void> _login() async {
@@ -341,6 +325,84 @@ class LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
+                        // Development testing buttons (only in debug mode)
+                        if (kDebugMode)
+                          Column(
+                            children: [
+                              const SizedBox(height: 16),
+                              const Divider(),
+                              const Text(
+                                "Debug Tools",
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  TextButton(
+                                    onPressed: () {
+                                      // Fill with test user credentials
+                                      _emailController.text =
+                                          "john.doe@example.com";
+                                      _passwordController.text = "password123";
+                                    },
+                                    child: const Text(
+                                      "Use Test Account",
+                                      style: TextStyle(color: Colors.blue),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () async {
+                                      setState(() {
+                                        _errorMessage = "Testing network...";
+                                        _isLoading = true;
+                                      });
+
+                                      try {
+                                        // Try to access a known endpoint with the current server URL (might be a fallback)
+                                        final currentUrl =
+                                            widget.apiService.currentServerUrl;
+                                        final testUrl =
+                                            '$currentUrl/api/users/test';
+
+                                        debugPrint(
+                                          '🔍 Testing connection to $testUrl',
+                                        );
+                                        // Try all possible server fallbacks
+                                        await widget.apiService.tryNextServer();
+
+                                        final response = await http
+                                            .get(
+                                              Uri.parse(testUrl),
+                                              headers: {
+                                                'Accept': 'application/json',
+                                              },
+                                            )
+                                            .timeout(
+                                              const Duration(seconds: 10),
+                                            );
+
+                                        setState(() {
+                                          _isLoading = false;
+                                          _errorMessage =
+                                              "Network: ${response.statusCode} - ${response.body}";
+                                        });
+                                      } catch (e) {
+                                        setState(() {
+                                          _isLoading = false;
+                                          _errorMessage = "Network error: $e";
+                                        });
+                                      }
+                                    },
+                                    child: const Text(
+                                      "Test Network",
+                                      style: TextStyle(color: Colors.orange),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
