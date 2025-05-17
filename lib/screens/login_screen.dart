@@ -54,18 +54,16 @@ class LoginScreenState extends State<LoginScreen> {
     try {
       debugPrint('LOGIN_SCREEN: Starting auto-login check...');
 
-      // First check if explicitly logged out (for debug mode)
-      if (kDebugMode) {
-        final prefs = await SharedPreferences.getInstance();
-        final wasExplicitlyLoggedOut =
-            prefs.getBool('explicitly_logged_out') ?? false;
+      // First check if explicitly logged out
+      final prefs = await SharedPreferences.getInstance();
+      final wasExplicitlyLoggedOut =
+          prefs.getBool('explicitly_logged_out') ?? false;
 
-        if (wasExplicitlyLoggedOut) {
-          debugPrint(
-            'LOGIN_SCREEN: Skipping auto-login check in debug mode due to explicit logout flag',
-          );
-          return; // Stay on login screen
-        }
+      if (wasExplicitlyLoggedOut) {
+        debugPrint(
+          'LOGIN_SCREEN: Skipping auto-login check due to explicit logout flag',
+        );
+        return; // Stay on login screen
       }
 
       final user = await widget.apiService.getCurrentUser();

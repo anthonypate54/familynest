@@ -21,9 +21,42 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async'; // For Timer
+import 'package:device_info_plus/device_info_plus.dart'; // For device info
+
+// Function to get device model name
+Future<String?> getDeviceModel() async {
+  DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+  if (Platform.isAndroid) {
+    AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+    return androidInfo.model;
+  }
+  return null;
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Check and clear the explicitly_logged_out flag on app startup
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final wasExplicitlyLoggedOut =
+        prefs.getBool('explicitly_logged_out') ?? false;
+    debugPrint(
+      'App startup - explicitly_logged_out flag was: $wasExplicitlyLoggedOut',
+    );
+
+    // Print all SharedPreferences keys for debugging
+    final keys = prefs.getKeys();
+    debugPrint('All SharedPreferences keys at startup: $keys');
+
+    // Clear the explicitly_logged_out flag
+    if (wasExplicitlyLoggedOut) {
+      await prefs.setBool('explicitly_logged_out', false);
+      debugPrint('Cleared explicitly_logged_out flag on app startup');
+    }
+  } catch (e) {
+    debugPrint('Error checking/clearing explicitly_logged_out flag: $e');
+  }
 
   // Clear the image cache at startup to ensure fresh thumbnails
   await DefaultCacheManager().emptyCache();
@@ -39,31 +72,42 @@ void main() async {
 
   // Set platform-specific URLs
   if (Platform.isAndroid) {
-    // For real Android devices, try multiple possible addresses for the server
-    print('📱 Android device detected - setting up multiple server fallbacks');
+    // For Android devices, detect if we're running on an emulator
+    print('📱 Android device detected - configuring server address');
 
-    // Create a list of possible server addresses to try
-    final servers = [
-      'http://10.0.0.10:8080', // WiFi IP
-      'http://10.0.0.81:8080', // Ethernet IP
-      'http://192.168.1.1:8080', // Common router address
-      'http://host.docker.internal:8080', // Docker host name
-      'http://10.0.2.2:8080', // Standard emulator address
-    ];
+    // Get the device model to detect emulators
+    String? deviceModel = await getDeviceModel();
+    bool isEmulator = false;
 
-    // Instead of setting just one URL, store all options in shared preferences
-    prefs.setStringList('server_fallbacks', servers);
+    // Check for emulator indicators in the device model
+    if (deviceModel != null) {
+      isEmulator =
+          deviceModel.toLowerCase().contains('emulator') ||
+          deviceModel.toLowerCase().contains('sdk') ||
+          deviceModel.toLowerCase().contains('gphone');
+    }
 
-    // Set the first one as the primary baseUrl
-    config.setCustomBaseUrl(servers[0]);
+    String serverUrl;
+    if (isEmulator) {
+      // For emulators, use 10.0.2.2 which points to host machine's localhost
+      serverUrl = 'http://10.0.2.2:8080';
+      print('🖥️ Running on Android emulator - using emulator server address');
+    } else {
+      // For real devices, use direct IP address
+      serverUrl = 'http://10.0.0.10:8080';
+      print('📲 Running on real Android device - using direct server address');
+    }
+
+    // Set the URL directly, no fallbacks
+    config.setCustomBaseUrl(serverUrl);
 
     // Print troubleshooting info
-    print('🌐 Server fallbacks configured: $servers');
+    print('🌐 Server URL set to: $serverUrl');
     print('📋 NETWORK TROUBLESHOOTING:');
     print('1. Make sure your backend server is running');
-    print('2. Ensure your phone and computer are on the same WiFi network');
+    print('2. Ensure your device and computer are on the same WiFi network');
     print(
-      '3. App will try multiple server addresses until it finds one that works',
+      '3. If connection fails on real device, try: adb reverse tcp:8080 tcp:8080',
     );
   } else {
     config.setCustomBaseUrl(baseUrl);
@@ -122,20 +166,9 @@ class MyAppState extends State<MyApp> {
       // Check for saved preferences to see if we have any token data
       final prefs = await SharedPreferences.getInstance();
 
-      // In debug mode, set the explicitly_logged_out flag to true
-      // to prevent auto-login on first run
+      // Remove debug mode special handling that was preventing sticky login
       if (kDebugMode) {
-        await prefs.setBool('explicitly_logged_out', true);
-        debugPrint(
-          'DEBUG MODE: Set explicitly_logged_out flag to prevent auto-login',
-        );
-
-        // For a clean slate in debug mode, clear credentials
-        await prefs.remove('auth_token');
-        await prefs.remove('auth_token_backup');
-        await prefs.remove('user_id');
-        await prefs.remove('is_logged_in');
-        debugPrint('DEBUG MODE: Clearing saved credentials for fresh login');
+        debugPrint('DEBUG MODE: Allowing sticky login');
       }
 
       // Log contents of SharedPreferences at app start

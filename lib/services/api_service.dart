@@ -111,20 +111,38 @@ Network connection error. Please check:
         debugPrint(
           '❌ Connection test failed with status: ${response.statusCode}',
         );
+        throw Exception('Server responded with status: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('❌ Connection test failed with error: $e');
+
+      // Provide more specific error messages based on exception type
+      String errorMessage = 'Unknown error occurred';
+      if (e.toString().contains('SocketException')) {
+        errorMessage =
+            'Network connection failed. Cannot reach server at $baseUrl';
+        debugPrint(
+          '💡 This could be because the server is not running or WiFi connection issues',
+        );
+      } else if (e.toString().contains('TimeoutException')) {
+        errorMessage = 'Connection timed out when trying to reach $baseUrl';
+        debugPrint('💡 The server might be slow or unresponsive');
+      } else if (e.toString().contains('HttpException')) {
+        errorMessage = 'Invalid HTTP response from $baseUrl';
+      }
+
       debugPrint('''
 Network connection error. Please check:
 1. Is the backend server running? ($baseUrl/api/users/test)
 2. Are you using the correct IP address?
-   - Android Emulator: 10.0.0.81
-   - iOS Simulator: localhost
-   - Physical Device: Your computer's local IP
-3. Is your device/emulator connected to the same network?
-4. Are there any firewall settings blocking the connection?
+   - Android Emulator: 10.0.2.2:8080
+   - iOS Simulator: localhost:8080
+   - Physical Device: $baseUrl (should be your computer's local IP)
+3. Is your device/emulator connected to the same WiFi network?
+4. Try using adb reverse tcp:8080 tcp:8080 for Android devices
+5. Are there any firewall settings blocking the connection?
 ''');
-      rethrow;
+      throw Exception(errorMessage);
     }
   }
 
@@ -222,6 +240,10 @@ Network connection error. Please check:
     try {
       final prefs = await SharedPreferences.getInstance();
 
+      // Set logout flags first
+      await prefs.setBool('explicitly_logged_out', true);
+      await prefs.setBool('is_logged_in', false);
+
       // Clear token data
       await prefs.remove('auth_token');
       await prefs.remove('auth_token_backup');
@@ -230,14 +252,13 @@ Network connection error. Please check:
       // Clear additional login data
       await prefs.remove('user_id');
       await prefs.remove('user_role');
-      await prefs.remove('is_logged_in');
       await prefs.remove('login_time');
 
-      // Explicitly clear all cache that might cause auto-login
-      await prefs.clear(); // This clears ALL shared preferences
+      // DO NOT clear ALL shared preferences
+      // await prefs.clear(); // This would clear app settings too
 
       _token = null;
-      debugPrint('Cleared all auth data from storage');
+      debugPrint('Cleared auth data from storage');
     } catch (e) {
       debugPrint('Error clearing token: $e');
     }
@@ -269,24 +290,34 @@ Network connection error. Please check:
     debugPrint('Logging out user...');
 
     try {
-      // Clear token and all session data
-      await _clearToken();
+      // Clear token from memory
+      _token = null;
 
-      // Also ensure we set the explicitly_logged_out flag to prevent auto-login in debug mode
+      // Clear all auth-related data from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
+
+      // Remove all authentication data
+      await prefs.remove('auth_token');
+      await prefs.remove('auth_token_backup');
+      await prefs.remove('user_id');
+      await prefs.remove('user_role');
+      await prefs.remove('is_logged_in');
+      await prefs.remove('login_time');
+
+      // For backward compatibility, still set this flag
       await prefs.setBool('explicitly_logged_out', true);
 
-      debugPrint('✅ User successfully logged out');
+      debugPrint('✅ User successfully logged out - all auth data cleared');
     } catch (e) {
       debugPrint('❌ Error during logout: $e');
-      // Try again with direct SharedPreferences clearing
+      // Simple fallback in case of error
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.clear();
+        await prefs.remove('auth_token');
         _token = null;
         debugPrint('✅ User logged out through fallback method');
       } catch (secondError) {
-        debugPrint('❌ Fatal error during logout fallback: $secondError');
+        debugPrint('❌ Fatal error during logout: $secondError');
       }
     }
   }
@@ -354,15 +385,12 @@ Network connection error. Please check:
     try {
       debugPrint('Attempting login for email: $email');
 
-      // Check if we already have shared preferences available
+      // Get SharedPreferences instance
       final prefs = await SharedPreferences.getInstance();
-      final prefsKeys = prefs.getKeys();
-      debugPrint('SharedPreferences before login: $prefsKeys');
 
-      // Clear any existing tokens to start fresh
+      // Clear any existing auth data to start fresh
       await prefs.remove('auth_token');
       await prefs.remove('auth_token_backup');
-      await prefs.remove('token_save_time');
 
       final response = await http.post(
         Uri.parse('$baseUrl/api/users/login'),
@@ -374,117 +402,46 @@ Network connection error. Please check:
         debugPrint('Login successful, parsing response');
         try {
           final data = json.decode(response.body);
-
           debugPrint('Login response: $data');
 
           if (data['token'] != null) {
-            // Save token using the _saveToken method
+            // Save token and user data to SharedPreferences
             final String token = data['token'];
-            await _saveToken(token);
 
-            // Double verification step - read it back directly after save
-            final verifyToken = prefs.getString('auth_token');
-            if (verifyToken != token) {
+            // Save token (and backup for redundancy)
+            await prefs.setString('auth_token', token);
+            await prefs.setString('auth_token_backup', token);
+
+            // Store user ID for identification
+            if (data['userId'] != null) {
+              final userIdStr = data['userId'].toString();
+              await prefs.setString('user_id', userIdStr);
               debugPrint(
-                '⚠️ CRITICAL: Token verification failed! Trying again...',
+                'Stored user_id in SharedPreferences: ${data['userId']}',
               );
-
-              // Try once more with direct prefs calls
-              await prefs.setString('auth_token', token);
-              await prefs.setString('auth_token_backup', token);
-              debugPrint('Forced token save a second time');
-
-              // Store user_id with extra validation
-              if (data['userId'] != null) {
-                final userIdStr = data['userId'].toString();
-                await prefs.setString('user_id', userIdStr);
-
-                // Verify user_id was actually saved
-                final storedUserId = prefs.getString('user_id');
-                if (storedUserId != userIdStr) {
-                  debugPrint(
-                    '⚠️ CRITICAL: user_id verification failed! Retrying...',
-                  );
-                  // Try one more time with forced persistance
-                  await prefs.setString('user_id', userIdStr);
-                }
-
-                debugPrint(
-                  '💾 Stored user_id in SharedPreferences: ${data['userId']}',
-                );
-              } else {
-                debugPrint('⚠️ WARNING: No userId in login response!');
-              }
-
-              await prefs.setString('user_role', data['role'] ?? 'USER');
-              await prefs.setBool('is_logged_in', true);
-              await prefs.setString(
-                'login_time',
-                DateTime.now().toIso8601String(),
-              );
-
-              // Clear the explicitly_logged_out flag
-              await prefs.setBool('explicitly_logged_out', false);
-
-              // Double-check that user_id was actually written to SharedPreferences
-              final storedUserId = prefs.getString('user_id');
-              final storedLoggedIn = prefs.getBool('is_logged_in');
-              debugPrint(
-                '🔍 VERIFICATION - Stored user_id: "$storedUserId", is_logged_in: $storedLoggedIn',
-              );
-
-              // Verify again
-              final secondVerifyToken = prefs.getString('auth_token');
-              if (secondVerifyToken == token) {
-                debugPrint('✅ Token successfully saved on second attempt');
-              } else {
-                debugPrint(
-                  '❌ CRITICAL ERROR: Token could not be saved after multiple attempts',
-                );
-              }
-            } else {
-              debugPrint('✅ Token verification successful');
-
-              // Store additional user data for backup login with extra validation
-              if (data['userId'] != null) {
-                final userIdStr = data['userId'].toString();
-                await prefs.setString('user_id', userIdStr);
-
-                // Verify user_id was actually saved
-                final storedUserId = prefs.getString('user_id');
-                if (storedUserId != userIdStr) {
-                  debugPrint(
-                    '⚠️ CRITICAL: user_id verification failed! Retrying...',
-                  );
-                  // Try one more time with forced persistance
-                  await prefs.setString('user_id', userIdStr);
-                }
-
-                debugPrint(
-                  '💾 Stored user_id in SharedPreferences: ${data['userId']}',
-                );
-              } else {
-                debugPrint('⚠️ WARNING: No userId in login response!');
-              }
-
-              await prefs.setString('user_role', data['role'] ?? 'USER');
-              await prefs.setBool('is_logged_in', true);
-              await prefs.setString(
-                'login_time',
-                DateTime.now().toIso8601String(),
-              );
-
-              // Clear the explicitly_logged_out flag
-              await prefs.setBool('explicitly_logged_out', false);
             }
 
-            // Ensure _token is set in memory
+            // Store role and login time
+            await prefs.setString('user_role', data['role'] ?? 'USER');
+            await prefs.setBool('is_logged_in', true);
+            await prefs.setString(
+              'login_time',
+              DateTime.now().toIso8601String(),
+            );
+
+            // For backward compatibility, make sure explicitly_logged_out is false
+            await prefs.setBool('explicitly_logged_out', false);
+
+            // Set the token in memory
             _token = token;
 
+            debugPrint(
+              '✅ Login credentials successfully saved to SharedPreferences',
+            );
             return data;
           } else {
             debugPrint('⚠️ WARNING: No token in login response!');
-            return data; // Still return the data, but it may not allow auto-login next time
+            return data;
           }
         } catch (e) {
           debugPrint('Error parsing login response: $e');
@@ -503,198 +460,67 @@ Network connection error. Please check:
   }
 
   Future<Map<String, dynamic>?> getCurrentUser() async {
-    // Debug output to track SharedPreferences state
-    await debugPrintSharedPrefs("getCurrentUser-start");
-
-    debugPrint(
-      'Checking for current user, token: ${_token != null ? "${_token!.substring(0, Math.min(10, _token!.length))}..." : "null"}',
-    );
+    debugPrint('Checking for current user');
 
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // Check if user explicitly logged out - prevent debug auto-login if true
-      final wasExplicitlyLoggedOut =
-          prefs.getBool('explicitly_logged_out') ?? false;
-      if (wasExplicitlyLoggedOut) {
-        debugPrint(
-          'User explicitly logged out, preventing auto-login even in debug mode',
-        );
-
-        // In debug mode, we need to be extra cautious
-        if (kDebugMode) {
-          // Make doubly sure we're not auto-logging in
-          await _clearToken();
-          await prefs.setBool('is_logged_in', false);
-          debugPrint('DEBUG MODE: Enforcing logged out state');
-        }
-        return null;
-      }
-
-      // CRITICAL FIX: Check for user_id persistence issues
-      final allKeys = prefs.getKeys();
-      debugPrint('📋 SHARED PREFERENCES CURRENT STATE:');
-      debugPrint('All keys: $allKeys');
-
-      // Check for is_logged_in flag FIRST - this is the primary indicator
-      final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
-
-      // If user is not logged in according to flag, return null immediately
-      // This prevents debug mode from auto-setting user 101
-      if (!isLoggedIn && !kDebugMode) {
-        debugPrint('⚠️ Not logged in according to is_logged_in flag');
-        await _clearToken(); // Ensure all auth data is cleared
-        return null;
-      }
-
-      String? persistedUserId;
-      if (allKeys.contains('user_id')) {
-        final rawUserId = prefs.getString('user_id');
-        debugPrint('user_id value: "$rawUserId"');
-
-        // Extra defensive check - if user_id is empty string or "null" string, treat as null
-        if (rawUserId == null ||
-            rawUserId.isEmpty ||
-            rawUserId.toLowerCase() == "null") {
-          debugPrint(
-            '⚠️ user_id is empty or "null" string in SharedPreferences!',
-          );
-
-          // Do not set any user ID in debug mode
-          if (kDebugMode && isLoggedIn) {
-            debugPrint('Debug mode detected, but not auto-setting any user ID');
-          }
-        }
-      } else {
-        debugPrint('⚠️ user_id KEY NOT FOUND in SharedPreferences!');
-
-        // Do not auto-set any user ID
-        if (kDebugMode && isLoggedIn) {
-          debugPrint('Debug mode detected, but not auto-setting any user ID');
-        }
-      }
-      if (allKeys.contains('is_logged_in')) {
-        debugPrint('is_logged_in value: ${prefs.getBool('is_logged_in')}');
-      }
-      if (allKeys.contains('auth_token')) {
-        final token = prefs.getString('auth_token');
-        debugPrint('auth_token exists with length: ${token?.length ?? 0}');
-      }
-
-      // Check if we have a valid token
+      // If we don't have a token in memory, try to load it from SharedPreferences
       if (_token == null || _token!.isEmpty) {
-        debugPrint('No token available, checking for backup login info');
+        _token = prefs.getString('auth_token');
 
-        // Check if we have backup login info
-        final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
-        final userIdStr = prefs.getString('user_id');
-        final userRole = prefs.getString('user_role');
-
-        // Extra check to explicitly handle empty string or "null" string
-        final validUserIdStr =
-            (userIdStr == null ||
-                    userIdStr.isEmpty ||
-                    userIdStr.toLowerCase() == "null")
-                ? null
-                : userIdStr;
-
-        // Don't use hardcoded fallback ID
-        final userId = _safeParseId(validUserIdStr);
-
-        // In debug mode, we'll accept missing login status only if explicitly set
-        final effectiveIsLoggedIn =
-            kDebugMode && isLoggedIn ? true : isLoggedIn;
-
-        if (effectiveIsLoggedIn && userId != null) {
-          debugPrint(
-            '🔄 Found backup login info, attempting to restore session',
-          );
-
-          // For development builds with valid ID
-          if (kDebugMode && isLoggedIn) {
-            debugPrint('🔑 Using stored credentials in debug mode');
-            // Skip token checks in debug mode but only if we have a valid ID
-            if (userId != null) {
-              return {'userId': userId, 'role': userRole ?? 'USER'};
-            } else {
-              debugPrint('No valid user ID found, need to log in again');
-              return null;
-            }
-          }
-
-          // Return the user info from backup
-          debugPrint('🔄 Returning user data from backup login info');
-          return {'userId': userId, 'role': userRole ?? 'USER'};
+        // If primary token is missing, try backup
+        if (_token == null || _token!.isEmpty) {
+          _token = prefs.getString('auth_token_backup');
         }
 
-        debugPrint('No backup login info available');
-        return null;
+        // If no token found, return null immediately
+        if (_token == null || _token!.isEmpty) {
+          debugPrint('No valid token found in SharedPreferences');
+          return null;
+        }
+
+        debugPrint('Loaded token from SharedPreferences');
       }
 
-      // Try to validate token with the server
+      // We have a token, try to validate it with the server
       final headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $_token',
       };
+
       final currentUserPath = _getApiEndpoint('/api/users/current');
-      debugPrint(
-        'Sending request to $baseUrl$currentUserPath with token: ${_token!.substring(0, Math.min(10, _token!.length))}...',
-      );
+      debugPrint('Validating token with server: $baseUrl$currentUserPath');
+
       final response = await client.get(
         Uri.parse('$baseUrl$currentUserPath'),
         headers: headers,
       );
-      debugPrint(
-        'Get current user response: statusCode=${response.statusCode}, body=${response.body}',
-      );
 
       if (response.statusCode == 200) {
+        // Token is valid, parse user data
         final responseBody = jsonDecode(response.body) as Map<String, dynamic>;
-
         debugPrint('✅ Current user validated successfully');
 
-        // Update backup info with fresh data
+        // Update SharedPreferences with fresh data
         await prefs.setString(
           'user_id',
           responseBody['userId']?.toString() ?? "",
         );
-        debugPrint(
-          '💾 Updated user_id in SharedPreferences: ${responseBody['userId']}',
-        );
         await prefs.setString('user_role', responseBody['role'] ?? 'USER');
         await prefs.setBool('is_logged_in', true);
-        await prefs.setString('login_time', DateTime.now().toIso8601String());
 
-        // Safer handling of possibly null userId
+        // Parse user ID from response
         int? userId;
-        if (responseBody['userId'] == null) {
-          // Use the value from SharedPreferences without hardcoded fallback
-          userId = _safeParseId(prefs.getString('user_id'));
-          if (userId == null) {
-            debugPrint('⚠️ No valid user ID available, need to log in again');
-            return null;
-          }
-          debugPrint(
-            '⚠️ Using fallback userId from SharedPreferences: $userId',
-          );
-        } else {
-          // Try to convert to int safely
-          try {
-            userId = (responseBody['userId'] as num).toInt();
-          } catch (e) {
-            // If conversion fails, try to parse without hardcoded fallback
-            userId = int.tryParse(responseBody['userId'].toString());
-            if (userId == null) {
-              debugPrint('⚠️ Failed to parse user ID, need to log in again');
-              return null;
-            }
-            debugPrint('⚠️ Fallback conversion of userId: $userId');
-          }
+        try {
+          userId = (responseBody['userId'] as num).toInt();
+        } catch (e) {
+          userId = int.tryParse(responseBody['userId'].toString());
         }
 
-        // Final null check before returning
+        // Final check before returning
         if (userId == null) {
-          debugPrint('⚠️ User ID is null, cannot proceed with authentication');
+          debugPrint('⚠️ Could not get valid user ID from response');
           return null;
         }
 
@@ -703,92 +529,19 @@ Network connection error. Please check:
           'role': responseBody['role'] as String? ?? 'USER',
         };
       } else {
-        debugPrint('❌ Invalid token, checking for backup login info');
+        // Token is invalid
+        debugPrint('❌ Token validation failed (status ${response.statusCode})');
 
-        // Check if we have backup login info
-        final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
-        final userIdStr = prefs.getString('user_id');
-        final userRole = prefs.getString('user_role');
+        // Clear the invalid token
+        _token = null;
+        await prefs.remove('auth_token');
+        await prefs.remove('auth_token_backup');
 
-        // Extra check to explicitly handle empty string or "null" string
-        final validUserIdStr =
-            (userIdStr == null ||
-                    userIdStr.isEmpty ||
-                    userIdStr.toLowerCase() == "null")
-                ? null
-                : userIdStr;
-
-        // Don't use hardcoded fallback ID
-        final userId = _safeParseId(validUserIdStr);
-
-        // In debug mode, we'll accept missing login status only if explicitly set
-        final effectiveIsLoggedIn =
-            kDebugMode && isLoggedIn ? true : isLoggedIn;
-
-        if (effectiveIsLoggedIn && userId != null) {
-          debugPrint(
-            '🔄 Found backup login info, attempting to restore session',
-          );
-
-          // For development builds with valid ID
-          if (kDebugMode && isLoggedIn) {
-            debugPrint('🔑 Using stored credentials in debug mode');
-            // Skip token checks in debug mode but only if we have a valid ID
-            if (userId != null) {
-              return {'userId': userId, 'role': userRole ?? 'USER'};
-            } else {
-              debugPrint('No valid user ID found, need to log in again');
-              return null;
-            }
-          }
-
-          // Return the user info from backup
-          debugPrint('🔄 Returning user data from backup login info');
-          return {'userId': userId, 'role': userRole ?? 'USER'};
-        }
-
-        debugPrint('No valid backup login info, clearing token');
-        await _clearToken();
         return null;
       }
     } catch (e) {
       debugPrint('❌ Error getting current user: $e');
-
-      // Check if we have backup login info
-      final prefs = await SharedPreferences.getInstance();
-      final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
-      final userIdStr = prefs.getString('user_id');
-      final userRole = prefs.getString('user_role');
-
-      // Extra check to explicitly handle empty string or "null" string
-      final validUserIdStr =
-          (userIdStr == null ||
-                  userIdStr.isEmpty ||
-                  userIdStr.toLowerCase() == "null")
-              ? null
-              : userIdStr;
-
-      // Don't use hardcoded fallback ID
-      final userId = _safeParseId(validUserIdStr);
-
-      // In debug mode, we'll accept missing login status only if explicitly set
-      final effectiveIsLoggedIn = kDebugMode && isLoggedIn ? true : isLoggedIn;
-
-      if (effectiveIsLoggedIn && userId != null) {
-        debugPrint('🔄 Found backup login info, attempting to restore session');
-
-        // For development builds with valid ID
-        if (kDebugMode && isLoggedIn) {
-          debugPrint('🔑 Using stored credentials in debug mode');
-          // Skip token checks in debug mode but only if we have a valid ID
-          if (userId != null) {
-            return {'userId': userId, 'role': userRole ?? 'USER'};
-          } else {
-            debugPrint('No valid user ID found, need to log in again');
-            return null;
-          }
-        }
-      }
+      return null;
     }
   }
 
