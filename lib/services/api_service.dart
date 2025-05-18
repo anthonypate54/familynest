@@ -14,7 +14,7 @@ class ApiService {
   // Dynamic baseUrl based on AppConfig
   String get baseUrl {
     final url = AppConfig().baseUrl;
-    debugPrint("Using API base URL: $url");
+    debugPrint("✅✅✅ USING API BASE URL: $url");
     return url;
   }
 
@@ -77,11 +77,12 @@ class ApiService {
 Network connection error. Please check:
 1. Is the backend server running? ($baseUrl/api/users/test)
 2. Are you using the correct IP address?
-   - Android Emulator: 10.0.0.81
-   - iOS Simulator: prefs.getString('user_id');
-   - Physical Device: Your computer's local IP
-3. Is your device/emulator connected to the same network?
-4. Are there any firewall settings blocking the connection?
+   - Android Emulator: 10.0.2.2:8080
+   - iOS Simulator: localhost:8080
+   - Physical Device: Your computer's IP address (e.g., 10.0.0.10)
+3. Go to Profile -> Server Configuration to set the correct server URL.
+4. Is your device/emulator connected to the same WiFi network?
+5. Are there any firewall settings blocking the connection?
 ''');
       rethrow;
     }
@@ -137,10 +138,10 @@ Network connection error. Please check:
 2. Are you using the correct IP address?
    - Android Emulator: 10.0.2.2:8080
    - iOS Simulator: localhost:8080
-   - Physical Device: $baseUrl (should be your computer's local IP)
-3. Is your device/emulator connected to the same WiFi network?
-4. Try using adb reverse tcp:8080 tcp:8080 for Android devices
-5. Are there any firewall settings blocking the connection?
+   - Physical Device: Your computer's IP address (10.0.0.10 or 10.0.0.81)
+3. Go to Profile > Server Configuration to set the correct server URL
+4. For real Android devices, try: adb reverse tcp:8080 tcp:8080
+5. Is your device connected to the same WiFi network as your computer?
 ''');
       throw Exception(errorMessage);
     }
@@ -1428,5 +1429,223 @@ Network connection error. Please check:
     final fallbackUrl = '$mediaBaseUrl$baseUrl';
     debugPrint('No working URL found, returning fallback: $fallbackUrl');
     return fallbackUrl;
+  }
+
+  // Get reactions for a message
+  Future<Map<String, dynamic>> getMessageReactions(int? messageId) async {
+    if (messageId == null) {
+      debugPrint('Error: Cannot get message reactions - Message ID is null');
+      return {'reactions': [], 'counts': {}};
+    }
+
+    debugPrint('Getting reactions for message $messageId');
+
+    try {
+      final url = Uri.parse('$baseUrl/api/messages/$messageId/reactions');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.get(url, headers: headers);
+      debugPrint(
+        'Get reactions response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to get reactions: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error getting reactions: $e');
+      return {'reactions': [], 'counts': {}};
+    }
+  }
+
+  // Get comments for a message
+  Future<Map<String, dynamic>> getMessageComments(
+    int? messageId, {
+    int page = 0,
+    int size = 20,
+    String sortBy = 'createdAt',
+    String sortDir = 'desc',
+  }) async {
+    if (messageId == null) {
+      debugPrint('Error: Cannot get message comments - Message ID is null');
+      return {'comments': [], 'totalItems': 0};
+    }
+
+    debugPrint('Getting comments for message $messageId');
+
+    try {
+      final url = Uri.parse(
+        '$baseUrl/api/messages/$messageId/comments?page=$page&size=$size&sortBy=$sortBy&sortDir=$sortDir',
+      );
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.get(url, headers: headers);
+      debugPrint(
+        'Get comments response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to get comments: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error getting comments: $e');
+      return {'comments': [], 'totalItems': 0};
+    }
+  }
+
+  // Add a comment to a message
+  Future<Map<String, dynamic>> addComment(
+    int? messageId,
+    String content, {
+    int? parentCommentId,
+  }) async {
+    if (messageId == null) {
+      debugPrint('Error: Cannot add comment - Message ID is null');
+      return {'error': 'Message ID is null'};
+    }
+
+    debugPrint('Adding comment to message $messageId');
+
+    try {
+      final url = Uri.parse('$baseUrl/api/messages/$messageId/comments');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final Map<String, dynamic> requestBody = {'content': content};
+
+      if (parentCommentId != null) {
+        requestBody['parentCommentId'] = parentCommentId;
+      }
+
+      final body = jsonEncode(requestBody);
+
+      final response = await client.post(url, headers: headers, body: body);
+      debugPrint(
+        'Add comment response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 201) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to add comment: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error adding comment: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  // Mark a message as viewed
+  Future<Map<String, dynamic>> markMessageAsViewed(int? messageId) async {
+    if (messageId == null) {
+      debugPrint('Error: Cannot mark message as viewed - Message ID is null');
+      return {'error': 'Message ID is null'};
+    }
+
+    debugPrint('Marking message $messageId as viewed');
+
+    try {
+      final url = Uri.parse('$baseUrl/api/messages/$messageId/views');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.post(url, headers: headers);
+      debugPrint(
+        'Mark message as viewed response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to mark message as viewed: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error marking message as viewed: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  // Remove a reaction from a message
+  Future<bool> removeReaction(int? messageId, String reactionType) async {
+    if (messageId == null) {
+      debugPrint('Error: Cannot remove reaction - Message ID is null');
+      return false;
+    }
+
+    debugPrint('Removing $reactionType reaction from message $messageId');
+
+    try {
+      final url = Uri.parse(
+        '$baseUrl/api/messages/$messageId/reactions/$reactionType',
+      );
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.delete(url, headers: headers);
+      debugPrint(
+        'Remove reaction response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        throw Exception('Failed to remove reaction: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error removing reaction: $e');
+      return false;
+    }
+  }
+
+  // Add a reaction to a message
+  Future<Map<String, dynamic>> addReaction(
+    int? messageId,
+    String reactionType,
+  ) async {
+    if (messageId == null) {
+      debugPrint('Error: Cannot add reaction - Message ID is null');
+      return {'error': 'Message ID is null'};
+    }
+
+    debugPrint('Adding $reactionType reaction to message $messageId');
+
+    try {
+      final url = Uri.parse('$baseUrl/api/messages/$messageId/reactions');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+      final body = jsonEncode({'reactionType': reactionType});
+
+      final response = await client.post(url, headers: headers, body: body);
+      debugPrint(
+        'Add reaction response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to add reaction: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error adding reaction: $e');
+      return {'error': e.toString()};
+    }
   }
 }

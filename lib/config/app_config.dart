@@ -51,7 +51,7 @@ class AppConfig {
         if (kIsWeb) {
           return "http://localhost:8080"; // Use simple localhost for web
         } else if (Platform.isAndroid) {
-          return "http://10.0.2.2:8080"; // Android emulator (10.0.2.2 points to host loopback)
+          return "http://localhost:8080"; // Changed from 10.0.2.2
         } else {
           return "http://localhost:8080"; // iOS simulator and others
         }

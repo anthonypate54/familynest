@@ -16,6 +16,7 @@ import '../services/invitation_service.dart';
 import '../utils/page_transitions.dart';
 import '../controllers/bottom_navigation_controller.dart';
 import '../utils/auth_utils.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ApiService apiService;
@@ -781,6 +782,29 @@ class ProfileScreenState extends State<ProfileScreen>
     );
   }
 
+  // Show a message about the invitation backend issue
+  void _showInvitationBackendError() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Invitation System Unavailable'),
+            content: const Text(
+              'We\'re sorry, but the invitation system is currently experiencing technical issues.\n\n'
+              'Our team has been notified and is working on a fix. In the meantime, you can still use '
+              'the app and enjoy your family connections.\n\n'
+              'Please try again later or contact support if the issue persists.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+    );
+  }
+
   // Add a method to handle the case when user doesn't have a family
   void _showCreateFamilyFirstDialog() {
     showDialog(
@@ -812,29 +836,6 @@ class ProfileScreenState extends State<ProfileScreen>
                   backgroundColor: Theme.of(context).colorScheme.primary,
                 ),
                 child: const Text('Create Family'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  // Show a message about the invitation backend issue
-  void _showInvitationBackendError() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Invitation System Unavailable'),
-            content: const Text(
-              'We\'re sorry, but the invitation system is currently experiencing technical issues.\n\n'
-              'Our team has been notified and is working on a fix. In the meantime, you can still use '
-              'the app and enjoy your family connections.\n\n'
-              'Please try again later or contact support if the issue persists.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
               ),
             ],
           ),
@@ -1032,7 +1033,6 @@ class ProfileScreenState extends State<ProfileScreen>
                         ),
                       ),
 
-                      // Remove Manage family button
                       SizedBox(height: isSmallScreen ? 10 : 20),
                     ],
                   ),

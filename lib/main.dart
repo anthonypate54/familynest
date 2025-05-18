@@ -10,6 +10,7 @@ import 'screens/video_player_screen.dart';
 import 'theme/app_theme.dart';
 import 'utils/page_transitions.dart';
 import 'config/app_config.dart';
+import 'config/env_config.dart'; // Import the EnvConfig class
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'components/bottom_navigation.dart';
 import 'controllers/bottom_navigation_controller.dart';
@@ -35,6 +36,9 @@ Future<String?> getDeviceModel() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load environment configuration
+  await EnvConfig.initialize();
 
   // Check and clear the explicitly_logged_out flag on app startup
   try {
@@ -63,74 +67,26 @@ void main() async {
   CachedNetworkImage.evictFromCache('thumbnailCacheKey');
   PaintingBinding.instance.imageCache.clear();
 
-  // Load initial configuration
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  String baseUrl = prefs.getString('baseUrl') ?? 'http://localhost:8080';
-
-  // Initialize app configuration
+  // Initialize app configuration with the URL from the environment
   final config = AppConfig();
+  config.setCustomBaseUrl(EnvConfig().apiUrl);
 
-  // Set platform-specific URLs
-  if (Platform.isAndroid) {
-    // For Android devices, detect if we're running on an emulator
-    print('📱 Android device detected - configuring server address');
+  debugPrint('🌐 Using API URL: ${EnvConfig().apiUrl}');
+  debugPrint('🌍 Environment: ${EnvConfig().environment}');
+  debugPrint('📱 Platform: ${Platform.operatingSystem}');
 
-    // Get the device model to detect emulators
-    String? deviceModel = await getDeviceModel();
-    bool isEmulator = false;
-
-    // Check for emulator indicators in the device model
-    if (deviceModel != null) {
-      isEmulator =
-          deviceModel.toLowerCase().contains('emulator') ||
-          deviceModel.toLowerCase().contains('sdk') ||
-          deviceModel.toLowerCase().contains('gphone');
-    }
-
-    String serverUrl;
-    if (isEmulator) {
-      // For emulators, use 10.0.2.2 which points to host machine's localhost
-      serverUrl = 'http://10.0.2.2:8080';
-      print('🖥️ Running on Android emulator - using emulator server address');
-    } else {
-      // For real devices, use direct IP address
-      serverUrl = 'http://10.0.0.10:8080';
-      print('📲 Running on real Android device - using direct server address');
-    }
-
-    // Set the URL directly, no fallbacks
-    config.setCustomBaseUrl(serverUrl);
-
-    // Print troubleshooting info
-    print('🌐 Server URL set to: $serverUrl');
-    print('📋 NETWORK TROUBLESHOOTING:');
-    print('1. Make sure your backend server is running');
-    print('2. Ensure your device and computer are on the same WiFi network');
-    print(
-      '3. If connection fails on real device, try: adb reverse tcp:8080 tcp:8080',
-    );
-  } else {
-    config.setCustomBaseUrl(baseUrl);
-  }
-
-  // You could also set different environments based on build flags
-  // Example: flutter build --dart-define=ENVIRONMENT=production
-  const environment = String.fromEnvironment(
-    'ENVIRONMENT',
-    defaultValue: 'development',
-  );
-  if (environment == 'production') {
+  // Set environment based on environment variable
+  if (EnvConfig().isProduction) {
     config.setEnvironment(Environment.production);
-  } else if (environment == 'staging') {
-    config.setEnvironment(Environment.staging);
+  } else {
+    config.setEnvironment(Environment.development);
   }
 
   // Log current configuration if in debug mode
   if (kDebugMode) {
     print('Initializing app with baseUrl: ${config.baseUrl}');
-    print('Environment: $environment');
+    print('Environment: ${EnvConfig().environment}');
     print('Platform: ${Platform.operatingSystem}');
-    print('Is Android: ${Platform.isAndroid}');
   }
 
   runApp(MyApp(initialRoute: '/'));

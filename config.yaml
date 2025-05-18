@@ -1,0 +1,36 @@
+environments:
+  dev:
+    api_base_url: "http://10.0.0.10:8080"
+    debug: true
+  prod:
+    api_base_url: "https://api.familynest.app"
+    debug: false
+
+platforms:
+  android_emulator:
+    device_id: "emulator-5554"
+    api_url: "http://10.0.2.2:8080"
+    description: "Android Emulator"
+    setup_command: "adb reverse tcp:8080 tcp:8080"
+    
+  android_physical:
+    device_id: ""
+    api_url: "http://10.0.0.10:8080"
+    description: "Physical Android Device"
+    setup_command: "adb reverse tcp:8080 tcp:8080"
+    
+  ios_simulator:
+    device_id: "iPhone 16 Pro"
+    api_url: "http://localhost:8080"
+    description: "iOS Simulator"
+    
+  ios_physical:
+    device_id: ""
+    api_url: "http://10.0.0.10:8080"
+    description: "Physical iPhone"
+    
+  web:
+    device_id: "chrome"
+    api_url: "http://localhost:8080"
+    description: "Web Browser"
+    renderer: "canvaskit" 
