@@ -20,7 +20,7 @@ class MessageThreadScreen extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _MessageThreadScreenState createState() => _MessageThreadScreenState();
+  State<MessageThreadScreen> createState() => _MessageThreadScreenState();
 }
 
 class _MessageThreadScreenState extends State<MessageThreadScreen> {
@@ -31,13 +31,83 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
   VideoPlayerController? _videoController;
   bool _isReacting = false;
   List<String> _userReactions = [];
+  // Add a field to track user reactions for comments
+  final Map<String, Set<String>> _commentReactionsMap = {};
+
+  // Add helper to check if user has reacted to a comment with a specific type
+  bool _hasCommentReaction(dynamic commentId, String reactionType) {
+    if (commentId == null) {
+      debugPrint('Warning: Comment ID is null when checking reaction');
+      return false;
+    }
+
+    final String commentIdStr = commentId.toString();
+    return _commentReactionsMap.containsKey(commentIdStr) &&
+        _commentReactionsMap[commentIdStr]!.contains(reactionType);
+  }
+
+  // Add helper to get count of specific reaction types for comments
+  int _getCommentReactionCount(
+    Map<String, dynamic> comment,
+    String reactionType,
+  ) {
+    // For now, use total reaction count for all types since we don't have per-type counts
+    return comment['reactionCount'] ?? 0;
+  }
+
+  // Add reaction to a comment
+  Future<void> _addCommentReaction(
+    dynamic commentId,
+    String reactionType,
+  ) async {
+    try {
+      if (commentId == null) {
+        debugPrint('Error: Cannot add reaction - Comment ID is null');
+        return;
+      }
+
+      final String commentIdStr = commentId.toString();
+      debugPrint('Adding reaction $reactionType to comment ID: $commentIdStr');
+
+      // For now, just update the UI locally since the API doesn't yet support comment reactions
+      // In the future, this could call an API endpoint
+      setState(() {
+        if (!_commentReactionsMap.containsKey(commentIdStr)) {
+          _commentReactionsMap[commentIdStr] = {};
+        }
+
+        // Toggle reaction
+        if (_commentReactionsMap[commentIdStr]!.contains(reactionType)) {
+          _commentReactionsMap[commentIdStr]!.remove(reactionType);
+        } else {
+          _commentReactionsMap[commentIdStr]!.add(reactionType);
+        }
+      });
+
+      // Show a message to the user that this feature is coming soon
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Comment reactions coming soon!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
     super.initState();
 
     // Check if the message has a valid ID
-    final bool hasValidId = widget.message['hasValidId'] == true;
+    final bool hasValidId = widget.message['id'] != null;
 
     if (!hasValidId) {
       // Set empty data for invalid messages
@@ -142,6 +212,17 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
         }
 
         debugPrint('Loaded ${commentsList.length} comments');
+
+        // Debug: Print the structure of the first comment if available
+        if (commentsList.isNotEmpty) {
+          final firstComment = commentsList.first as Map<String, dynamic>;
+          debugPrint(
+            'First comment structure: ${firstComment.keys.toList().join(', ')}',
+          );
+          debugPrint(
+            'First comment ID: ${firstComment['id']} (${firstComment['id']?.runtimeType})',
+          );
+        }
 
         // Convert dynamic list to List<Map<String, dynamic>>
         _commentsFuture = Future.value(
@@ -910,142 +991,181 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
                                       : const Text('Unsupported media type'),
                             ),
                           ],
+                        ],
+                      ),
+                    ),
+                  ),
 
-                          // Engagement metrics
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              // Comments count
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.comment_outlined,
-                                    size: 20,
-                                    color: Colors.grey[700],
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    widget.message['commentCount']
-                                            ?.toString() ??
-                                        '0',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[700],
-                                    ),
-                                  ),
-                                ],
+                  // Engagement metrics for the original message (moved outside the card)
+                  Container(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 4.0,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 4.0,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        // Comments count
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.comment_outlined,
+                              size: 16,
+                              color: Colors.grey[700],
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              widget.message['commentCount']?.toString() ?? '0',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[700],
                               ),
+                            ),
+                          ],
+                        ),
 
-                              // Like/Upvote button
-                              IconButton(
-                                icon: const Icon(Icons.thumb_up_alt_outlined),
+                        // Like/Upvote button
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              onTap: () => _addReaction('LIKE'),
+                              child: Icon(
+                                Icons.thumb_up_alt_outlined,
+                                size: 16,
                                 color:
                                     _userReactions.contains('LIKE')
                                         ? Colors.blue
                                         : Colors.grey,
-                                onPressed: () => _addReaction('LIKE'),
-                                tooltip: 'Like',
                               ),
-                              // Text to show reaction count
-                              Text(
-                                _getReactionCount('LIKE').toString(),
-                                style: TextStyle(
-                                  color:
-                                      _userReactions.contains('LIKE')
-                                          ? Colors.blue
-                                          : Colors.grey,
-                                ),
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              _getReactionCount('LIKE').toString(),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color:
+                                    _userReactions.contains('LIKE')
+                                        ? Colors.blue
+                                        : Colors.grey,
                               ),
+                            ),
+                          ],
+                        ),
 
-                              const SizedBox(width: 16),
-
-                              // Heart/Love button
-                              IconButton(
-                                icon: const Icon(Icons.favorite_outline),
+                        // Heart/Love button
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              onTap: () => _addReaction('LOVE'),
+                              child: Icon(
+                                Icons.favorite_outline,
+                                size: 16,
                                 color:
                                     _userReactions.contains('LOVE')
                                         ? Colors.red
                                         : Colors.grey,
-                                onPressed: () => _addReaction('LOVE'),
-                                tooltip: 'Love',
                               ),
-                              // Text to show reaction count
-                              Text(
-                                _getReactionCount('LOVE').toString(),
-                                style: TextStyle(
-                                  color:
-                                      _userReactions.contains('LOVE')
-                                          ? Colors.red
-                                          : Colors.grey,
-                                ),
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              _getReactionCount('LOVE').toString(),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color:
+                                    _userReactions.contains('LOVE')
+                                        ? Colors.red
+                                        : Colors.grey,
                               ),
+                            ),
+                          ],
+                        ),
 
-                              const SizedBox(width: 16),
-
-                              // Laugh button
-                              IconButton(
-                                icon: const Icon(Icons.emoji_emotions_outlined),
+                        // Laugh button
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              onTap: () => _addReaction('LAUGH'),
+                              child: Icon(
+                                Icons.emoji_emotions_outlined,
+                                size: 16,
                                 color:
                                     _userReactions.contains('LAUGH')
                                         ? Colors.amber
                                         : Colors.grey,
-                                onPressed: () => _addReaction('LAUGH'),
-                                tooltip: 'Laugh',
                               ),
-                              // Text to show reaction count
-                              Text(
-                                _getReactionCount('LAUGH').toString(),
-                                style: TextStyle(
-                                  color:
-                                      _userReactions.contains('LAUGH')
-                                          ? Colors.amber
-                                          : Colors.grey,
-                                ),
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              _getReactionCount('LAUGH').toString(),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color:
+                                    _userReactions.contains('LAUGH')
+                                        ? Colors.amber
+                                        : Colors.grey,
                               ),
+                            ),
+                          ],
+                        ),
 
-                              // Views count
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.visibility_outlined,
-                                    size: 20,
-                                    color: Colors.grey[700],
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    widget.message['viewCount']?.toString() ??
-                                        '0',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[700],
-                                    ),
-                                  ),
-                                ],
+                        // Views count
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.visibility_outlined,
+                              size: 16,
+                              color: Colors.grey[700],
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              widget.message['viewCount']?.toString() ?? '0',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[700],
                               ),
+                            ),
+                          ],
+                        ),
 
-                              // Share button
-                              IconButton(
-                                icon: Icon(
-                                  Icons.share_outlined,
-                                  size: 20,
-                                  color: Colors.grey[700],
-                                ),
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Share feature coming soon!',
-                                      ),
-                                    ),
-                                  );
-                                },
+                        // Share button
+                        GestureDetector(
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Share feature coming soon!'),
                               ),
-                            ],
+                            );
+                          },
+                          child: Icon(
+                            Icons.share_outlined,
+                            size: 16,
+                            color: Colors.grey[700],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
+                  ),
+
+                  // Add a divider after the message metrics
+                  Divider(
+                    color: Colors.grey[600],
+                    thickness: 0.5,
+                    height: 16,
+                    indent: 16,
+                    endIndent: 16,
                   ),
 
                   // Comments section divider
@@ -1117,115 +1237,356 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
                         itemCount: comments.length,
                         itemBuilder: (context, index) {
                           final comment = comments[index];
-                          return Card(
-                            margin: const EdgeInsets.symmetric(
-                              horizontal: 16.0,
-                              vertical: 4.0,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12.0),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Comment author photo
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.2),
-                                          blurRadius: 4,
-                                          spreadRadius: 1,
-                                        ),
-                                      ],
-                                    ),
-                                    child: CircleAvatar(
-                                      backgroundColor: Color(
-                                        (comment['username'] ?? 'User')
-                                                .hashCode |
-                                            0xFF000000,
-                                      ),
-                                      child:
-                                          comment['userPhoto'] != null
-                                              ? ClipOval(
-                                                child: CachedNetworkImage(
-                                                  imageUrl:
-                                                      comment['userPhoto']
-                                                              .toString()
-                                                              .startsWith(
-                                                                'http',
-                                                              )
-                                                          ? comment['userPhoto']
-                                                          : '${widget.apiService.baseUrl}${comment['userPhoto']}',
-                                                  fit: BoxFit.cover,
-                                                  width: 40,
-                                                  height: 40,
-                                                  placeholder:
-                                                      (context, url) =>
-                                                          CircularProgressIndicator(),
-                                                  errorWidget:
-                                                      (
-                                                        context,
-                                                        url,
-                                                        error,
-                                                      ) => Text(
-                                                        (comment['username'] ??
-                                                                'U')[0]
-                                                            .toUpperCase(),
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                ),
-                                              )
-                                              : Text(
-                                                (comment['username'] ?? 'U')[0]
-                                                    .toUpperCase(),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
 
-                                  // Comment content
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          comment['username'] ?? 'Unknown User',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
+                          // Debug the comment ID for each comment
+                          debugPrint(
+                            'Rendering comment ${index + 1}/${comments.length} with ID: ${comment['id']} (${comment['id']?.runtimeType})',
+                          );
+
+                          // Create a combined widget with the comment card and metrics row
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // The comment card itself
+                              Card(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 16.0,
+                                  vertical: 4.0,
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12.0),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // Comment author photo
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 2,
                                           ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(
+                                                0.2,
+                                              ),
+                                              blurRadius: 4,
+                                              spreadRadius: 1,
+                                            ),
+                                          ],
                                         ),
-                                        const SizedBox(height: 4),
-                                        Text(comment['content'] ?? ''),
-                                        const SizedBox(height: 4),
+                                        child: CircleAvatar(
+                                          backgroundColor: Color(
+                                            (comment['username'] ?? 'User')
+                                                    .hashCode |
+                                                0xFF000000,
+                                          ),
+                                          child:
+                                              comment['userPhoto'] != null
+                                                  ? ClipOval(
+                                                    child: CachedNetworkImage(
+                                                      imageUrl:
+                                                          comment['userPhoto']
+                                                                  .toString()
+                                                                  .startsWith(
+                                                                    'http',
+                                                                  )
+                                                              ? comment['userPhoto']
+                                                              : '${widget.apiService.baseUrl}${comment['userPhoto']}',
+                                                      fit: BoxFit.cover,
+                                                      width: 40,
+                                                      height: 40,
+                                                      placeholder:
+                                                          (context, url) =>
+                                                              CircularProgressIndicator(),
+                                                      errorWidget:
+                                                          (
+                                                            context,
+                                                            url,
+                                                            error,
+                                                          ) => Text(
+                                                            (comment['username'] ??
+                                                                    'U')[0]
+                                                                .toUpperCase(),
+                                                            style:
+                                                                const TextStyle(
+                                                                  color:
+                                                                      Colors
+                                                                          .white,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                ),
+                                                          ),
+                                                    ),
+                                                  )
+                                                  : Text(
+                                                    (comment['username'] ??
+                                                            'U')[0]
+                                                        .toUpperCase(),
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+
+                                      // Comment content
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              comment['username'] ??
+                                                  'Unknown User',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(comment['content'] ?? ''),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              comment['timestamp'] ?? '',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              // Add metrics row below the comment card
+                              Container(
+                                margin: const EdgeInsets.only(
+                                  left: 68.0,
+                                  bottom: 8.0,
+                                  right: 16.0,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12.0,
+                                  vertical: 4.0,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    // Comment replies count (non-interactive)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.comment_outlined,
+                                          size: 16,
+                                          color: Colors.grey[700],
+                                        ),
+                                        const SizedBox(width: 2),
                                         Text(
-                                          comment['timestamp'] ?? '',
+                                          "0", // Comments don't have replies yet, so show 0
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: Colors.grey[600],
+                                            color: Colors.grey[700],
                                           ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                ],
+
+                                    // Like button (interactive)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        GestureDetector(
+                                          onTap:
+                                              () => _addCommentReaction(
+                                                comment['id'],
+                                                'LIKE',
+                                              ),
+                                          child: Icon(
+                                            Icons.thumb_up_alt_outlined,
+                                            size: 16,
+                                            color:
+                                                _hasCommentReaction(
+                                                      comment['id'],
+                                                      'LIKE',
+                                                    )
+                                                    ? Colors.blue
+                                                    : Colors.grey,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          _getCommentReactionCount(
+                                            comment,
+                                            'LIKE',
+                                          ).toString(),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color:
+                                                _hasCommentReaction(
+                                                      comment['id'],
+                                                      'LIKE',
+                                                    )
+                                                    ? Colors.blue
+                                                    : Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    // Love button (interactive)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        GestureDetector(
+                                          onTap:
+                                              () => _addCommentReaction(
+                                                comment['id'],
+                                                'LOVE',
+                                              ),
+                                          child: Icon(
+                                            Icons.favorite_outline,
+                                            size: 16,
+                                            color:
+                                                _hasCommentReaction(
+                                                      comment['id'],
+                                                      'LOVE',
+                                                    )
+                                                    ? Colors.red
+                                                    : Colors.grey,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          _getCommentReactionCount(
+                                            comment,
+                                            'LOVE',
+                                          ).toString(),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color:
+                                                _hasCommentReaction(
+                                                      comment['id'],
+                                                      'LOVE',
+                                                    )
+                                                    ? Colors.red
+                                                    : Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    // Laugh button (interactive)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        GestureDetector(
+                                          onTap:
+                                              () => _addCommentReaction(
+                                                comment['id'],
+                                                'LAUGH',
+                                              ),
+                                          child: Icon(
+                                            Icons.emoji_emotions_outlined,
+                                            size: 16,
+                                            color:
+                                                _hasCommentReaction(
+                                                      comment['id'],
+                                                      'LAUGH',
+                                                    )
+                                                    ? Colors.amber
+                                                    : Colors.grey,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          _getCommentReactionCount(
+                                            comment,
+                                            'LAUGH',
+                                          ).toString(),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color:
+                                                _hasCommentReaction(
+                                                      comment['id'],
+                                                      'LAUGH',
+                                                    )
+                                                    ? Colors.amber
+                                                    : Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    // Views count (non-interactive)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.visibility_outlined,
+                                          size: 16,
+                                          color: Colors.grey[700],
+                                        ),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          comment['viewCount']?.toString() ??
+                                              '0',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    // Share button (interactive)
+                                    GestureDetector(
+                                      onTap: () {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Share comment feature coming soon!',
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      child: Icon(
+                                        Icons.share_outlined,
+                                        size: 16,
+                                        color: Colors.grey[700],
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
+
+                              // Add a divider after each comment's metrics
+                              Divider(
+                                color: Colors.grey[500],
+                                thickness: 0.5,
+                                height: 16,
+                                indent:
+                                    68, // Match the left padding of the metrics row
+                                endIndent: 16,
+                              ),
+                            ],
                           );
                         },
                       );
