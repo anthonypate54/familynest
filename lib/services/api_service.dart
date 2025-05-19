@@ -1138,6 +1138,23 @@ Network connection error. Please check:
     }
   }
 
+  // Join a family
+  Future<void> joinFamily(int userId, int familyId) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    final response = await client.post(
+      Uri.parse('$baseUrl/api/users/$userId/join-family/$familyId'),
+      headers: headers,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to join family: ${response.body}');
+    }
+  }
+
   // Get joined families
   Future<List<Map<String, dynamic>>> getJoinedFamilies(int userId) async {
     final headers = {'Content-Type': 'application/json'};

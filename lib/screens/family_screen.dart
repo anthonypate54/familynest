@@ -26,13 +26,13 @@ class FamilyScreenState extends State<FamilyScreen> {
     if (_createFormKey.currentState!.validate()) {
       _createFormKey.currentState!.save();
       try {
-        int familyId = await widget.apiService.createFamily(
+        Map<String, dynamic> familyData = await widget.apiService.createFamily(
           widget.userId,
           _familyNameController.text,
         );
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Family created! ID: $familyId')),
+          SnackBar(content: Text('Family created! ID: ${familyData['id']}')),
         );
         Navigator.pushReplacement(
           context,

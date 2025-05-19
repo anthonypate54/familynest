@@ -1826,7 +1826,7 @@ class HomeScreenState extends State<HomeScreen>
                     builder: (context, snapshot) {
                       // If we have already loaded messages in memory, use those directly
                       if (_isInitialMessagesLoaded) {
-                        return _buildMessagesListView(_messages);
+                        return _buildMessagesListView2(_messages);
                       }
 
                       // Otherwise, handle loading state and errors
@@ -1893,7 +1893,7 @@ class HomeScreenState extends State<HomeScreen>
                         );
                       }
 
-                      return _buildMessagesListView(messages);
+                      return _buildMessagesListView2(messages);
                     },
                   ),
                 ),
@@ -2572,10 +2572,598 @@ class HomeScreenState extends State<HomeScreen>
   }
 
   // Update to show the ListView in reverse, with newest at bottom
+  // Commented out original function for reference
+  /*
   Widget _buildMessagesListView(List<Map<String, dynamic>> messages) {
+    // Original implementation...
+  }
+  */
+
+  // Helper method to build a single message widget
+  Widget _buildMessageWidget(
+    Map<String, dynamic> message,
+    int index,
+    bool shouldShowDateSeparator,
+    String dayText,
+    String timeText,
+    DateTime? messageDateTime,
+  ) {
+    final content = message['content'] ?? 'No content';
+    final senderId = message['senderId'];
+    final senderUsername = message['senderUsername'] ?? 'Unknown';
+    String? senderPhoto = message['senderPhoto'];
+    final bool isCurrentUser = senderId == widget.userId;
+
+    // FIX: Ensure current user messages always have a photo URL
+    if (isCurrentUser &&
+        (senderPhoto == null || senderPhoto.isEmpty) &&
+        _cachedUserPhotoUrl != null) {
+      // Update the message in-place to include the cached photo URL
+      message['senderPhoto'] = _cachedUserPhotoUrl;
+      senderPhoto = _cachedUserPhotoUrl;
+      debugPrint(
+        '🔄 Updated missing photo for current user message at index $index',
+      );
+    } else if (senderPhoto != null && senderPhoto.isEmpty) {
+      senderPhoto = null; // Set to null to ensure fallback works properly
+    }
+
+    // For offline/optimistic messages, get photo from user data if available
+    if ((message['offlineMessage'] == true || message['status'] == 'sending') &&
+        senderId == widget.userId) {
+      // Fetch user photo from cache or API
+      _getUserPhotoForMessage(message);
+    }
+
+    // Date separator widget
+    Widget? dateSeparator;
+    if (shouldShowDateSeparator && messageDateTime != null) {
+      final messageDate = DateTime(
+        messageDateTime.year,
+        messageDateTime.month,
+        messageDateTime.day,
+      );
+
+      // Create a date separator for this date
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final yesterday = today.subtract(const Duration(days: 1));
+
+      String dateDisplay;
+      if (messageDate == today) {
+        dateDisplay = "Today";
+      } else if (messageDate == yesterday) {
+        dateDisplay = "Yesterday";
+      } else {
+        // For older dates, use the date format
+        dateDisplay = DateFormat(
+          'MMM d, yyyy',
+        ).format(messageDate); // e.g., "Jan 15, 2023"
+      }
+
+      dateSeparator = Container(
+        padding: const EdgeInsets.symmetric(vertical: 10.0),
+        alignment: Alignment.center,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.8),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            dateDisplay,
+            style: TextStyle(
+              color: Colors.grey[800],
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Create a column with the date separator and the message
+    return Column(
+      children: [
+        // Add date separator if needed
+        if (dateSeparator != null) dateSeparator,
+
+        // Message row
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+          child: Column(
+            children: [
+              // Main content column that will contain text row and media
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Text row with avatar and day indicator - using IntrinsicHeight for vertical centering
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Avatar aligned with the text card
+                        Padding(
+                          padding: const EdgeInsets.only(right: 10.0),
+                          child: _buildAvatarForSender(
+                            senderId,
+                            senderPhoto,
+                            senderUsername,
+                          ),
+                        ),
+
+                        // Text card in the middle
+                        Expanded(
+                          child: Stack(
+                            children: [
+                              // This container is for the text selection
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.05),
+                                      spreadRadius: 1,
+                                      blurRadius: 2,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Username inside text card for non-user messages
+                                    if (!isCurrentUser)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 8.0,
+                                        ),
+                                        child: Text(
+                                          senderUsername,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: Colors.blue,
+                                          ),
+                                        ),
+                                      ),
+
+                                    // The message content
+                                    SelectableText(
+                                      content,
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Transparent overlay for navigation
+                              Positioned.fill(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    // Navigate to thread view when text is tapped
+                                    // In Flutter, we can't easily detect text selection
+                                    // So we just navigate on tap
+                                    {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder:
+                                              (context) => MessageThreadScreen(
+                                                apiService: widget.apiService,
+                                                userId: widget.userId,
+                                                message: message,
+                                              ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  behavior: HitTestBehavior.translucent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Day indicator right next to the text bubble
+                        if (dayText.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 6.0),
+                            child: Text(
+                              dayText,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // Add spacing between text and media cards
+                  if (message['mediaUrl'] != null &&
+                      message['mediaUrl'].toString().isNotEmpty)
+                    const SizedBox(height: 8),
+
+                  // Media card - centered under the text
+                  if (message['mediaUrl'] != null &&
+                      message['mediaUrl'].toString().isNotEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                        child: _buildMediaCard(message),
+                      ),
+                    ),
+
+                  // Timestamp text - centered to match overall layout
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Center(
+                      child: Text(
+                        timeText,
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Add vertical spacing between message and metrics
+              SizedBox(height: 8.0),
+
+              // Metrics row below the message card - OUTSIDE the GestureDetector!
+              _buildMetricsRow(message),
+            ],
+          ),
+        ),
+
+        // Add a divider after each message
+        Divider(
+          color: Colors.grey[600],
+          thickness: 0.5,
+          height: 1,
+          indent: 16,
+          endIndent: 16,
+        ),
+      ],
+    );
+  }
+
+  // Helper method to build the media card
+  Widget _buildMediaCard(Map<String, dynamic> message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            spreadRadius: 1,
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child:
+            message['mediaType'] == 'photo'
+                ? message['mediaUrl'].toString().startsWith('file://')
+                    ? Container(
+                      constraints: BoxConstraints(
+                        maxHeight: 200,
+                        minHeight: 100,
+                      ),
+                      child: Image.file(
+                        File(
+                          message['mediaUrl'].toString().replaceFirst(
+                            'file://',
+                            '',
+                          ),
+                        ),
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          debugPrint('Error loading file image: $error');
+                          return Container(
+                            height: 100,
+                            color: Colors.grey[300],
+                            child: const Center(
+                              child: Icon(Icons.error, color: Colors.red),
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                    : Container(
+                      constraints: BoxConstraints(
+                        maxHeight: 200,
+                        minHeight: 100,
+                      ),
+                      child: CachedNetworkImage(
+                        imageUrl:
+                            message['mediaUrl'].toString().startsWith('http')
+                                ? message['mediaUrl']
+                                : '${widget.apiService.baseUrl}${message['mediaUrl']}',
+                        fit: BoxFit.contain,
+                        placeholder:
+                            (context, url) => Container(
+                              height: 100,
+                              color: Colors.grey[300],
+                              child: const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            ),
+                        errorWidget: (context, url, error) {
+                          debugPrint('Error loading image: $error, URL: $url');
+                          return Container(
+                            height: 100,
+                            color: Colors.grey[300],
+                            child: const Center(
+                              child: Icon(Icons.error, color: Colors.red),
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                : message['mediaType'] == 'video'
+                ? GestureDetector(
+                  onTap: () {
+                    _initializeInlinePlayer(message);
+                  },
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.7,
+                    height: 200,
+                    color: Colors.black,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        _currentlyPlayingVideoId == message['id']
+                            ? _inlineChewieController != null
+                                ? Chewie(controller: _inlineChewieController!)
+                                : const Center(
+                                  child: CircularProgressIndicator(),
+                                )
+                            : // Check if this message has a thumbnail
+                            message['thumbnailUrl'] != null &&
+                                message['thumbnailUrl'].toString().isNotEmpty
+                            ? CachedNetworkImage(
+                              imageUrl:
+                                  message['thumbnailUrl'].toString().startsWith(
+                                        'http',
+                                      )
+                                      ? message['thumbnailUrl']
+                                      : '${widget.apiService.baseUrl}${message['thumbnailUrl']}',
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              placeholder:
+                                  (context, url) => Container(
+                                    color: Colors.black54,
+                                    child: const Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  ),
+                              errorWidget: (context, url, error) {
+                                debugPrint(
+                                  'Error loading thumbnail: $error, URL: $url',
+                                );
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade800,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  padding: const EdgeInsets.all(16),
+                                  child: const Icon(
+                                    Icons.videocam,
+                                    color: Colors.white,
+                                    size: 40,
+                                  ),
+                                );
+                              },
+                            )
+                            : Container(
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade800,
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(16),
+                              child: const Icon(
+                                Icons.videocam,
+                                color: Colors.white,
+                                size: 40,
+                              ),
+                            ),
+
+                        // Only show play button if not already playing
+                        if (_currentlyPlayingVideoId != message['id'])
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black38,
+                              shape: BoxShape.circle,
+                            ),
+                            padding: const EdgeInsets.all(8),
+                            child: const Icon(
+                              Icons.play_arrow,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                )
+                : Container(), // For other media types
+      ),
+    );
+  }
+
+  // Helper method to build the metrics row
+  Widget _buildMetricsRow(Map<String, dynamic> message) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: 50.0,
+        right: 50.0,
+        top: 0.0,
+        bottom: 12.0,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Comments count (tap to open thread)
+          GestureDetector(
+            onTap: () {
+              // Navigate to thread view when comments are tapped
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => MessageThreadScreen(
+                        apiService: widget.apiService,
+                        userId: widget.userId,
+                        message: message,
+                      ),
+                ),
+              );
+            },
+            child: Row(
+              children: [
+                Icon(Icons.comment_outlined, size: 16, color: Colors.white70),
+                const SizedBox(width: 2),
+                Text(
+                  message['commentCount']?.toString() ?? '0',
+                  style: TextStyle(fontSize: 12, color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+
+          // Like button (interactive)
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => _addReaction(message['id'], 'LIKE'),
+                child: Icon(
+                  Icons.thumb_up_alt_outlined,
+                  size: 16,
+                  color:
+                      _hasUserReaction(message['id'], 'LIKE')
+                          ? Colors.blue
+                          : Colors.white70,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Text(
+                _getReactionCount(message, 'LIKE').toString(),
+                style: TextStyle(
+                  fontSize: 12,
+                  color:
+                      _hasUserReaction(message['id'], 'LIKE')
+                          ? Colors.blue
+                          : Colors.white70,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+
+          // Love button (interactive)
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => _addReaction(message['id'], 'LOVE'),
+                child: Icon(
+                  Icons.favorite_outline,
+                  size: 16,
+                  color:
+                      _hasUserReaction(message['id'], 'LOVE')
+                          ? Colors.red
+                          : Colors.white70,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Text(
+                _getReactionCount(message, 'LOVE').toString(),
+                style: TextStyle(
+                  fontSize: 12,
+                  color:
+                      _hasUserReaction(message['id'], 'LOVE')
+                          ? Colors.red
+                          : Colors.white70,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+
+          // Laugh button (interactive)
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => _addReaction(message['id'], 'LAUGH'),
+                child: Icon(
+                  Icons.emoji_emotions_outlined,
+                  size: 16,
+                  color:
+                      _hasUserReaction(message['id'], 'LAUGH')
+                          ? Colors.amber
+                          : Colors.white70,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Text(
+                _getReactionCount(message, 'LAUGH').toString(),
+                style: TextStyle(
+                  fontSize: 12,
+                  color:
+                      _hasUserReaction(message['id'], 'LAUGH')
+                          ? Colors.amber
+                          : Colors.white70,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+
+          // Views count (non-interactive)
+          Row(
+            children: [
+              Icon(Icons.visibility_outlined, size: 16, color: Colors.white70),
+              const SizedBox(width: 2),
+              Text(
+                message['viewCount']?.toString() ?? '0',
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+            ],
+          ),
+
+          // Share button (interactive)
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Share feature coming soon!')),
+              );
+            },
+            child: Icon(Icons.share_outlined, size: 16, color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // New implementation to work on incrementally
+  Widget _buildMessagesListView2(List<Map<String, dynamic>> messages) {
     debugPrint('📱 Building messages list with ${messages.length} messages');
 
-    // Debug check for thumbnails
+    // Debug check for thumbnails (keeping this in the parent function)
     for (var message in messages.take(5)) {
       // Check first 5 messages only
       if (message['mediaType'] == 'video') {
@@ -2658,47 +3246,6 @@ class HomeScreenState extends State<HomeScreen>
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       itemBuilder: (context, index) {
         final message = messages[index];
-        final content = message['content'] ?? 'No content';
-        final senderId = message['senderId'];
-        final senderUsername = message['senderUsername'] ?? 'Unknown';
-
-        // Make sure senderPhoto is not empty string which would trigger the fallback avatar
-        String? senderPhoto = message['senderPhoto'];
-
-        // FIX: Ensure current user messages always have a photo URL
-        final bool isSenderCurrentUser = senderId == widget.userId;
-        if (isSenderCurrentUser &&
-            (senderPhoto == null || senderPhoto.isEmpty) &&
-            _cachedUserPhotoUrl != null) {
-          // Update the message in-place to include the cached photo URL
-          message['senderPhoto'] = _cachedUserPhotoUrl;
-          senderPhoto = _cachedUserPhotoUrl;
-          debugPrint(
-            '🔄 Updated missing photo for current user message at index $index',
-          );
-        } else if (senderPhoto != null && senderPhoto.isEmpty) {
-          senderPhoto = null; // Set to null to ensure fallback works properly
-        }
-
-        // For offline/optimistic messages, get photo from user data if available
-        if ((message['offlineMessage'] == true ||
-                message['status'] == 'sending') &&
-            senderId == widget.userId) {
-          // Fetch user photo from cache or API
-          _getUserPhotoForMessage(message);
-        }
-
-        final bool isCurrentUser = senderId == widget.userId;
-
-        // Debug output for the first few messages to avoid flooding logs
-        if (index < 5) {
-          debugPrint(
-            '🔍 Message $index - sender: $senderUsername, senderId: $senderId, hasPhoto: ${senderPhoto != null}',
-          );
-          if (senderPhoto != null) {
-            debugPrint('   📸 Photo URL: $senderPhoto');
-          }
-        }
 
         // Get timestamp information for the message
         String timeText = '';
@@ -2741,525 +3288,14 @@ class HomeScreenState extends State<HomeScreen>
           }
         }
 
-        // Date separator widget
-        Widget? dateSeparator;
-        if (shouldShowDateSeparator && messageDateTime != null) {
-          final messageDate = DateTime(
-            messageDateTime.year,
-            messageDateTime.month,
-            messageDateTime.day,
-          );
-
-          // Create a date separator for this date
-          final now = DateTime.now();
-          final today = DateTime(now.year, now.month, now.day);
-          final yesterday = today.subtract(const Duration(days: 1));
-
-          String dateDisplay;
-          if (messageDate == today) {
-            dateDisplay = "Today";
-          } else if (messageDate == yesterday) {
-            dateDisplay = "Yesterday";
-          } else {
-            // For older dates, use the date format
-            dateDisplay = DateFormat(
-              'MMM d, yyyy',
-            ).format(messageDate); // e.g., "Jan 15, 2023"
-          }
-
-          // Print debug info
-          debugPrint(
-            '📅 Adding date separator "$dateDisplay" at index $index (date: $dateKey)',
-          );
-
-          dateSeparator = Container(
-            padding: const EdgeInsets.symmetric(vertical: 10.0),
-            alignment: Alignment.center,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16.0,
-                vertical: 4.0,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.8),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                dateDisplay,
-                style: TextStyle(
-                  color: Colors.grey[800],
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          );
-        }
-
-        // Get first character of username for fallback avatar
-        final String avatarText =
-            senderUsername.isNotEmpty ? senderUsername[0].toUpperCase() : '?';
-
-        // Generate color from username
-        final Color avatarColor = Color(senderUsername.hashCode | 0xFF000000);
-
-        // Create a column with the date separator and the message
-        return Column(
-          children: [
-            // Add date separator if needed
-            if (dateSeparator != null) dateSeparator,
-
-            // Message row
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                vertical: 8.0,
-                horizontal: 4.0,
-              ),
-              child: Column(
-                children: [
-                  // Message content without GestureDetector - only comment icon navigates to thread
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Always show avatar for all messages
-                      _buildAvatarForSender(
-                        senderId,
-                        senderPhoto,
-                        senderUsername,
-                      ),
-
-                      // Message content
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Sender name
-                              if (!isCurrentUser)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 4.0),
-                                  child: Text(
-                                    senderUsername,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                      color: Colors.blue,
-                                    ),
-                                  ),
-                                ),
-
-                              // Message content
-                              Text(
-                                content,
-                                style: const TextStyle(fontSize: 16),
-                              ),
-
-                              // Message media content (photos/videos)
-                              if (message['mediaUrl'] != null &&
-                                  message['mediaUrl']
-                                      .toString()
-                                      .isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child:
-                                      message['mediaType'] == 'photo'
-                                          ? message['mediaUrl']
-                                                  .toString()
-                                                  .startsWith('file://')
-                                              ? Container(
-                                                constraints: BoxConstraints(
-                                                  maxHeight: 200,
-                                                  minHeight: 100,
-                                                ),
-                                                child: Image.file(
-                                                  File(
-                                                    message['mediaUrl']
-                                                        .toString()
-                                                        .replaceFirst(
-                                                          'file://',
-                                                          '',
-                                                        ),
-                                                  ),
-                                                  fit: BoxFit.contain,
-                                                  errorBuilder: (
-                                                    context,
-                                                    error,
-                                                    stackTrace,
-                                                  ) {
-                                                    debugPrint(
-                                                      'Error loading file image: $error',
-                                                    );
-                                                    return Container(
-                                                      height: 100,
-                                                      color: Colors.grey[300],
-                                                      child: const Center(
-                                                        child: Icon(
-                                                          Icons.error,
-                                                          color: Colors.red,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                ),
-                                              )
-                                              : Container(
-                                                constraints: BoxConstraints(
-                                                  maxHeight: 200,
-                                                  minHeight: 100,
-                                                ),
-                                                child: CachedNetworkImage(
-                                                  imageUrl:
-                                                      message['mediaUrl']
-                                                              .toString()
-                                                              .startsWith(
-                                                                'http',
-                                                              )
-                                                          ? message['mediaUrl']
-                                                          : '${widget.apiService.baseUrl}${message['mediaUrl']}',
-                                                  fit: BoxFit.contain,
-                                                  placeholder:
-                                                      (
-                                                        context,
-                                                        url,
-                                                      ) => Container(
-                                                        height: 100,
-                                                        color: Colors.grey[300],
-                                                        child: const Center(
-                                                          child:
-                                                              CircularProgressIndicator(),
-                                                        ),
-                                                      ),
-                                                  errorWidget: (
-                                                    context,
-                                                    url,
-                                                    error,
-                                                  ) {
-                                                    debugPrint(
-                                                      'Error loading image: $error, URL: $url',
-                                                    );
-                                                    return Container(
-                                                      height: 100,
-                                                      color: Colors.grey[300],
-                                                      child: const Center(
-                                                        child: Icon(
-                                                          Icons.error,
-                                                          color: Colors.red,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                ),
-                                              )
-                                          : message['mediaType'] == 'video'
-                                          ? Builder(
-                                            builder: (context) {
-                                              // Video widget implementation
-                                              // (truncated for brevity - the original code here is preserved)
-                                              return Container(
-                                                width:
-                                                    MediaQuery.of(
-                                                      context,
-                                                    ).size.width *
-                                                    0.7,
-                                                height: 200,
-                                                color: Colors.black,
-                                                child: Stack(
-                                                  alignment: Alignment.center,
-                                                  children: [
-                                                    Container(
-                                                      decoration: BoxDecoration(
-                                                        color:
-                                                            Colors
-                                                                .grey
-                                                                .shade800,
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                            16,
-                                                          ),
-                                                      child: const Icon(
-                                                        Icons.videocam,
-                                                        color: Colors.white,
-                                                        size: 40,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                            },
-                                          )
-                                          : Container(), // For other media types
-                                ),
-                              ],
-
-                              // Timestamp (only time, not day)
-                              if (message['timestamp'] != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4.0),
-                                  child: Align(
-                                    alignment: Alignment.bottomRight,
-                                    child: Text(
-                                      timeText,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                              // Failed message indicator
-                              if (message['status'] == 'failed')
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4.0),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.error_outline,
-                                        color: Colors.red,
-                                        size: 16,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'Failed to send',
-                                        style: TextStyle(
-                                          color: Colors.red,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      GestureDetector(
-                                        onTap:
-                                            () => _retryFailedMessage(message),
-                                        child: Text(
-                                          'Retry',
-                                          style: TextStyle(
-                                            color: Colors.blue,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      // Day indicator outside the bubble, on the right
-                      if (dayText.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 6.0),
-                          child: Text(
-                            dayText,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-
-                  // Add vertical spacing between message and metrics
-                  SizedBox(height: 8.0),
-
-                  // Metrics row below the message card - OUTSIDE the GestureDetector!
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: 50.0,
-                      right: 50.0,
-                      top: 0.0,
-                      bottom: 12.0,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Comments count (tap to open thread)
-                        GestureDetector(
-                          onTap: () {
-                            // Navigate to thread view when comments are tapped
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder:
-                                    (context) => MessageThreadScreen(
-                                      apiService: widget.apiService,
-                                      userId: widget.userId,
-                                      message: message,
-                                    ),
-                              ),
-                            );
-                          },
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.comment_outlined,
-                                size: 16,
-                                color: Colors.white70,
-                              ),
-                              const SizedBox(width: 2),
-                              Text(
-                                message['commentCount']?.toString() ?? '0',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-
-                        // Like button (interactive)
-                        Row(
-                          children: [
-                            GestureDetector(
-                              onTap: () => _addReaction(message['id'], 'LIKE'),
-                              child: Icon(
-                                Icons.thumb_up_alt_outlined,
-                                size: 16,
-                                color:
-                                    _hasUserReaction(message['id'], 'LIKE')
-                                        ? Colors.blue
-                                        : Colors.white70,
-                              ),
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              _getReactionCount(message, 'LIKE').toString(),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color:
-                                    _hasUserReaction(message['id'], 'LIKE')
-                                        ? Colors.blue
-                                        : Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 12),
-
-                        // Love button (interactive)
-                        Row(
-                          children: [
-                            GestureDetector(
-                              onTap: () => _addReaction(message['id'], 'LOVE'),
-                              child: Icon(
-                                Icons.favorite_outline,
-                                size: 16,
-                                color:
-                                    _hasUserReaction(message['id'], 'LOVE')
-                                        ? Colors.red
-                                        : Colors.white70,
-                              ),
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              _getReactionCount(message, 'LOVE').toString(),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color:
-                                    _hasUserReaction(message['id'], 'LOVE')
-                                        ? Colors.red
-                                        : Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 12),
-
-                        // Laugh button (interactive)
-                        Row(
-                          children: [
-                            GestureDetector(
-                              onTap: () => _addReaction(message['id'], 'LAUGH'),
-                              child: Icon(
-                                Icons.emoji_emotions_outlined,
-                                size: 16,
-                                color:
-                                    _hasUserReaction(message['id'], 'LAUGH')
-                                        ? Colors.amber
-                                        : Colors.white70,
-                              ),
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              _getReactionCount(message, 'LAUGH').toString(),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color:
-                                    _hasUserReaction(message['id'], 'LAUGH')
-                                        ? Colors.amber
-                                        : Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 12),
-
-                        // Views count (non-interactive)
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.visibility_outlined,
-                              size: 16,
-                              color: Colors.white70,
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              message['viewCount']?.toString() ?? '0',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // Share button (interactive)
-                        const SizedBox(width: 12),
-                        GestureDetector(
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Share feature coming soon!'),
-                              ),
-                            );
-                          },
-                          child: Icon(
-                            Icons.share_outlined,
-                            size: 16,
-                            color: Colors.white70,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Add a divider after each message
-            Divider(
-              color: Colors.grey[600],
-              thickness: 0.5,
-              height: 1,
-              indent: 16,
-              endIndent: 16,
-            ),
-          ],
+        // Use the helper function to build the message widget
+        return _buildMessageWidget(
+          message,
+          index,
+          shouldShowDateSeparator,
+          dayText,
+          timeText,
+          messageDateTime,
         );
       },
     );
