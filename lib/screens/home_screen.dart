@@ -1826,7 +1826,7 @@ class HomeScreenState extends State<HomeScreen>
                     builder: (context, snapshot) {
                       // If we have already loaded messages in memory, use those directly
                       if (_isInitialMessagesLoaded) {
-                        return _buildMessagesListView2(_messages);
+                        return _buildMessagesListView(_messages);
                       }
 
                       // Otherwise, handle loading state and errors
@@ -1893,7 +1893,7 @@ class HomeScreenState extends State<HomeScreen>
                         );
                       }
 
-                      return _buildMessagesListView2(messages);
+                      return _buildMessagesListView(messages);
                     },
                   ),
                 ),
@@ -2571,14 +2571,6 @@ class HomeScreenState extends State<HomeScreen>
     return DateFormat('E').format(dateTime); // E gives short weekday name
   }
 
-  // Update to show the ListView in reverse, with newest at bottom
-  // Commented out original function for reference
-  /*
-  Widget _buildMessagesListView(List<Map<String, dynamic>> messages) {
-    // Original implementation...
-  }
-  */
-
   // Helper method to build a single message widget
   Widget _buildMessageWidget(
     Map<String, dynamic> message,
@@ -3159,8 +3151,8 @@ class HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // New implementation to work on incrementally
-  Widget _buildMessagesListView2(List<Map<String, dynamic>> messages) {
+  // ListView for displaying messages with date grouping and custom layout
+  Widget _buildMessagesListView(List<Map<String, dynamic>> messages) {
     debugPrint('📱 Building messages list with ${messages.length} messages');
 
     // Debug check for thumbnails (keeping this in the parent function)
