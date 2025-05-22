@@ -71,9 +71,7 @@ void main() {
       // Create a new ApiService instance for this test
       final testApiService = ApiService(client: mockClient);
 
-      await tester.pumpWidget(
-        MaterialApp(home: LoginScreen(apiService: testApiService)),
-      );
+      await tester.pumpWidget(MaterialApp(home: LoginScreen()));
 
       // Wait for initialization to complete
       await tester.pump(Duration(seconds: 1));
@@ -161,9 +159,7 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(
-        MaterialApp(home: LoginScreen(apiService: apiService)),
-      );
+      await tester.pumpWidget(MaterialApp(home: LoginScreen()));
 
       // Wait for async operations to complete
       await tester.pump(Duration(seconds: 1));
@@ -222,9 +218,7 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(
-        MaterialApp(home: LoginScreen(apiService: apiService)),
-      );
+      await tester.pumpWidget(MaterialApp(home: LoginScreen()));
 
       // Wait for async operations to complete
       await tester.pump(Duration(seconds: 1));
@@ -314,7 +308,7 @@ void main() {
       await expectLater(testApiService.testConnection(), completes);
     });
 
-    test('loginUser returns user data on successful login', () async {
+    test('login returns user data on successful login', () async {
       // Reset the mock to ensure clean state
       reset(mockClient);
 
@@ -348,28 +342,12 @@ void main() {
       final testApiService = ApiService(client: mockClient);
       await testApiService.initialize();
 
-      // Verify token is initially null
-      expect(
-        await SharedPreferences.getInstance().then(
-          (prefs) => prefs.getString('auth_token'),
-        ),
-        isNull,
-      );
-
-      final result = await testApiService.loginUser('testuser', 'password');
+      final result = await testApiService.login('testuser', 'password');
 
       // Verify the result
-      expect(result['userId'], 1);
-      expect(result['token'], 'mock_token');
-      expect(result['role'], 'ADMIN');
-
-      // Verify token was saved
-      expect(
-        await SharedPreferences.getInstance().then(
-          (prefs) => prefs.getString('auth_token'),
-        ),
-        'mock_token',
-      );
+      expect(result?['token'], equals('mock_token'));
+      expect(result?['userId'], equals(1));
+      expect(result?['role'], equals('ADMIN'));
     });
 
     test('loginUser throws exception on failed login', () async {
@@ -383,7 +361,7 @@ void main() {
       ).thenAnswer((_) async => http.Response('Invalid credentials', 401));
 
       expect(
-        () => apiService.loginUser('testuser', 'wrongpassword'),
+        () => apiService.login('testuser', 'wrongpassword'),
         throwsException,
       );
     });

@@ -77,9 +77,7 @@ void main() {
         ),
       ).thenAnswer((_) async => http.Response('[]', 200));
 
-      await tester.pumpWidget(
-        MaterialApp(home: HomeScreen(apiService: apiService, userId: 2)),
-      );
+      await tester.pumpWidget(MaterialApp(home: HomeScreen(userId: 2)));
 
       // Wait for async operations to complete
       await tester.pump(Duration(seconds: 1));
@@ -127,9 +125,7 @@ void main() {
           ),
         ).thenAnswer((_) async => http.Response('[]', 200));
 
-        await tester.pumpWidget(
-          MaterialApp(home: HomeScreen(apiService: apiService, userId: 2)),
-        );
+        await tester.pumpWidget(MaterialApp(home: HomeScreen(userId: 2)));
 
         // Wait for async operations to complete
         await tester.pump(Duration(seconds: 1));
@@ -199,9 +195,7 @@ void main() {
         ),
       ).thenAnswer((_) async => http.Response('[]', 200));
 
-      await tester.pumpWidget(
-        MaterialApp(home: HomeScreen(apiService: apiService, userId: 2)),
-      );
+      await tester.pumpWidget(MaterialApp(home: HomeScreen(userId: 2)));
 
       // Wait for async operations to complete
       await tester.pump(Duration(seconds: 1));
@@ -297,9 +291,7 @@ void main() {
       await apiService.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: HomeScreen(apiService: apiService, userId: 2)),
-        ),
+        MaterialApp(home: Scaffold(body: HomeScreen(userId: 2))),
       );
 
       // Wait for async operations to complete

@@ -2,15 +2,14 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'dart:async';
+import 'package:provider/provider.dart';
 
 class MemberMessageDialog extends StatefulWidget {
-  final ApiService apiService;
   final int userId;
   final Map<String, dynamic> family;
 
   const MemberMessageDialog({
     Key? key,
-    required this.apiService,
     required this.userId,
     required this.family,
   }) : super(key: key);
@@ -60,8 +59,14 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
         'MemberMessageDialog: Calling getFamilyMembersByFamilyId for family $familyId (user ${widget.userId})',
       );
       final results = await Future.wait([
-        widget.apiService.getFamilyMembersByFamilyId(widget.userId, familyId),
-        widget.apiService.getMemberMessagePreferences(widget.userId),
+        Provider.of<ApiService>(
+          context,
+          listen: false,
+        ).getFamilyMembersByFamilyId(widget.userId, familyId),
+        Provider.of<ApiService>(
+          context,
+          listen: false,
+        ).getMemberMessagePreferences(widget.userId),
       ]);
 
       if (!mounted) return;
@@ -156,7 +161,10 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
 
     try {
       // Call API to update preference
-      await widget.apiService.updateMemberMessagePreference(
+      await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).updateMemberMessagePreference(
         widget.userId,
         familyId,
         memberUserId,

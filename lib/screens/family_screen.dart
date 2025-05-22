@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'home_screen.dart';
+import 'package:provider/provider.dart';
 
 class FamilyScreen extends StatefulWidget {
-  final ApiService apiService;
   final int userId;
 
-  const FamilyScreen({
-    super.key,
-    required this.apiService,
-    required this.userId,
-  });
+  const FamilyScreen({super.key, required this.userId});
 
   @override
   FamilyScreenState createState() => FamilyScreenState();
@@ -26,10 +22,10 @@ class FamilyScreenState extends State<FamilyScreen> {
     if (_createFormKey.currentState!.validate()) {
       _createFormKey.currentState!.save();
       try {
-        Map<String, dynamic> familyData = await widget.apiService.createFamily(
-          widget.userId,
-          _familyNameController.text,
-        );
+        Map<String, dynamic> familyData = await Provider.of<ApiService>(
+          context,
+          listen: false,
+        ).createFamily(widget.userId, _familyNameController.text);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Family created! ID: ${familyData['id']}')),
@@ -37,11 +33,7 @@ class FamilyScreenState extends State<FamilyScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder:
-                (context) => HomeScreen(
-                  apiService: widget.apiService,
-                  userId: widget.userId, // Line 43
-                ),
+            builder: (context) => HomeScreen(userId: widget.userId),
           ),
         );
       } catch (e) {
@@ -58,7 +50,10 @@ class FamilyScreenState extends State<FamilyScreen> {
       _joinFormKey.currentState!.save();
       try {
         int familyId = int.parse(_familyIdController.text);
-        await widget.apiService.joinFamily(widget.userId, familyId);
+        await Provider.of<ApiService>(
+          context,
+          listen: false,
+        ).joinFamily(widget.userId, familyId);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Joined family successfully!')),
@@ -66,11 +61,7 @@ class FamilyScreenState extends State<FamilyScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder:
-                (context) => HomeScreen(
-                  apiService: widget.apiService,
-                  userId: widget.userId,
-                ),
+            builder: (context) => HomeScreen(userId: widget.userId),
           ),
         );
       } catch (e) {

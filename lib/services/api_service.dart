@@ -2,26 +2,31 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart';
 import 'dart:async';
 import 'dart:io' show Platform, File;
 import '../config/app_config.dart';
-import 'video_upload_service.dart';
 import 'dart:math' as Math;
 import 'package:http_parser/http_parser.dart'; // For MediaType
+import '../models/message.dart'; // Add this import
+
+class AuthException implements Exception {
+  final String message;
+  AuthException(this.message);
+}
 
 class ApiService {
   // Dynamic baseUrl based on AppConfig
   String get baseUrl {
     final url = AppConfig().baseUrl;
-    debugPrint("✅✅✅ USING API BASE URL: $url");
     return url;
   }
+
+  // Add isLoggedIn getter
+  bool get isLoggedIn => _token != null && _token!.isNotEmpty;
 
   // Media base URL - may be different in production (e.g., CDN)
   String get mediaBaseUrl {
     final url = AppConfig().mediaBaseUrl;
-    debugPrint("Using media base URL: $url");
     return url;
   }
 
@@ -42,29 +47,64 @@ class ApiService {
   ApiService({http.Client? client}) : client = client ?? http.Client();
 
   Future<void> initialize() async {
-    // Debug output to track SharedPreferences state
-    await debugPrintSharedPrefs("initialize-start");
-
+    debugPrint('🔄 API: Starting initialization');
     await _loadToken();
 
-    // Try to auto-login with any available token
+    // Only validate token if we have one and haven't validated it recently
     if (_token != null && _token!.isNotEmpty) {
-      try {
-        // Verify if the existing token is valid by making a test call
-        final currentUser = await getCurrentUser();
-        if (currentUser != null) {
-          debugPrint('✅ Auto-login successful with existing token');
-          return; // Token is valid, initialization successful
-        } else {
-          debugPrint('⚠️ Saved token is invalid, will try backup methods');
-        }
-      } catch (e) {
-        debugPrint('⚠️ Error validating stored token: $e');
-      }
+      final prefs = await SharedPreferences.getInstance();
+      final lastValidation = prefs.getString('last_token_validation');
 
-      // We no longer use test tokens
-      if (kDebugMode) {
-        debugPrint('⚠️ Token is invalid and we no longer use test tokens');
+      if (lastValidation == null) {
+        debugPrint(
+          '🔑 API: No previous token validation found, validating now',
+        );
+        try {
+          final currentUser = await getCurrentUser();
+          if (currentUser != null) {
+            debugPrint('✅ API: Token validation successful');
+            await prefs.setString(
+              'last_token_validation',
+              DateTime.now().toIso8601String(),
+            );
+            return;
+          } else {
+            debugPrint('⚠️ API: Token validation failed - invalid token');
+            await _clearToken();
+          }
+        } catch (e) {
+          debugPrint('❌ API: Token validation error: $e');
+          await _clearToken();
+        }
+      } else {
+        final lastValid = DateTime.parse(lastValidation);
+        final timeSinceValidation = DateTime.now().difference(lastValid);
+
+        if (timeSinceValidation < const Duration(minutes: 5)) {
+          debugPrint(
+            '⏱️ API: Using cached token validation (${timeSinceValidation.inMinutes} minutes old)',
+          );
+          return;
+        } else {
+          debugPrint('🔄 API: Token validation expired, revalidating');
+          try {
+            final currentUser = await getCurrentUser();
+            if (currentUser != null) {
+              debugPrint('✅ API: Token revalidation successful');
+              await prefs.setString(
+                'last_token_validation',
+                DateTime.now().toIso8601String(),
+              );
+              return;
+            } else {
+              debugPrint('⚠️ API: Token revalidation failed - invalid token');
+              await _clearToken();
+            }
+          } catch (e) {
+            debugPrint('❌ API: Token revalidation error: $e');
+            await _clearToken();
+          }
+        }
       }
     }
 
@@ -72,18 +112,7 @@ class ApiService {
     try {
       await testConnection();
     } catch (e) {
-      debugPrint('''
-❌ Connection test failed with error: $e
-Network connection error. Please check:
-1. Is the backend server running? ($baseUrl/api/users/test)
-2. Are you using the correct IP address?
-   - Android Emulator: 10.0.2.2:8080
-   - iOS Simulator: localhost:8080
-   - Physical Device: Your computer's IP address (e.g., 10.0.0.10)
-3. Go to Profile -> Server Configuration to set the correct server URL.
-4. Is your device/emulator connected to the same WiFi network?
-5. Are there any firewall settings blocking the connection?
-''');
+      debugPrint('❌ API: Connection test failed: $e');
       rethrow;
     }
   }
@@ -265,27 +294,6 @@ Network connection error. Please check:
     }
   }
 
-  // Helper method to safely parse user ID from string with optional default value
-  int? _safeParseId(String? idStr, {int? defaultValue}) {
-    debugPrint(
-      '🔍 Attempting to parse user ID from: "$idStr", default: $defaultValue',
-    );
-    if (idStr == null || idStr.isEmpty) {
-      debugPrint(
-        '⚠️ User ID string is null or empty, using default: $defaultValue',
-      );
-      return defaultValue;
-    }
-    try {
-      final parsedId = int.parse(idStr);
-      debugPrint('✅ Successfully parsed user ID: $parsedId');
-      return parsedId;
-    } catch (e) {
-      debugPrint('❌ Error parsing user ID: $e, using default: $defaultValue');
-      return defaultValue;
-    }
-  }
-
   /// Logout the current user and clear all session data
   Future<void> logout() async {
     debugPrint('Logging out user...');
@@ -357,29 +365,6 @@ Network connection error. Please check:
   }
 
   // Helper method to safely set a value in SharedPreferences with verification
-  Future<bool> _safeSetPrefs(
-    SharedPreferences prefs,
-    String key,
-    String value,
-  ) async {
-    try {
-      // Set the value
-      final success = await prefs.setString(key, value);
-
-      // Verify the value was saved
-      final savedValue = prefs.getString(key);
-      if (savedValue == value) {
-        debugPrint('✅ Successfully saved "$key" with value: $value');
-        return true;
-      } else {
-        debugPrint('❌ Failed to save "$key" - value mismatch or not saved');
-        return false;
-      }
-    } catch (e) {
-      debugPrint('❌ Error saving "$key": $e');
-      return false;
-    }
-  }
 
   // Login method to authenticate a user
   Future<Map<String, dynamic>?> login(String email, String password) async {
@@ -461,7 +446,7 @@ Network connection error. Please check:
   }
 
   Future<Map<String, dynamic>?> getCurrentUser() async {
-    debugPrint('Checking for current user');
+    debugPrint('✅ Current user called');
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -477,11 +462,8 @@ Network connection error. Please check:
 
         // If no token found, return null immediately
         if (_token == null || _token!.isEmpty) {
-          debugPrint('No valid token found in SharedPreferences');
           return null;
         }
-
-        debugPrint('Loaded token from SharedPreferences');
       }
 
       // We have a token, try to validate it with the server
@@ -491,7 +473,6 @@ Network connection error. Please check:
       };
 
       final currentUserPath = _getApiEndpoint('/api/users/current');
-      debugPrint('Validating token with server: $baseUrl$currentUserPath');
 
       final response = await client.get(
         Uri.parse('$baseUrl$currentUserPath'),
@@ -501,7 +482,6 @@ Network connection error. Please check:
       if (response.statusCode == 200) {
         // Token is valid, parse user data
         final responseBody = jsonDecode(response.body) as Map<String, dynamic>;
-        debugPrint('✅ Current user validated successfully');
 
         // Update SharedPreferences with fresh data
         await prefs.setString(
@@ -529,15 +509,16 @@ Network connection error. Please check:
           'userId': userId,
           'role': responseBody['role'] as String? ?? 'USER',
         };
-      } else {
-        // Token is invalid
-        debugPrint('❌ Token validation failed (status ${response.statusCode})');
-
-        // Clear the invalid token
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
         _token = null;
         await prefs.remove('auth_token');
         await prefs.remove('auth_token_backup');
-
+        throw AuthException('Session expired or unauthorized');
+      } else {
+        debugPrint('❌ Token validation failed (status ${response.statusCode})');
+        _token = null;
+        await prefs.remove('auth_token');
+        await prefs.remove('auth_token_backup');
         return null;
       }
     } catch (e) {
@@ -1663,6 +1644,80 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('Error adding reaction: $e');
       return {'error': e.toString()};
+    }
+  }
+
+  // Message-related methods
+  Future<List<Message>> getUserMessages(String userId) async {
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/users/$userId/messages'),
+        headers: {
+          'Accept': 'application/json',
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = json.decode(response.body);
+        return jsonList.map((json) => Message.fromJson(json)).toList();
+      } else {
+        throw Exception('Failed to load messages: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error getting user messages: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<Message>> getMessageReplies(String messageId) async {
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/comments/$messageId/comments'),
+        headers: {
+          'Accept': 'application/json',
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = json.decode(response.body);
+        return jsonList.map((json) => Message.fromJson(json)).toList();
+      } else {
+        throw Exception('Failed to load replies: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error getting message replies: $e');
+      rethrow;
+    }
+  }
+
+  Future<Message> createMessage(
+    String userId,
+    String text, {
+    String? mediaUrl,
+  }) async {
+    try {
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/users/$userId/messages'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
+        body: json.encode({
+          'text': text,
+          if (mediaUrl != null) 'mediaUrl': mediaUrl,
+        }),
+      );
+
+      if (response.statusCode == 201) {
+        return Message.fromJson(json.decode(response.body));
+      } else {
+        throw Exception('Failed to create message: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error creating message: $e');
+      rethrow;
     }
   }
 }

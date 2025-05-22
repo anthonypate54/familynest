@@ -2,31 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/api_service.dart';
-import 'home_screen.dart';
 import 'family_management_screen.dart';
 import 'login_screen.dart';
-import '../components/bottom_navigation.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
-import 'dart:math';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
-import '../models/invitation.dart';
 import '../services/service_provider.dart';
-import '../services/invitation_service.dart';
 import '../utils/page_transitions.dart';
 import '../controllers/bottom_navigation_controller.dart';
 import '../utils/auth_utils.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 
 class ProfileScreen extends StatefulWidget {
-  final ApiService apiService;
   final int userId;
   final String userRole;
   final BottomNavigationController? navigationController;
 
   const ProfileScreen({
     super.key,
-    required this.apiService,
     required this.userId,
     required this.userRole,
     this.navigationController,
@@ -150,7 +143,10 @@ class ProfileScreenState extends State<ProfileScreen>
 
   Future<Map<String, dynamic>?> _loadUser() async {
     try {
-      final user = await widget.apiService.getUserById(widget.userId);
+      final user = await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).getUserById(widget.userId);
       debugPrint('User data loaded: $user');
       return user;
     } catch (e) {
@@ -222,7 +218,10 @@ class ProfileScreenState extends State<ProfileScreen>
               }
 
               // Upload the file using the web-specific method
-              await widget.apiService.updatePhotoWeb(
+              await Provider.of<ApiService>(
+                context,
+                listen: false,
+              ).updatePhotoWeb(
                 widget.userId,
                 bytes,
                 '${DateTime.now().millisecondsSinceEpoch}.jpg',
@@ -284,7 +283,10 @@ class ProfileScreenState extends State<ProfileScreen>
               return;
             }
 
-            await widget.apiService.updatePhoto(widget.userId, pickedFile.path);
+            await Provider.of<ApiService>(
+              context,
+              listen: false,
+            ).updatePhoto(widget.userId, pickedFile.path);
 
             // Refresh the user data after successful upload
             setState(() {
@@ -387,13 +389,19 @@ class ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _logout() async {
-    await AuthUtils.showLogoutConfirmation(context, widget.apiService);
+    await AuthUtils.showLogoutConfirmation(
+      context,
+      Provider.of<ApiService>(context, listen: false),
+    );
   }
 
   Future<void> _sendInvitation() async {
     try {
       // First check if user has a family
-      final userData = await widget.apiService.getUserById(widget.userId);
+      final userData = await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).getUserById(widget.userId);
       final familyId = userData['familyId'];
 
       if (familyId == null) {
@@ -526,7 +534,10 @@ class ProfileScreenState extends State<ProfileScreen>
   // Update demographics information
   Future<void> _updateDemographics(Map<String, dynamic> data) async {
     try {
-      await widget.apiService.updateDemographics(widget.userId, data);
+      await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).updateDemographics(widget.userId, data);
 
       // Refresh the user data
       setState(() {
@@ -826,7 +837,6 @@ class ProfileScreenState extends State<ProfileScreen>
                   slidePush(
                     context,
                     FamilyManagementScreen(
-                      apiService: widget.apiService,
                       userId: widget.userId,
                       navigationController: _navigationController,
                     ),
@@ -937,11 +947,7 @@ class ProfileScreenState extends State<ProfileScreen>
   // Helper method to redirect to login
   void _redirectToLogin() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      slidePushAndRemoveUntil(
-        context,
-        LoginScreen(apiService: widget.apiService),
-        (route) => false,
-      );
+      slidePushAndRemoveUntil(context, LoginScreen(), (route) => false);
     });
   }
 
@@ -966,7 +972,7 @@ class ProfileScreenState extends State<ProfileScreen>
               ProfilePhoto(
                 photoUrl:
                     user['photo'] != null
-                        ? '${widget.apiService.baseUrl}${user['photo']}?t=${DateTime.now().millisecondsSinceEpoch}'
+                        ? '${Provider.of<ApiService>(context, listen: false).baseUrl}${user['photo']}?t=${DateTime.now().millisecondsSinceEpoch}'
                         : null,
                 onTap: _pickPhoto,
                 size: isSmallScreen ? 90 : 110,

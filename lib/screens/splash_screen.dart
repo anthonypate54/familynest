@@ -3,9 +3,7 @@ import 'login_screen.dart';
 import '../services/api_service.dart';
 
 class SplashScreen extends StatefulWidget {
-  final ApiService apiService;
-
-  const SplashScreen({super.key, required this.apiService});
+  const SplashScreen({super.key});
 
   @override
   SplashScreenState createState() => SplashScreenState();
@@ -24,9 +22,7 @@ class SplashScreenState extends State<SplashScreen> {
 
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (context) => LoginScreen(apiService: widget.apiService),
-      ),
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
     );
   }
 

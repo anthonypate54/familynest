@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
-import '../services/service_provider.dart';
 import '../services/api_service.dart';
 import '../components/bottom_navigation.dart';
 import '../controllers/bottom_navigation_controller.dart';
+import 'package:provider/provider.dart';
 
 class InvitationsScreen extends StatefulWidget {
-  final ApiService apiService;
   final int userId;
   final BottomNavigationController? navigationController;
 
   const InvitationsScreen({
     Key? key,
-    required this.apiService,
     required this.userId,
     this.navigationController,
   }) : super(key: key);
@@ -23,6 +21,13 @@ class InvitationsScreen extends StatefulWidget {
 class _InvitationsScreenState extends State<InvitationsScreen> {
   List<Map<String, dynamic>> _invitations = [];
   bool _isLoading = true;
+  late ApiService _apiService;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _apiService = Provider.of<ApiService>(context, listen: false);
+  }
 
   @override
   void initState() {
@@ -31,42 +36,33 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   }
 
   Future<void> _loadInvitations() async {
-    // Get the service when needed
-    final invitationService = ServiceProvider().invitationService;
-
-    await invitationService.loadInvitations(
-      userId: widget.userId,
-      setLoadingState: (isLoading) {
-        if (mounted) {
-          setState(() {
-            _isLoading = isLoading;
-          });
-        }
-      },
-      setInvitationsState: (invitations) {
-        if (mounted) {
-          setState(() {
-            _invitations = invitations;
-          });
-        }
-      },
-      checkIfMounted: () => mounted,
-    );
+    try {
+      setState(() => _isLoading = true);
+      final response = await _apiService.getInvitations();
+      if (mounted) {
+        setState(() {
+          _invitations = response;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading invitations: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _respondToInvitation(int invitationId, bool accept) async {
     try {
       setState(() => _isLoading = true);
 
-      // Get the service when needed
-      final invitationService = ServiceProvider().invitationService;
-
-      final success = await invitationService.respondToInvitation(
+      final response = await _apiService.respondToFamilyInvitation(
         invitationId,
         accept,
       );
 
-      if (success) {
+      if (response['success'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(

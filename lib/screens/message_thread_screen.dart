@@ -6,15 +6,14 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_styles.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 
 class MessageThreadScreen extends StatefulWidget {
-  final ApiService apiService;
   final int userId;
   final Map<String, dynamic> message;
 
   const MessageThreadScreen({
     Key? key,
-    required this.apiService,
     required this.userId,
     required this.message,
   }) : super(key: key);
@@ -25,6 +24,7 @@ class MessageThreadScreen extends StatefulWidget {
 
 class _MessageThreadScreenState extends State<MessageThreadScreen> {
   final TextEditingController _commentController = TextEditingController();
+  late ApiService _apiService;
   // Initialize _commentsFuture with an empty list to avoid LateInitializationError
   Future<List<Map<String, dynamic>>> _commentsFuture = Future.value([]);
   bool _isLoadingComments = false;
@@ -33,6 +33,12 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
   List<String> _userReactions = [];
   // Add a field to track user reactions for comments
   final Map<String, Set<String>> _commentReactionsMap = {};
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _apiService = Provider.of<ApiService>(context, listen: false);
+  }
 
   // Add helper to check if user has reacted to a comment with a specific type
   bool _hasCommentReaction(dynamic commentId, String reactionType) {
@@ -178,7 +184,7 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
         return;
       }
 
-      final response = await widget.apiService.getMessageComments(
+      final response = await _apiService.getMessageComments(
         messageId,
         sortDir: 'asc', // Show oldest first
       );
@@ -296,7 +302,7 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
         return;
       }
 
-      final reactionsResponse = await widget.apiService.getMessageReactions(
+      final reactionsResponse = await _apiService.getMessageReactions(
         messageId,
       );
 
@@ -338,7 +344,7 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
       }
 
       // Use the API service to mark the message as viewed
-      final response = await widget.apiService.markMessageAsViewed(messageId);
+      final response = await _apiService.markMessageAsViewed(messageId);
 
       // If the response contains an error field, handle it
       if (response.containsKey('error')) {
@@ -377,10 +383,7 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
       _commentController.clear();
 
       // Use the API service to post the comment
-      final response = await widget.apiService.addComment(
-        messageId,
-        commentText,
-      );
+      final response = await _apiService.addComment(messageId, commentText);
 
       // Check if the response contains an error
       if (response.containsKey('error')) {
@@ -469,7 +472,7 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
 
       if (alreadyReacted) {
         // Remove the reaction
-        final result = await widget.apiService.removeReaction(
+        final result = await _apiService.removeReaction(
           messageId,
           reactionType,
         );
@@ -494,10 +497,7 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
         }
       } else {
         // Add the reaction
-        final response = await widget.apiService.addReaction(
-          messageId,
-          reactionType,
-        );
+        final response = await _apiService.addReaction(messageId, reactionType);
 
         // If the response contains an error field, handle it
         if (response.containsKey('error')) {
@@ -770,7 +770,7 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
                                             imageUrl:
                                                 photoUrl.startsWith('http')
                                                     ? photoUrl
-                                                    : '${widget.apiService.baseUrl}$photoUrl',
+                                                    : '${_apiService.baseUrl}$photoUrl',
                                             fit: BoxFit.cover,
                                             placeholder:
                                                 (context, url) =>
@@ -877,7 +877,7 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
                                       ? Image.network(
                                         mediaUrl.startsWith('http')
                                             ? mediaUrl
-                                            : '${widget.apiService.baseUrl}$mediaUrl',
+                                            : '${_apiService.baseUrl}$mediaUrl',
                                         fit: BoxFit.cover,
                                         errorBuilder: (
                                           context,
@@ -934,7 +934,7 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
                                       ? GestureDetector(
                                         onTap: () {
                                           _handleLargeMedia(
-                                            '${widget.apiService.baseUrl}$mediaUrl',
+                                            '${_apiService.baseUrl}$mediaUrl',
                                             mediaType,
                                             context,
                                           );
@@ -1296,7 +1296,7 @@ class _MessageThreadScreenState extends State<MessageThreadScreen> {
                                                                     'http',
                                                                   )
                                                               ? comment['userPhoto']
-                                                              : '${widget.apiService.baseUrl}${comment['userPhoto']}',
+                                                              : '${_apiService.baseUrl}${comment['userPhoto']}',
                                                       fit: BoxFit.cover,
                                                       width: 40,
                                                       height: 40,

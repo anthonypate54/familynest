@@ -7,11 +7,10 @@ import 'home_screen.dart';
 import '../utils/page_transitions.dart';
 import '../main.dart'; // Import to access MainAppContainer
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 
 class LoginScreen extends StatefulWidget {
-  final ApiService apiService;
-
-  const LoginScreen({super.key, required this.apiService});
+  const LoginScreen({super.key});
 
   @override
   LoginScreenState createState() => LoginScreenState();
@@ -54,8 +53,26 @@ class LoginScreenState extends State<LoginScreen> {
     try {
       debugPrint('LOGIN_SCREEN: Starting auto-login check...');
 
-      // First check if explicitly logged out
+      // Check for potential loop
       final prefs = await SharedPreferences.getInstance();
+      final lastCheckTime = prefs.getString('last_login_check');
+      final now = DateTime.now().toIso8601String();
+
+      if (lastCheckTime != null) {
+        final lastCheck = DateTime.parse(lastCheckTime);
+        final timeSinceLastCheck = DateTime.now().difference(lastCheck);
+        if (timeSinceLastCheck < const Duration(seconds: 2)) {
+          debugPrint(
+            '⚠️ LOGIN_SCREEN: Potential loop detected, skipping auto-login check',
+          );
+          return;
+        }
+      }
+
+      // Save current check time
+      await prefs.setString('last_login_check', now);
+
+      // First check if explicitly logged out
       final wasExplicitlyLoggedOut =
           prefs.getBool('explicitly_logged_out') ?? false;
 
@@ -66,7 +83,11 @@ class LoginScreenState extends State<LoginScreen> {
         return; // Stay on login screen
       }
 
-      final user = await widget.apiService.getCurrentUser();
+      final user =
+          await Provider.of<ApiService>(
+            context,
+            listen: false,
+          ).getCurrentUser();
 
       if (user != null && mounted) {
         // Extra validation - make sure we have a valid user ID
@@ -80,13 +101,10 @@ class LoginScreenState extends State<LoginScreen> {
         // Only navigate if we have a valid user ID
         if (userId != null) {
           debugPrint('LOGIN_SCREEN: Navigating to MainAppContainer');
+          if (!mounted) return;
           slidePushReplacement(
             context,
-            MainAppContainer(
-              apiService: widget.apiService,
-              userId: userId,
-              userRole: userRole,
-            ),
+            MainAppContainer(userId: userId, userRole: userRole),
           );
         } else {
           debugPrint('LOGIN_SCREEN: Not navigating - userId is null');
@@ -113,10 +131,10 @@ class LoginScreenState extends State<LoginScreen> {
         _errorMessage = '';
       });
 
-      final response = await widget.apiService.login(
-        _emailController.text,
-        _passwordController.text,
-      );
+      final response = await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).login(_emailController.text, _passwordController.text);
 
       if (response != null) {
         if (!mounted) return;
@@ -126,15 +144,16 @@ class LoginScreenState extends State<LoginScreen> {
         await prefs.setBool('explicitly_logged_out', false);
 
         debugPrint('Login successful, navigating to main app');
+        if (!mounted) return;
         slidePushReplacement(
           context,
           MainAppContainer(
-            apiService: widget.apiService,
             userId: response['userId'],
             userRole: response['role'] ?? 'USER',
           ),
         );
       } else {
+        if (!mounted) return;
         setState(() {
           _errorMessage = 'Invalid email or password';
         });
@@ -156,7 +175,10 @@ class LoginScreenState extends State<LoginScreen> {
   Future<void> _register() async {
     setState(() => _isLoading = true);
     try {
-      final result = await widget.apiService.registerUser(
+      final result = await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).registerUser(
         username: _usernameController.text,
         email: _emailController.text,
         password: _passwordController.text,

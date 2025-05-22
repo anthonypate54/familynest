@@ -94,9 +94,7 @@ class AuthUtils {
         // Use Navigator.pushAndRemoveUntil to properly clear the navigation stack
         // and ensure a fresh Login screen
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => LoginScreen(apiService: apiService),
-          ),
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
           (route) => false, // This removes all previous routes
         );
       }

@@ -13,7 +13,6 @@ import '../controllers/bottom_navigation_controller.dart';
 
 class BottomNavigation extends StatefulWidget {
   final int currentIndex;
-  final ApiService apiService;
   final int userId;
   final String userRole;
   final BottomNavigationController? controller;
@@ -24,7 +23,6 @@ class BottomNavigation extends StatefulWidget {
   const BottomNavigation({
     super.key,
     required this.currentIndex,
-    required this.apiService,
     required this.userId,
     this.userRole = 'USER',
     this.controller,

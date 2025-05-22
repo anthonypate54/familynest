@@ -40,7 +40,6 @@ class SettingsScreenState extends State<SettingsScreen> {
       ),
       bottomNavigationBar: BottomNavigation(
         currentIndex: 2, // Settings tab
-        apiService: widget.apiService,
         userId: widget.userId,
         userRole: widget.userRole ?? 'USER',
         controller: BottomNavigationController(),
@@ -309,7 +308,7 @@ class SettingsScreenState extends State<SettingsScreen> {
             if (!mounted) return;
             slidePushAndRemoveUntil(
               context,
-              LoginScreen(apiService: widget.apiService),
+              const LoginScreen(),
               (route) => false,
             );
           },

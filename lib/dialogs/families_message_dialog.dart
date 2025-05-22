@@ -2,16 +2,13 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'dart:async';
 import 'member_message_dialog.dart';
+import 'package:provider/provider.dart';
 
 class FamiliesMessageDialog extends StatefulWidget {
-  final ApiService apiService;
   final int userId;
 
-  const FamiliesMessageDialog({
-    Key? key,
-    required this.apiService,
-    required this.userId,
-  }) : super(key: key);
+  const FamiliesMessageDialog({Key? key, required this.userId})
+    : super(key: key);
 
   @override
   State<FamiliesMessageDialog> createState() => _FamiliesMessageDialogState();
@@ -48,9 +45,10 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
       );
 
       // Load message preferences only - it contains all families user belongs to
-      final preferences = await widget.apiService.getMessagePreferences(
-        widget.userId,
-      );
+      final preferences = await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).getMessagePreferences(widget.userId);
 
       debugPrint(
         'FamiliesMessageDialog: Got ${preferences.length} families from preferences',
@@ -129,11 +127,10 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
   ) async {
     try {
       // Update preference in backend
-      await widget.apiService.updateMessagePreference(
-        widget.userId,
-        familyId,
-        receiveMessages,
-      );
+      await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).updateMessagePreference(widget.userId, familyId, receiveMessages);
 
       // Update local state
       if (mounted) {
@@ -194,11 +191,8 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
     showDialog(
       context: context,
       builder:
-          (context) => MemberMessageDialog(
-            apiService: widget.apiService,
-            userId: widget.userId,
-            family: family,
-          ),
+          (context) =>
+              MemberMessageDialog(userId: widget.userId, family: family),
     );
   }
 

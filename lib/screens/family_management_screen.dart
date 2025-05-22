@@ -10,15 +10,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import '../utils/page_transitions.dart';
 import '../controllers/bottom_navigation_controller.dart';
+import 'package:provider/provider.dart';
 
 class FamilyManagementScreen extends StatefulWidget {
-  final ApiService apiService;
   final int userId;
   final BottomNavigationController? navigationController;
 
   const FamilyManagementScreen({
     super.key,
-    required this.apiService,
     required this.userId,
     this.navigationController,
   });
@@ -358,16 +357,20 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     });
 
     try {
-      _userData = await widget.apiService.getUserById(widget.userId);
+      _userData = await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).getUserById(widget.userId);
       debugPrint('Loaded user data: $_userData');
 
       // Try to load family details if the user belongs to a family
       if (_userData != null && _userData!['familyId'] != null) {
         try {
           // Load family members to get family details
-          final members = await widget.apiService.getFamilyMembers(
-            widget.userId,
-          );
+          final members = await Provider.of<ApiService>(
+            context,
+            listen: false,
+          ).getFamilyMembers(widget.userId);
           debugPrint('Loaded family members: $members');
 
           // If the family name is not already in userData, try to get it from the first member
@@ -400,7 +403,10 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
   Future<List<Map<String, dynamic>>> _loadFamilyMembers() async {
     try {
-      final members = await widget.apiService.getFamilyMembers(widget.userId);
+      final members = await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).getFamilyMembers(widget.userId);
       return members;
     } catch (e) {
       debugPrint('Error loading family members: $e');
@@ -436,7 +442,10 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       }
 
       // Proceed with family creation - user can be member of other families
-      await widget.apiService.createFamily(widget.userId, familyName);
+      await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).createFamily(widget.userId, familyName);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Family created successfully!')),
       );
@@ -459,7 +468,10 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
   Future<void> _leaveFamily() async {
     try {
-      await widget.apiService.leaveFamily(widget.userId);
+      await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).leaveFamily(widget.userId);
       await _loadUserData(); // Reload user data with updated family info
       setState(() {}); // Trigger FutureBuilder to reload
       if (!mounted) return;
@@ -712,7 +724,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
               slidePush(
                 context,
                 ProfileScreen(
-                  apiService: widget.apiService,
                   userId: widget.userId,
                   userRole: _userData?['role'],
                 ),
@@ -974,11 +985,8 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     showDialog(
       context: context,
       builder:
-          (context) => MemberMessageDialog(
-            apiService: widget.apiService,
-            userId: widget.userId,
-            family: family,
-          ),
+          (context) =>
+              MemberMessageDialog(userId: widget.userId, family: family),
     );
   }
 
@@ -1177,11 +1185,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
   void _showFamiliesMessageDialog() {
     showDialog(
       context: context,
-      builder:
-          (context) => FamiliesMessageDialog(
-            apiService: widget.apiService,
-            userId: widget.userId,
-          ),
+      builder: (context) => FamiliesMessageDialog(userId: widget.userId),
     );
   }
 
@@ -1191,14 +1195,18 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       debugPrint('Loading user families');
 
       // First check if user has a familyId directly in their profile
-      final userData = await widget.apiService.getUserById(widget.userId);
+      final userData = await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).getUserById(widget.userId);
 
       // Get both the owned and joined families
       try {
         // Get family user owns (if any)
-        final ownedFamily = await widget.apiService.getOwnedFamily(
-          widget.userId,
-        );
+        final ownedFamily = await Provider.of<ApiService>(
+          context,
+          listen: false,
+        ).getOwnedFamily(widget.userId);
         if (ownedFamily != null) {
           debugPrint(
             'User owns family: ${ownedFamily['familyName']} (ID: ${ownedFamily['familyId']})',
@@ -1206,9 +1214,10 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         }
 
         // Get families user has joined
-        final joinedFamilies = await widget.apiService.getJoinedFamilies(
-          widget.userId,
-        );
+        final joinedFamilies = await Provider.of<ApiService>(
+          context,
+          listen: false,
+        ).getJoinedFamilies(widget.userId);
         debugPrint('User joined ${joinedFamilies.length} families');
 
         if (mounted) {
@@ -1237,7 +1246,10 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         final familyId = userData['familyId'] as int?;
         if (familyId != null) {
           try {
-            final familyDetails = await widget.apiService.getFamily(familyId);
+            final familyDetails = await Provider.of<ApiService>(
+              context,
+              listen: false,
+            ).getFamily(familyId);
 
             // Determine if user is owner by checking if they're the creator
             final isOwner = familyDetails['createdBy'] == widget.userId;
@@ -1295,7 +1307,10 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
   Future<void> _loadAcceptedInvitations() async {
     try {
       List<Map<String, dynamic>> invitations =
-          await widget.apiService.getInvitations();
+          await Provider.of<ApiService>(
+            context,
+            listen: false,
+          ).getInvitations();
       debugPrint('Loaded ${invitations.length} invitations');
 
       List<Map<String, dynamic>> acceptedInvitations = [];
@@ -1314,8 +1329,11 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
               !acceptedInvitations.any((i) => i['familyId'] == familyId)) {
             // Try to get family details
             try {
-              final Map<String, dynamic> familyDetails = await widget.apiService
-                  .getFamily(familyId);
+              final Map<String, dynamic> familyDetails =
+                  await Provider.of<ApiService>(
+                    context,
+                    listen: false,
+                  ).getFamily(familyId);
 
               final newFamily = {
                 'familyId': familyId,
@@ -1453,7 +1471,10 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     setState(() => _isLoading = true);
 
     try {
-      await widget.apiService.updateFamilyDetails(familyId, newName);
+      await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).updateFamilyDetails(familyId, newName);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Family name updated to "$newName"')),
       );
@@ -1473,9 +1494,10 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     setState(() => _loadingPreferences = true);
 
     try {
-      final preferences = await widget.apiService.getMessagePreferences(
-        widget.userId,
-      );
+      final preferences = await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).getMessagePreferences(widget.userId);
 
       if (mounted) {
         setState(() {

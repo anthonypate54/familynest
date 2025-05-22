@@ -16,15 +16,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/video_thumbnail_util.dart';
 import 'package:chewie/chewie.dart';
 import 'dart:math';
+import 'package:provider/provider.dart';
 
 class HomeScreen extends StatefulWidget {
-  final ApiService apiService;
   final int userId;
   final BottomNavigationController? navigationController;
 
   const HomeScreen({
     super.key,
-    required this.apiService,
     required this.userId,
     this.navigationController,
   });
@@ -35,6 +34,7 @@ class HomeScreen extends StatefulWidget {
 
 class HomeScreenState extends State<HomeScreen>
     with AutomaticKeepAliveClientMixin {
+  late ApiService _apiService;
   final TextEditingController _messageController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   XFile? _selectedMediaFile;
@@ -166,7 +166,7 @@ class HomeScreenState extends State<HomeScreen>
             imageUrl:
                 thumbnailUrl.startsWith("http")
                     ? thumbnailUrl
-                    : '${widget.apiService.baseUrl}$thumbnailUrl',
+                    : '${_apiService.baseUrl}$thumbnailUrl',
             width: MediaQuery.of(context).size.width * 0.8,
             height: 200,
             fit: BoxFit.cover,
@@ -296,42 +296,39 @@ class HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+    _apiService = Provider.of<ApiService>(context, listen: false);
+    _initializeData();
+  }
 
+  void _initializeData() {
     // Clear any previously selected media when the screen loads
     _selectedMediaFile = null;
     _selectedMediaType = null;
-    if (_videoController != null) {
-      _videoController!.dispose();
-      _videoController = null;
-    }
+    _selectedVideoThumbnail = null;
 
-    // Check for family data issues that could cause messaging problems
-    _checkAndFixFamilyData();
+    // Initialize messages
+    _loadMessages();
 
-    // Cache current user photo for message avatars - this fixes the root cause
-    _cacheCurrentUserPhoto();
-
-    // Only load messages once during initial setup
-    if (_messagesFuture == null) {
-      _messagesFuture = _loadMessages();
-      _loadInitialMessages();
-    }
-
-    // Check for invitations when the screen loads
-    _checkForInvitations();
-
-    // Set up a timer to periodically check for new invitations
-    _refreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    // Set up periodic refresh
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
-        _checkForInvitations();
+        _loadMessages();
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _apiService = Provider.of<ApiService>(context, listen: false);
+    _initializeData();
   }
 
   // Method to cache the current user's photo URL - fix for the root cause
   Future<void> _cacheCurrentUserPhoto() async {
     try {
-      final userData = await widget.apiService.getUserById(widget.userId);
+      final userData = await _apiService.getUserById(widget.userId);
       if (!mounted) return;
 
       setState(() {
@@ -343,17 +340,6 @@ class HomeScreenState extends State<HomeScreen>
     } catch (e) {
       debugPrint('⚠️ Error caching user photo: $e');
     }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // This will run when the screen becomes visible again (e.g., after returning from another screen)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _checkForInvitations();
-      }
-    });
   }
 
   Future<void> _loadInitialMessages() {
@@ -432,7 +418,7 @@ class HomeScreenState extends State<HomeScreen>
   Future<void> _refreshUserPhotoCache() async {
     try {
       debugPrint('🔄 Refreshing user photo cache');
-      final userData = await widget.apiService.getUserById(widget.userId);
+      final userData = await _apiService.getUserById(widget.userId);
       if (!mounted) return;
 
       // Check for both photoUrl and photo fields
@@ -530,264 +516,41 @@ class HomeScreenState extends State<HomeScreen>
   }
 
   Future<List<Map<String, dynamic>>> _loadMessages() async {
+    if (!mounted) {
+      return [];
+    }
+
     try {
-      final response = await widget.apiService.getMessages(widget.userId);
-
-      // Debug API response - detailed logging
-      debugPrint('======== MESSAGE API RESPONSE ========');
-      debugPrint('Got ${response.length} messages from server');
-
-      if (response.isNotEmpty) {
-        // Log first message as sample
-        final sampleMsg = response[0];
-        debugPrint('🔍 SAMPLE MESSAGE STRUCTURE:');
-        debugPrint('Keys available: ${sampleMsg.keys.join(', ')}');
-
-        // Log metrics data specifically
-        debugPrint('📊 METRICS DATA:');
-        debugPrint('commentCount: ${sampleMsg['commentCount']}');
-        debugPrint('reactionCount: ${sampleMsg['reactionCount']}');
-        debugPrint('viewCount: ${sampleMsg['viewCount']}');
-        debugPrint('hasValidId: ${sampleMsg['hasValidId']}');
-
-        // Check for reactions structure
-        if (sampleMsg['reactions'] != null) {
-          debugPrint('Reactions data: ${sampleMsg['reactions']}');
-        }
-
-        // Check for sender info structure
-        debugPrint('📊 SENDER INFO:');
-        if (sampleMsg.containsKey('senderId')) {
-          debugPrint(
-            'senderId: ${sampleMsg['senderId']} (type: ${sampleMsg['senderId'].runtimeType})',
-          );
-        }
-        if (sampleMsg.containsKey('senderUsername')) {
-          debugPrint('senderUsername: ${sampleMsg['senderUsername']}');
-        }
-        if (sampleMsg.containsKey('senderPhoto')) {
-          debugPrint('senderPhoto: ${sampleMsg['senderPhoto']}');
-        }
-
-        // Check if there's a nested sender object
-        if (sampleMsg.containsKey('sender') && sampleMsg['sender'] is Map) {
-          debugPrint('FOUND NESTED SENDER OBJECT:');
-          final sender = sampleMsg['sender'] as Map;
-          debugPrint('Sender keys: ${sender.keys.join(', ')}');
-          if (sender.containsKey('photoUrl')) {
-            debugPrint('sender.photoUrl: ${sender['photoUrl']}');
-          }
-        }
-
-        // Look for any keys containing 'photo', 'image', 'avatar' case-insensitive
-        final photoRelatedKeys =
-            sampleMsg.keys
-                .where(
-                  (key) =>
-                      key.toLowerCase().contains('photo') ||
-                      key.toLowerCase().contains('image') ||
-                      key.toLowerCase().contains('avatar'),
-                )
-                .toList();
-
-        if (photoRelatedKeys.isNotEmpty) {
-          debugPrint('📸 POTENTIAL PHOTO FIELDS FOUND:');
-          for (final key in photoRelatedKeys) {
-            debugPrint('$key: ${sampleMsg[key]}');
-          }
-        } else {
-          debugPrint('⚠️ NO PHOTO-RELATED FIELDS FOUND IN MESSAGE');
-
-          // Since no photo fields were found, let's try to fetch user profiles
-          debugPrint(
-            '🔍 Attempting to fetch first 3 sender profiles to check for photos...',
-          );
-
-          // Get a sample of unique sender IDs (up to 3)
-          final Set<int> uniqueSenderIds = {};
-          for (var msg in response.take(10)) {
-            if (msg.containsKey('senderId') &&
-                msg['senderId'] != null &&
-                uniqueSenderIds.length < 3) {
-              final senderId = msg['senderId'];
-              if (senderId is int) {
-                uniqueSenderIds.add(senderId);
-              } else if (senderId is String) {
-                try {
-                  uniqueSenderIds.add(int.parse(senderId));
-                } catch (e) {
-                  debugPrint('⚠️ Failed to parse senderId: $senderId');
-                }
-              }
-            }
-          }
-
-          // Fetch profile data for the sample senders
-          debugPrint(
-            '🔍 Found ${uniqueSenderIds.length} unique sender IDs to check',
-          );
-          for (final senderId in uniqueSenderIds) {
-            try {
-              final senderData = await widget.apiService.getUserById(senderId);
-              debugPrint(
-                '👤 Sender $senderId data: ${senderData.keys.join(', ')}',
-              );
-
-              if (senderData.containsKey('photoUrl')) {
-                debugPrint(
-                  '📸 Found photo for user $senderId: ${senderData['photoUrl']}',
-                );
-              } else {
-                debugPrint('⚠️ No photoUrl found for user $senderId');
-              }
-            } catch (e) {
-              debugPrint('⚠️ Error fetching sender $senderId profile: $e');
-            }
-          }
-        }
-      }
-      debugPrint('====================================');
-
-      // For any offline messages, try to find matching server messages
-      final List<Map<String, dynamic>> mergedList = List.from(response);
-
-      // Enrich messages with sender photos
-      debugPrint('🖼️ ENRICHING MESSAGES WITH SENDER PHOTOS');
-
-      // Create a map to cache user data so we don't fetch the same user multiple times
-      final Map<int, Map<String, dynamic>> userDataCache = {};
-
-      // Collect all unique sender IDs
-      final Set<int> uniqueSenderIds = {};
-      for (var message in mergedList) {
-        if (message.containsKey('senderId') && message['senderId'] != null) {
-          try {
-            final int senderId =
-                message['senderId'] is int
-                    ? message['senderId']
-                    : int.parse(message['senderId'].toString());
-            uniqueSenderIds.add(senderId);
-          } catch (e) {
-            debugPrint('⚠️ Error parsing senderId: ${message['senderId']}');
-          }
-        }
-      }
-
-      debugPrint(
-        '🔍 Found ${uniqueSenderIds.length} unique senders to fetch photos for',
-      );
-
-      // Fetch user data for all unique senders
-      for (final senderId in uniqueSenderIds) {
-        try {
-          final userData = await widget.apiService.getUserById(senderId);
-          userDataCache[senderId] = userData;
-          debugPrint('✅ Cached user data for sender $senderId');
-        } catch (e) {
-          debugPrint('⚠️ Error fetching data for sender $senderId: $e');
-        }
-      }
-
-      // Enrich each message with sender photo URL
-      int enrichedCount = 0;
-      for (var message in mergedList) {
-        if (message.containsKey('senderId') && message['senderId'] != null) {
-          try {
-            final int senderId =
-                message['senderId'] is int
-                    ? message['senderId']
-                    : int.parse(message['senderId'].toString());
-
-            if (userDataCache.containsKey(senderId)) {
-              final userData = userDataCache[senderId]!;
-
-              // Check if user has a photo
-              if (userData.containsKey('photoUrl') &&
-                  userData['photoUrl'] != null &&
-                  userData['photoUrl'].toString().isNotEmpty) {
-                // Add the photo URL to the message
-                message['senderPhoto'] = userData['photoUrl'];
-                enrichedCount++;
-                debugPrint(
-                  '📸 Added photo URL for message from sender $senderId: ${userData['photoUrl']}',
-                );
-              } else {
-                // If photoUrl doesn't exist, check for avatar, image, or photo fields
-                for (var key in userData.keys) {
-                  if ((key.toLowerCase().contains('photo') ||
-                          key.toLowerCase().contains('image') ||
-                          key.toLowerCase().contains('avatar')) &&
-                      userData[key] != null &&
-                      userData[key].toString().isNotEmpty) {
-                    message['senderPhoto'] = userData[key];
-                    enrichedCount++;
-                    debugPrint(
-                      '📸 Added alternative photo field ($key) for sender $senderId: ${userData[key]}',
-                    );
-                    break;
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            debugPrint('⚠️ Error enriching message with photo: $e');
-            // Skip enriching this message
-          }
-        }
-      }
-
-      debugPrint('📊 Enriched $enrichedCount messages with sender photos');
-
-      // Log each message's photo field for debugging
-      for (var message in mergedList.take(5)) {
-        // Only log first 5 for brevity
-        final senderId = message['senderId'];
-        final hasSenderPhoto =
-            message.containsKey('senderPhoto') &&
-            message['senderPhoto'] != null;
-        debugPrint(
-          'Message from sender $senderId | Has photo: $hasSenderPhoto | ${hasSenderPhoto ? 'URL: ${message['senderPhoto']}' : 'No photo URL'}',
-        );
-      }
-
-      if (_offlineMessages.isNotEmpty) {
-        // Keep offline messages that don't have a matching ID in the response
-        for (var offlineMsg in _offlineMessages) {
-          final String content = offlineMsg['content'] ?? '';
-          final bool hasDuplicate = response.any(
-            (msg) =>
-                msg['content'] == content &&
-                msg['senderId'] == widget.userId &&
-                (DateTime.parse(msg['timestamp']).millisecondsSinceEpoch -
-                        (offlineMsg['timestamp'] as int)) <
-                    60000,
-          ); // 1 minute tolerance
-
-          if (!hasDuplicate) {
-            mergedList.add(offlineMsg);
-          }
-        }
-      }
-
-      // Sort by timestamp (descending)
-      mergedList.sort((a, b) {
-        // Handle different timestamp formats (string from server vs. int from offline)
-        final int timestampA =
-            a['timestamp'] is String
-                ? DateTime.parse(a['timestamp']).millisecondsSinceEpoch
-                : a['timestamp'] as int;
-        final int timestampB =
-            b['timestamp'] is String
-                ? DateTime.parse(b['timestamp']).millisecondsSinceEpoch
-                : b['timestamp'] as int;
-
-        // Descending order (newest first)
-        return timestampB.compareTo(timestampA);
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
       });
 
-      return mergedList;
+      final messages = await _apiService.getMessages(widget.userId);
+
+      if (!mounted) {
+        return [];
+      }
+
+      setState(() {
+        _messages = messages;
+        _isLoading = false;
+        _isInitialMessagesLoaded = true;
+      });
+
+      return messages;
     } catch (e) {
-      return _offlineMessages;
+      debugPrint('Error loading messages: $e');
+      if (!mounted) {
+        return [];
+      }
+
+      setState(() {
+        _loadError = e.toString();
+        _isLoading = false;
+      });
+
+      return [];
     }
   }
 
@@ -1267,7 +1030,7 @@ class HomeScreenState extends State<HomeScreen>
 
     try {
       // Get user data first to ensure we have photo URL
-      final userData = await widget.apiService.getUserById(widget.userId);
+      final userData = await _apiService.getUserById(widget.userId);
 
       // Fix: Check for both photoUrl and photo fields
       if (_cachedUserPhotoUrl == null) {
@@ -1339,13 +1102,13 @@ class HomeScreenState extends State<HomeScreen>
       // Now send to server - use video processing if it's a video
       final bool success =
           mediaType == 'video' && mediaFile != null
-              ? await widget.apiService.postMessageWithVideoProcessing(
+              ? await _apiService.postMessageWithVideoProcessing(
                 widget.userId,
                 messageContent,
                 mediaPath: mediaFile.path,
                 mediaType: mediaType,
               )
-              : await widget.apiService.postMessage(
+              : await _apiService.postMessage(
                 widget.userId,
                 messageContent,
                 mediaPath: mediaFile?.path,
@@ -1364,9 +1127,7 @@ class HomeScreenState extends State<HomeScreen>
         // Add debug check to verify the message in database
         try {
           debugPrint('Verifying message in database...');
-          final checkMessages = await widget.apiService.getMessages(
-            widget.userId,
-          );
+          final checkMessages = await _apiService.getMessages(widget.userId);
           final foundMessage = checkMessages.any(
             (m) =>
                 m['content'] == messageContent &&
@@ -1518,7 +1279,7 @@ class HomeScreenState extends State<HomeScreen>
       // await Future.delayed(const Duration(milliseconds: 800));
 
       // Get the latest messages - no artificial delay
-      final messages = await widget.apiService.getMessages(widget.userId);
+      final messages = await _apiService.getMessages(widget.userId);
       final newMessage = messages.firstWhere(
         (msg) =>
             msg['content'] == sentMessage['content'] &&
@@ -1577,7 +1338,7 @@ class HomeScreenState extends State<HomeScreen>
     String? mediaType,
   }) async {
     // Get user data for message metadata
-    final userData = await widget.apiService.getUserById(widget.userId);
+    final userData = await _apiService.getUserById(widget.userId);
 
     // Fix: Check for both photoUrl and photo fields
     if (_cachedUserPhotoUrl == null) {
@@ -1826,7 +1587,7 @@ class HomeScreenState extends State<HomeScreen>
                     builder: (context, snapshot) {
                       // If we have already loaded messages in memory, use those directly
                       if (_isInitialMessagesLoaded) {
-                        return _buildMessagesListView(_messages);
+                        return _buildMessagesListView2(_messages);
                       }
 
                       // Otherwise, handle loading state and errors
@@ -1893,7 +1654,7 @@ class HomeScreenState extends State<HomeScreen>
                         );
                       }
 
-                      return _buildMessagesListView(messages);
+                      return _buildMessagesListView2(messages);
                     },
                   ),
                 ),
@@ -1981,14 +1742,14 @@ class HomeScreenState extends State<HomeScreen>
 
   /// Handle logout action
   void _logout() async {
-    await AuthUtils.showLogoutConfirmation(context, widget.apiService);
+    await AuthUtils.showLogoutConfirmation(context, _apiService);
   }
 
   Future<void> _checkForInvitations() async {
     try {
       // First, determine which families the user belongs to
       try {
-        final userData = await widget.apiService.getUserById(widget.userId);
+        final userData = await _apiService.getUserById(widget.userId);
         if (!mounted) return;
 
         if (userData['familyId'] != null) {
@@ -2000,7 +1761,7 @@ class HomeScreenState extends State<HomeScreen>
       }
 
       try {
-        final response = await widget.apiService.getInvitations();
+        final response = await _apiService.getInvitations();
         if (!mounted) return;
 
         // Filter to only show pending invitations that aren't for families the user is already in
@@ -2046,10 +1807,8 @@ class HomeScreenState extends State<HomeScreen>
                       Navigator.of(context).pushReplacement(
                         MaterialPageRoute(
                           builder:
-                              (context) => InvitationsScreen(
-                                apiService: widget.apiService,
-                                userId: widget.userId,
-                              ),
+                              (context) =>
+                                  InvitationsScreen(userId: widget.userId),
                         ),
                       );
                     },
@@ -2083,7 +1842,7 @@ class HomeScreenState extends State<HomeScreen>
   Future<void> _checkAndFixFamilyData() async {
     try {
       // Get user data to check family ID and name
-      final userData = await widget.apiService.getUserById(widget.userId);
+      final userData = await _apiService.getUserById(widget.userId);
       if (!mounted) return; // Check if still mounted after async call
 
       final int? familyId = userData['familyId'];
@@ -2115,7 +1874,7 @@ class HomeScreenState extends State<HomeScreen>
       if (familyId != null && (familyName == null || familyName.isEmpty)) {
         // Try to get family details - silently attempt without showing errors
         try {
-          final family = await widget.apiService.getFamily(familyId);
+          final family = await _apiService.getFamily(familyId);
           if (!mounted) return; // Check if still mounted after async call
 
           final String retrievedFamilyName = family['name'] ?? 'My Family';
@@ -2263,10 +2022,7 @@ class HomeScreenState extends State<HomeScreen>
 
                 try {
                   // Create the family
-                  await widget.apiService.createFamily(
-                    widget.userId,
-                    familyName,
-                  );
+                  await _apiService.createFamily(widget.userId, familyName);
 
                   if (!mounted) return;
 
@@ -2336,20 +2092,6 @@ class HomeScreenState extends State<HomeScreen>
       photoUrl = _cachedUserPhotoUrl;
     }
 
-    // Debug logging for avatar
-    if (photoUrl != null) {
-      debugPrint('🔍 Avatar debug for $displayName: Raw photoUrl = $photoUrl');
-      final String fullUrl =
-          photoUrl.startsWith('http')
-              ? photoUrl
-              : '${widget.apiService.baseUrl}$photoUrl';
-      debugPrint('🔍 Full URL constructed: $fullUrl');
-    } else {
-      debugPrint(
-        '⚠️ No photo URL for user $displayName (fallback letter will be used)',
-      );
-    }
-
     return Container(
       margin: const EdgeInsets.only(right: 8),
       decoration: BoxDecoration(
@@ -2373,7 +2115,7 @@ class HomeScreenState extends State<HomeScreen>
                     imageUrl:
                         photoUrl.startsWith('http')
                             ? photoUrl
-                            : '${widget.apiService.baseUrl}$photoUrl',
+                            : '${_apiService.mediaBaseUrl}$photoUrl',
                     fit: BoxFit.cover,
                     width: 40,
                     height: 40,
@@ -2422,7 +2164,7 @@ class HomeScreenState extends State<HomeScreen>
       bool? success;
 
       try {
-        userData = await widget.apiService.getUserById(widget.userId);
+        userData = await _apiService.getUserById(widget.userId);
         if (!mounted)
           return; // Check if widget is still mounted after async call
 
@@ -2480,7 +2222,7 @@ class HomeScreenState extends State<HomeScreen>
         _scrollToBottom();
 
         // Now send to server
-        success = await widget.apiService.postMessage(
+        success = await _apiService.postMessage(
           widget.userId,
           messageContent,
           familyId: userData['familyId'], // Always pass explicit family ID
@@ -2569,6 +2311,28 @@ class HomeScreenState extends State<HomeScreen>
   String _getShortDayName(DateTime dateTime) {
     // Always return the abbreviated day name (Mon, Tue, etc.)
     return DateFormat('E').format(dateTime); // E gives short weekday name
+  }
+
+  // Update to show the ListView in reverse, with newest at bottom
+  // Commented out original function for reference
+  /*
+  Widget _buildMessagesListView(List<Map<String, dynamic>> messages) {
+    // Original implementation...
+  }
+  */
+
+  // Helper method to standardize image URLs
+  String _getFullImageUrl(String? url) {
+    if (url == null || url.isEmpty) return '';
+
+    // If it's already a full URL, return it
+    if (url.startsWith('http')) return url;
+
+    // If it's a file URL, return it
+    if (url.startsWith('file://')) return url;
+
+    // Otherwise, prepend the base URL
+    return '${_apiService.baseUrl}$url';
   }
 
   // Helper method to build a single message widget
@@ -2745,7 +2509,6 @@ class HomeScreenState extends State<HomeScreen>
                                         MaterialPageRoute(
                                           builder:
                                               (context) => MessageThreadScreen(
-                                                apiService: widget.apiService,
                                                 userId: widget.userId,
                                                 message: message,
                                               ),
@@ -2879,10 +2642,7 @@ class HomeScreenState extends State<HomeScreen>
                         minHeight: 100,
                       ),
                       child: CachedNetworkImage(
-                        imageUrl:
-                            message['mediaUrl'].toString().startsWith('http')
-                                ? message['mediaUrl']
-                                : '${widget.apiService.baseUrl}${message['mediaUrl']}',
+                        imageUrl: _getFullImageUrl(message['mediaUrl']),
                         fit: BoxFit.contain,
                         placeholder:
                             (context, url) => Container(
@@ -2931,7 +2691,7 @@ class HomeScreenState extends State<HomeScreen>
                                         'http',
                                       )
                                       ? message['thumbnailUrl']
-                                      : '${widget.apiService.baseUrl}${message['thumbnailUrl']}',
+                                      : '${_apiService.baseUrl}${message['thumbnailUrl']}',
                               fit: BoxFit.cover,
                               width: double.infinity,
                               height: double.infinity,
@@ -3017,7 +2777,6 @@ class HomeScreenState extends State<HomeScreen>
                 MaterialPageRoute(
                   builder:
                       (context) => MessageThreadScreen(
-                        apiService: widget.apiService,
                         userId: widget.userId,
                         message: message,
                       ),
@@ -3151,8 +2910,8 @@ class HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ListView for displaying messages with date grouping and custom layout
-  Widget _buildMessagesListView(List<Map<String, dynamic>> messages) {
+  // New implementation to work on incrementally
+  Widget _buildMessagesListView2(List<Map<String, dynamic>> messages) {
     debugPrint('📱 Building messages list with ${messages.length} messages');
 
     // Debug check for thumbnails (keeping this in the parent function)
@@ -3172,7 +2931,7 @@ class HomeScreenState extends State<HomeScreen>
           final String fullUrl =
               thumbnailUrl.startsWith('http')
                   ? thumbnailUrl
-                  : '${widget.apiService.baseUrl}$thumbnailUrl';
+                  : '${_apiService.baseUrl}$thumbnailUrl';
           debugPrint('  📸 Thumbnail URL: $thumbnailUrl');
           debugPrint('  📸 Full URL: $fullUrl');
 
@@ -3304,7 +3063,7 @@ class HomeScreenState extends State<HomeScreen>
       }
 
       // Get current user data to fill in photo
-      final userData = await widget.apiService.getUserById(widget.userId);
+      final userData = await _apiService.getUserById(widget.userId);
 
       // Check for both photoUrl and photo fields
       final photoUrl = userData['photoUrl'] ?? userData['photo'];
@@ -3412,9 +3171,7 @@ class HomeScreenState extends State<HomeScreen>
     );
 
     // Test if the current URL works
-    final bool works = await widget.apiService.testThumbnailAccess(
-      thumbnailUrl,
-    );
+    final bool works = await _apiService.testThumbnailAccess(thumbnailUrl);
 
     if (works) {
       debugPrint('✅ Thumbnail URL already works: $thumbnailUrl');
@@ -3422,7 +3179,7 @@ class HomeScreenState extends State<HomeScreen>
     }
 
     // Find a working URL
-    final String? workingUrl = await widget.apiService.findWorkingThumbnailUrl(
+    final String? workingUrl = await _apiService.findWorkingThumbnailUrl(
       thumbnailUrl,
     );
 
@@ -3480,13 +3237,10 @@ class HomeScreenState extends State<HomeScreen>
       dynamic response;
       if (alreadyReacted) {
         // If already reacted, remove the reaction
-        response = await widget.apiService.removeReaction(
-          messageId,
-          reactionType,
-        );
+        response = await _apiService.removeReaction(messageId, reactionType);
       } else {
         // Otherwise add the reaction
-        response = await widget.apiService.addReaction(messageId, reactionType);
+        response = await _apiService.addReaction(messageId, reactionType);
       }
 
       // Check for success

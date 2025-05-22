@@ -108,11 +108,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder:
-              (context) => FamilyScreen(
-                apiService: widget.apiService,
-                userId: widget.userId,
-              ),
+          builder: (context) => FamilyScreen(userId: widget.userId),
         ),
       );
     } catch (e) {
@@ -130,11 +126,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder:
-            (context) => FamilyScreen(
-              apiService: widget.apiService,
-              userId: widget.userId,
-            ),
+        builder: (context) => FamilyScreen(userId: widget.userId),
       ),
     );
   }
