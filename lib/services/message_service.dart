@@ -178,108 +178,61 @@ class MessageCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Text row with avatar and day indicator
+                  // Row 1: Avatar, text box, day text
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Avatar
-                      Padding(
-                        padding: const EdgeInsets.only(right: 10.0),
-                        child: _buildAvatarForSender(
-                          message.senderPhoto,
-                          displayName,
-                        ),
-                      ),
-                      // Message card and day abbreviation, vertically aligned
+                      _buildAvatarForSender(message.senderPhoto, displayName),
+                      const SizedBox(width: 8),
                       Expanded(
-                        child: IntrinsicHeight(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              // Message card (Expanded)
-                              Expanded(
-                                child: Stack(
-                                  children: [
-                                    // This container is for the text selection
-                                    Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(12),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.05,
-                                            ),
-                                            spreadRadius: 1,
-                                            blurRadius: 2,
-                                            offset: const Offset(0, 1),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          // Username inside text card for non-user messages
-                                          if (!isCurrentUser)
-                                            const Padding(
-                                              padding: EdgeInsets.only(
-                                                bottom: 8.0,
-                                              ),
-                                            ),
-                                          // The message content
-                                          SelectableText(
-                                            message.content,
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    // Transparent overlay for navigation
-                                    Positioned.fill(
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          debugPrint(
-                                            'Thread navigation coming soon!',
-                                          );
-                                        },
-                                        behavior: HitTestBehavior.translucent,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // Abbreviated day indicator always shown to the right
-                              Padding(
-                                padding: const EdgeInsets.only(left: 6.0),
-                                child: Text(
-                                  displayDay.isNotEmpty ? displayDay : '',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.grey[800],
-                                  ),
-                                ),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.background.withAlpha(220),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                spreadRadius: 1,
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
                               ),
                             ],
+                          ),
+                          child: SelectableText(
+                            message.content,
+                            style: Theme.of(context).textTheme.bodyLarge,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Align(
+                        alignment: Alignment.center,
+                        child: Text(
+                          displayDay.isNotEmpty ? displayDay : '',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[800],
                           ),
                         ),
                       ),
                     ],
                   ),
-
-                  // Add spacing between text and media cards
+                  // Row 2: Media (if present)
                   if (mediaUrl != null && mediaUrl.isNotEmpty)
-                    const SizedBox(height: 8),
-
-                  // Media card - centered under the text
-                  _buildMediaWidget(context, apiService),
-
-                  // Timestamp text - centered to match overall layout
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Center(
+                        child: Container(
+                          width: MediaQuery.of(context).size.width * 0.9,
+                          child: _buildMediaWidgetAligned(context, apiService),
+                        ),
+                      ),
+                    ),
+                  // Row 3: Timestamp (centered)
                   Padding(
                     padding: const EdgeInsets.only(top: 4.0),
                     child: Center(
@@ -289,20 +242,16 @@ class MessageCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Row 4: Metrics row
+                  _buildMetricsRow(
+                    commentCount,
+                    likeCount,
+                    loveCount,
+                    laughCount,
+                    viewCount,
+                    context,
+                  ),
                 ],
-              ),
-
-              // Add vertical spacing between message and metrics
-              SizedBox(height: 8.0),
-
-              // Metrics row below the message card - OUTSIDE the GestureDetector!
-              _buildMetricsRow(
-                commentCount,
-                likeCount,
-                loveCount,
-                laughCount,
-                viewCount,
-                context,
               ),
             ],
           ),
@@ -386,38 +335,36 @@ class MessageCard extends StatelessWidget {
     );
   }
 
-  Widget _buildMediaWidget(BuildContext context, ApiService apiService) {
+  Widget _buildMediaWidgetAligned(BuildContext context, ApiService apiService) {
     if (message.mediaUrl != null && message.mediaUrl!.isNotEmpty) {
       if (message.mediaType == 'image') {
         final displayUrl =
             message.mediaUrl!.startsWith('http')
                 ? message.mediaUrl!
                 : apiService.mediaBaseUrl + message.mediaUrl!;
-        return Center(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: CachedNetworkImage(
-              imageUrl: displayUrl,
-              fit: BoxFit.contain,
-              width: MediaQuery.of(context).size.width * 0.7,
-              height: 200,
-              placeholder:
-                  (context, url) => Container(
-                    color: Colors.grey[300],
-                    width: MediaQuery.of(context).size.width * 0.7,
-                    height: 200,
-                    child: const Center(child: CircularProgressIndicator()),
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: CachedNetworkImage(
+            imageUrl: displayUrl,
+            fit: BoxFit.contain,
+            width: double.infinity,
+            height: 200,
+            placeholder:
+                (context, url) => Container(
+                  color: Colors.grey[300],
+                  width: double.infinity,
+                  height: 200,
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
+            errorWidget:
+                (context, url, error) => Container(
+                  color: Colors.grey[300],
+                  width: double.infinity,
+                  height: 200,
+                  child: const Center(
+                    child: Icon(Icons.broken_image, color: Colors.grey),
                   ),
-              errorWidget:
-                  (context, url, error) => Container(
-                    color: Colors.grey[300],
-                    width: MediaQuery.of(context).size.width * 0.7,
-                    height: 200,
-                    child: const Center(
-                      child: Icon(Icons.broken_image, color: Colors.grey),
-                    ),
-                  ),
-            ),
+                ),
           ),
         );
       } else if (message.mediaType == 'video') {
@@ -428,54 +375,47 @@ class MessageCard extends StatelessWidget {
                     ? thumbnailUrl
                     : apiService.mediaBaseUrl + thumbnailUrl)
                 : '';
-        return Center(
-          child: GestureDetector(
-            onTap: () {
-              // TODO: Implement video playback (inline or modal)
-            },
-            child: Container(
-              width: MediaQuery.of(context).size.width * 0.7,
-              height: 200,
-              color: Colors.black,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    if (displayThumbnailUrl.isNotEmpty)
-                      CachedNetworkImage(
-                        imageUrl: displayThumbnailUrl,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                        placeholder:
-                            (context, url) => Container(
-                              color: Colors.black54,
-                              child: const Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                            ),
-                        errorWidget:
-                            (context, url, error) =>
-                                _buildDefaultVideoPlaceholder(),
-                      )
-                    else
-                      _buildDefaultVideoPlaceholder(),
-                    Container(
-                      decoration: const BoxDecoration(
-                        color: Colors.black38,
-                        shape: BoxShape.circle,
-                      ),
-                      padding: const EdgeInsets.all(8),
-                      child: const Icon(
-                        Icons.play_arrow,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                    ),
-                  ],
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            width: double.infinity,
+            height: 200,
+            color: Colors.black,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (displayThumbnailUrl.isNotEmpty)
+                  CachedNetworkImage(
+                    imageUrl: displayThumbnailUrl,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                    placeholder:
+                        (context, url) => Container(
+                          color: Colors.black54,
+                          child: const Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                        ),
+                    errorWidget:
+                        (context, url, error) =>
+                            _buildDefaultVideoPlaceholder(),
+                  )
+                else
+                  _buildDefaultVideoPlaceholder(),
+                Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.black38,
+                    shape: BoxShape.circle,
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Colors.white,
+                    size: 40,
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         );
