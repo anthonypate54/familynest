@@ -31,6 +31,11 @@ class AppConfig {
   }
 
   /// Get the base URL for API requests based on platform and environment
+  /// ngrok http 8080
+  String get ngrokUrl =>
+      "https://93c3-2601-1c0-5900-1370-7422-e05f-ad4f-4ffd.ngrok-free.app";
+
+  ///
   String get baseUrl {
     // If a custom URL was provided, use it
     if (_customBaseUrl != null) {
@@ -49,11 +54,11 @@ class AppConfig {
       default:
         // For development, we need different URLs based on the platform
         if (kIsWeb) {
-          return "http://localhost:8080"; // Use simple localhost for web
+          return "https://localhost:8080"; // Use HTTPS for web
         } else if (Platform.isAndroid) {
-          return "http://localhost:8080"; // Changed from 10.0.2.2
+          return "https://10.0.2.2:8080"; // Use 10.0.2.2 for Android emulator
         } else {
-          return "http://localhost:8080"; // iOS simulator and others
+          return "https://localhost:8080"; // Use HTTPS for iOS simulator and others
         }
     }
   }
@@ -72,7 +77,7 @@ class AppConfig {
       case Environment.development:
       default:
         // In development, media is served from the same server as the API
-        return baseUrl;
+        return ngrokUrl;
     }
   }
 

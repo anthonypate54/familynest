@@ -7,12 +7,14 @@ import '../services/api_service.dart';
 import '../services/message_service.dart';
 import '../utils/auth_utils.dart';
 import 'dart:io';
+import 'dart:async';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../utils/video_thumbnail_util.dart';
 import '../widgets/gradient_background.dart';
 import '../theme/app_theme.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class MessageScreen extends StatefulWidget {
   final String userId;
@@ -28,10 +30,13 @@ class _MessageScreenState extends State<MessageScreen> {
   File? _selectedMediaFile;
   String? _selectedMediaType;
   final ImagePicker _picker = ImagePicker();
-  // Video preview fields
+  // Video preview fields for composing
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   File? _selectedVideoThumbnail;
+
+  // --- Inline video playback for message feed ---
+  String? _currentlyPlayingVideoId;
 
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
@@ -168,7 +173,7 @@ class _MessageScreenState extends State<MessageScreen> {
               playedColor: Colors.blue,
               handleColor: Colors.blueAccent,
               backgroundColor: Colors.grey.shade700,
-              bufferedColor: Colors.lightBlue.withValues(alpha: 0.5),
+              bufferedColor: Colors.lightBlue.withOpacity(0.5),
             ),
             errorBuilder: (context, errorMessage) {
               return Center(
@@ -256,17 +261,22 @@ class _MessageScreenState extends State<MessageScreen> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   } else if (snapshot.hasError) {
-                    return Center(child: Text('Error: \\${snapshot.error}'));
+                    return Center(child: Text('Error: ${snapshot.error}'));
                   } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
                     return const Center(child: Text('No messages found.'));
                   }
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _scrollToBottom();
-                  });
                   return MessageService.buildMessageListView(
                     snapshot.data!,
                     apiService: apiService,
                     scrollController: _scrollController,
+                    onTap: (message) {
+                      if (message.mediaType == 'video') {
+                        setState(() {
+                          _currentlyPlayingVideoId = message.id;
+                        });
+                      }
+                    },
+                    currentlyPlayingVideoId: _currentlyPlayingVideoId,
                   );
                 },
               ),
@@ -306,9 +316,7 @@ class _MessageScreenState extends State<MessageScreen> {
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.08,
-                                        ),
+                                        color: Colors.black.withOpacity(0.08),
                                         blurRadius: 2,
                                       ),
                                     ],
@@ -325,120 +333,42 @@ class _MessageScreenState extends State<MessageScreen> {
                                       setState(() {
                                         _selectedMediaFile = null;
                                         _selectedMediaType = null;
-                                        _selectedVideoThumbnail = null;
-                                        _videoController?.dispose();
-                                        _videoController = null;
-                                        _chewieController?.dispose();
-                                        _chewieController = null;
                                       });
                                     },
-                                    tooltip: 'Remove media',
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         )
-                        : (_videoController != null &&
-                            _videoController!.value.isInitialized)
-                        ? ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Stack(
-                            children: [
-                              Container(
-                                width: MediaQuery.of(context).size.width * 0.7,
-                                height: 200,
-                                color: Colors.black,
-                                child:
-                                    _chewieController != null &&
-                                            _videoController != null &&
-                                            _videoController!
-                                                .value
-                                                .isInitialized
-                                        ? FittedBox(
-                                          fit: BoxFit.cover,
-                                          child: SizedBox(
-                                            width:
-                                                _videoController!
-                                                    .value
-                                                    .size
-                                                    .width,
-                                            height:
-                                                _videoController!
-                                                    .value
-                                                    .size
-                                                    .height,
-                                            child: Chewie(
-                                              controller: _chewieController!,
-                                            ),
-                                          ),
-                                        )
-                                        : const Center(
-                                          child: CircularProgressIndicator(),
-                                        ),
-                              ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.grey,
-                                      width: 2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.08,
-                                        ),
-                                        blurRadius: 2,
-                                      ),
-                                    ],
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.close,
-                                      color: Colors.red,
-                                      size: 18,
-                                    ),
-                                    padding: EdgeInsets.zero,
-                                    splashRadius: 18,
-                                    onPressed: () {
-                                      setState(() {
-                                        _selectedMediaFile = null;
-                                        _selectedMediaType = null;
-                                        _selectedVideoThumbnail = null;
-                                        _videoController?.dispose();
-                                        _videoController = null;
-                                        _chewieController?.dispose();
-                                        _chewieController = null;
-                                      });
-                                    },
-                                    tooltip: 'Remove media',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                        : _selectedVideoThumbnail != null
+                        : _selectedMediaType == 'video'
                         ? ClipRRect(
                           borderRadius: BorderRadius.circular(6),
                           child: Stack(
                             children: [
                               SizedBox(
-                                width: double.infinity,
+                                width: MediaQuery.of(context).size.width * 0.7,
                                 height: 200,
-                                child: Image.file(
-                                  _selectedVideoThumbnail!,
-                                  width: double.infinity,
-                                  height: 200,
-                                  fit: BoxFit.cover,
-                                ),
+                                child:
+                                    _chewieController != null
+                                        ? Chewie(controller: _chewieController!)
+                                        : _selectedVideoThumbnail != null
+                                        ? Image.file(
+                                          _selectedVideoThumbnail!,
+                                          width:
+                                              MediaQuery.of(
+                                                context,
+                                              ).size.width *
+                                              0.7,
+                                          height: 200,
+                                          fit: BoxFit.cover,
+                                        )
+                                        : Container(
+                                          color: Colors.black,
+                                          child: const Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                        ),
                               ),
                               Positioned(
                                 top: 8,
@@ -463,7 +393,7 @@ class _MessageScreenState extends State<MessageScreen> {
                                   child: IconButton(
                                     icon: const Icon(
                                       Icons.close,
-                                      color: Colors.red,
+                                      color: Colors.black,
                                       size: 18,
                                     ),
                                     padding: EdgeInsets.zero,
@@ -472,85 +402,55 @@ class _MessageScreenState extends State<MessageScreen> {
                                       setState(() {
                                         _selectedMediaFile = null;
                                         _selectedMediaType = null;
-                                        _selectedVideoThumbnail = null;
                                         _videoController?.dispose();
-                                        _videoController = null;
                                         _chewieController?.dispose();
+                                        _videoController = null;
                                         _chewieController = null;
+                                        _selectedVideoThumbnail = null;
                                       });
                                     },
-                                    tooltip: 'Remove media',
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         )
-                        : Container(
-                          width: 100,
-                          height: 100,
-                          color: Colors.black12,
-                          child: const Center(
-                            child: Icon(
-                              Icons.videocam,
-                              size: 40,
-                              color: Colors.blue,
-                            ),
-                          ),
-                        ),
+                        : const SizedBox.shrink(),
               ),
             Container(
               padding: const EdgeInsets.all(8.0),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    spreadRadius: 1,
-                    blurRadius: 3,
-                    offset: const Offset(0, -1),
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
                   ),
                 ],
               ),
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
+                    icon: const Icon(Icons.attach_file),
                     onPressed: _showMediaPicker,
-                    tooltip: 'Add Media',
+                    tooltip: 'Attach Media',
                   ),
                   Expanded(
                     child: TextField(
                       controller: _messageController,
-                      style: const TextStyle(fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: 'Enter your message',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[100],
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
+                      decoration: const InputDecoration(
+                        hintText: 'Type a message...',
+                        border: InputBorder.none,
                       ),
+                      maxLines: null,
+                      textCapitalization: TextCapitalization.sentences,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.blue,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white),
-                      iconSize: 20,
-                      onPressed: () async {
-                        await _postMessage(apiService);
-                      },
-                      tooltip: 'Send Message',
-                    ),
+                  IconButton(
+                    icon: const Icon(Icons.send),
+                    onPressed: () => _postMessage(apiService),
+                    tooltip: 'Send Message',
                   ),
                 ],
               ),

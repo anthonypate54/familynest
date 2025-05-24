@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/app_theme.dart';
+import '../widgets/video_message_card.dart';
 
 class MessageService {
   static Widget buildMessageListView(
@@ -13,6 +14,7 @@ class MessageService {
     void Function(Message)? onTap,
     String? currentUserId,
     void Function(Message)? onThreadTap,
+    String? currentlyPlayingVideoId,
   }) {
     return ListView.builder(
       controller: scrollController,
@@ -69,13 +71,14 @@ class MessageService {
         return MessageCard(
           message: message,
           apiService: apiService,
-          onTap: onTap != null ? () => onTap(message) : null,
+          onTap: onTap,
           timeText: timeText,
           dayText: dayText,
           shouldShowDateSeparator: shouldShowDateSeparator,
           dateSeparatorText: dateSeparatorText,
           currentUserId: currentUserId,
           onThreadTap: onThreadTap,
+          currentlyPlayingVideoId: currentlyPlayingVideoId,
         );
       },
     );
@@ -101,13 +104,14 @@ class MessageService {
 class MessageCard extends StatelessWidget {
   final Message message;
   final ApiService apiService;
-  final VoidCallback? onTap;
+  final void Function(Message)? onTap;
   final String? timeText;
   final String? dayText;
   final bool shouldShowDateSeparator;
   final String? dateSeparatorText;
   final String? currentUserId;
   final void Function(Message)? onThreadTap;
+  final String? currentlyPlayingVideoId;
 
   const MessageCard({
     Key? key,
@@ -120,6 +124,7 @@ class MessageCard extends StatelessWidget {
     this.dateSeparatorText,
     this.currentUserId,
     this.onThreadTap,
+    this.currentlyPlayingVideoId,
   }) : super(key: key);
 
   @override
@@ -368,71 +373,15 @@ class MessageCard extends StatelessWidget {
           ),
         );
       } else if (message.mediaType == 'video') {
-        final String? thumbnailUrl = message.thumbnailUrl;
-        final String displayThumbnailUrl =
-            (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
-                ? (thumbnailUrl.startsWith('http')
-                    ? thumbnailUrl
-                    : apiService.mediaBaseUrl + thumbnailUrl)
-                : '';
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            width: double.infinity,
-            height: 200,
-            color: Colors.black,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                if (displayThumbnailUrl.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: displayThumbnailUrl,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                    placeholder:
-                        (context, url) => Container(
-                          color: Colors.black54,
-                          child: const Center(
-                            child: CircularProgressIndicator(),
-                          ),
-                        ),
-                    errorWidget:
-                        (context, url, error) =>
-                            _buildDefaultVideoPlaceholder(),
-                  )
-                else
-                  _buildDefaultVideoPlaceholder(),
-                Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.black38,
-                    shape: BoxShape.circle,
-                  ),
-                  padding: const EdgeInsets.all(8),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    color: Colors.white,
-                    size: 40,
-                  ),
-                ),
-              ],
-            ),
-          ),
+        return VideoMessageCard(
+          videoUrl: message.mediaUrl!,
+          thumbnailUrl: message.thumbnailUrl,
+          apiService: apiService,
+          isCurrentlyPlaying: currentlyPlayingVideoId == message.id,
         );
       }
     }
     return const SizedBox.shrink();
-  }
-
-  Widget _buildDefaultVideoPlaceholder() {
-    return Container(
-      width: 200,
-      height: 200,
-      color: Colors.black,
-      child: const Center(
-        child: Icon(Icons.videocam, color: Colors.white, size: 40),
-      ),
-    );
   }
 
   Widget _buildMetricsRow(
