@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
-import 'profile_screen.dart';
 import '../services/api_service.dart';
-import 'home_screen.dart';
 import '../utils/page_transitions.dart';
 import '../main.dart'; // Import to access MainAppContainer
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import '../widgets/gradient_background.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -53,26 +50,8 @@ class LoginScreenState extends State<LoginScreen> {
     try {
       debugPrint('LOGIN_SCREEN: Starting auto-login check...');
 
-      // Check for potential loop
-      final prefs = await SharedPreferences.getInstance();
-      final lastCheckTime = prefs.getString('last_login_check');
-      final now = DateTime.now().toIso8601String();
-
-      if (lastCheckTime != null) {
-        final lastCheck = DateTime.parse(lastCheckTime);
-        final timeSinceLastCheck = DateTime.now().difference(lastCheck);
-        if (timeSinceLastCheck < const Duration(seconds: 2)) {
-          debugPrint(
-            '⚠️ LOGIN_SCREEN: Potential loop detected, skipping auto-login check',
-          );
-          return;
-        }
-      }
-
-      // Save current check time
-      await prefs.setString('last_login_check', now);
-
       // First check if explicitly logged out
+      final prefs = await SharedPreferences.getInstance();
       final wasExplicitlyLoggedOut =
           prefs.getBool('explicitly_logged_out') ?? false;
 
@@ -236,17 +215,7 @@ class LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Theme.of(context).colorScheme.primary,
-              Theme.of(context).colorScheme.secondary,
-            ],
-          ),
-        ),
+      body: GradientBackground(
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(

@@ -3,6 +3,7 @@ import '../models/message.dart';
 import '../services/api_service.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../theme/app_theme.dart';
 
 class MessageService {
   static Widget buildMessageListView(
@@ -154,7 +155,7 @@ class MessageCard extends StatelessWidget {
                 vertical: 4.0,
               ),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
@@ -208,8 +209,8 @@ class MessageCard extends StatelessWidget {
                                         borderRadius: BorderRadius.circular(12),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(
-                                              0.05,
+                                            color: Colors.black.withValues(
+                                              alpha: 0.05,
                                             ),
                                             spreadRadius: 1,
                                             blurRadius: 2,
@@ -223,17 +224,9 @@ class MessageCard extends StatelessWidget {
                                         children: [
                                           // Username inside text card for non-user messages
                                           if (!isCurrentUser)
-                                            Padding(
-                                              padding: const EdgeInsets.only(
+                                            const Padding(
+                                              padding: EdgeInsets.only(
                                                 bottom: 8.0,
-                                              ),
-                                              child: Text(
-                                                displayName,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                  color: Colors.blue,
-                                                ),
                                               ),
                                             ),
                                           // The message content
@@ -309,6 +302,7 @@ class MessageCard extends StatelessWidget {
                 loveCount,
                 laughCount,
                 viewCount,
+                context,
               ),
             ],
           ),
@@ -344,7 +338,7 @@ class MessageCard extends StatelessWidget {
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 4,
             spreadRadius: 1,
           ),
@@ -507,105 +501,54 @@ class MessageCard extends StatelessWidget {
     int loveCount,
     int laughCount,
     int viewCount,
+    BuildContext context,
   ) {
-    return Padding(
-      padding: const EdgeInsets.only(
-        left: 50.0,
-        right: 50.0,
-        top: 0.0,
-        bottom: 12.0,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          GestureDetector(
-            onTap: () {
-              debugPrint('Share feature coming soon!');
-            },
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.comment_outlined,
-                  size: 16,
-                  color: Colors.grey,
-                ),
-                const SizedBox(width: 2),
-                Text(
-                  commentCount.toString(),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ),
+    final customColors = Theme.of(context).extension<CustomColors>()!;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Reply (comment) icon with count
+        Icon(
+          Icons.comment_outlined,
+          size: 16,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+        const SizedBox(width: 2),
+        Text(
+          commentCount.toString(),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 12),
+        ),
+        const SizedBox(width: 12),
+        // Thumbs up icon with count
+        Icon(
+          Icons.thumb_up_outlined,
+          size: 16,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+        const SizedBox(width: 2),
+        Text(
+          likeCount.toString(),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 12),
+        ),
+        const SizedBox(width: 12),
+        // Heart icon with count
+        Icon(Icons.favorite_outline, size: 16, color: customColors.redColor),
+        const SizedBox(width: 2),
+        Text(
+          loveCount.toString(),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            fontSize: 12,
+            color: customColors.redColor,
           ),
-          const SizedBox(width: 16),
-          Row(
-            children: [
-              const Icon(
-                Icons.thumb_up_alt_outlined,
-                size: 16,
-                color: Colors.grey,
-              ),
-              const SizedBox(width: 2),
-              Text(
-                likeCount.toString(),
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Row(
-            children: [
-              const Icon(Icons.favorite_outline, size: 16, color: Colors.red),
-              const SizedBox(width: 2),
-              Text(
-                loveCount.toString(),
-                style: const TextStyle(fontSize: 12, color: Colors.red),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Row(
-            children: [
-              const Icon(
-                Icons.emoji_emotions_outlined,
-                size: 16,
-                color: Colors.amber,
-              ),
-              const SizedBox(width: 2),
-              Text(
-                laughCount.toString(),
-                style: const TextStyle(fontSize: 12, color: Colors.amber),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Row(
-            children: [
-              const Icon(
-                Icons.visibility_outlined,
-                size: 16,
-                color: Colors.grey,
-              ),
-              const SizedBox(width: 2),
-              Text(
-                viewCount.toString(),
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: () {
-              debugPrint('Share feature coming soon!');
-            },
-            child: const Icon(
-              Icons.share_outlined,
-              size: 16,
-              color: Colors.grey,
-            ),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 12),
+        // Share icon (no count)
+        Icon(
+          Icons.share_outlined,
+          size: 16,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+      ],
     );
   }
 }

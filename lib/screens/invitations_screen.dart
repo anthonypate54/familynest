@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import '../components/bottom_navigation.dart';
 import '../controllers/bottom_navigation_controller.dart';
 import 'package:provider/provider.dart';
+import '../widgets/gradient_background.dart';
 
 class InvitationsScreen extends StatefulWidget {
   final int userId;
@@ -110,21 +110,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
           ),
         ],
       ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Theme.of(context).colorScheme.primary,
-              Theme.of(context).colorScheme.secondary,
-            ],
-          ),
-        ),
-        child: _buildInvitationsContent(),
-      ),
+      body: GradientBackground(child: _buildInvitationsContent()),
     );
   }
 

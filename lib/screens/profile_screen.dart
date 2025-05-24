@@ -12,6 +12,7 @@ import '../utils/page_transitions.dart';
 import '../controllers/bottom_navigation_controller.dart';
 import '../utils/auth_utils.dart';
 import 'package:provider/provider.dart';
+import '../widgets/gradient_background.dart';
 
 class ProfileScreen extends StatefulWidget {
   final int userId;
@@ -881,6 +882,7 @@ class ProfileScreenState extends State<ProfileScreen>
     );
   }
 
+  /*
   // Extract the gradient background container into a separate method
   Widget _buildGradientBackground({required Widget child}) {
     return Container(
@@ -899,7 +901,7 @@ class ProfileScreenState extends State<ProfileScreen>
       child: child,
     );
   }
-
+*/
   @override
   Widget build(BuildContext context) {
     // Calculate responsive width for the profile content
@@ -915,7 +917,7 @@ class ProfileScreenState extends State<ProfileScreen>
 
     return Scaffold(
       appBar: _buildAppBar(),
-      body: _buildGradientBackground(
+      body: GradientBackground(
         child: _buildProfileTab(contentWidth, isSmallScreen),
       ),
     );

@@ -5,11 +5,14 @@ import './compose_message_screen.dart';
 import '../config/ui_config.dart';
 import '../services/api_service.dart';
 import '../services/message_service.dart';
+import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../utils/video_thumbnail_util.dart';
+import '../widgets/gradient_background.dart';
+import '../theme/app_theme.dart';
 
 class MessageScreen extends StatefulWidget {
   final String userId;
@@ -47,6 +50,14 @@ class _MessageScreenState extends State<MessageScreen> {
     _videoController?.dispose();
     _chewieController?.dispose();
     super.dispose();
+  }
+
+  /// Handle logout action
+  void _logout() async {
+    await AuthUtils.showLogoutConfirmation(
+      context,
+      Provider.of<ApiService>(context, listen: false),
+    );
   }
 
   void _showMediaPicker() {
@@ -157,7 +168,7 @@ class _MessageScreenState extends State<MessageScreen> {
               playedColor: Colors.blue,
               handleColor: Colors.blueAccent,
               backgroundColor: Colors.grey.shade700,
-              bufferedColor: Colors.lightBlue.withOpacity(0.5),
+              bufferedColor: Colors.lightBlue.withValues(alpha: 0.5),
             ),
             errorBuilder: (context, errorMessage) {
               return Center(
@@ -213,188 +224,339 @@ class _MessageScreenState extends State<MessageScreen> {
     return Scaffold(
       backgroundColor: UIConfig.useDarkMode ? Colors.black : Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.blue,
-        elevation: 0,
         title: const Text('Messages'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
+            icon: Icon(
+              Icons.refresh,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
             onPressed: () {
               setState(() {});
             },
             tooltip: 'Refresh Messages',
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () {
-              // TODO: Implement logout logic
-            },
+            icon: Icon(
+              Icons.logout,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
+            onPressed: _logout,
             tooltip: 'Logout',
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: FutureBuilder<List<Message>>(
-              future: apiService.getUserMessages(widget.userId),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
-                  return Center(child: Text('Error: \\${snapshot.error}'));
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('No messages found.'));
-                }
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _scrollToBottom();
-                });
-                return MessageService.buildMessageListView(
-                  snapshot.data!,
-                  apiService: apiService,
-                  scrollController: _scrollController,
-                );
-              },
+      body: GradientBackground(
+        child: Column(
+          children: [
+            Expanded(
+              child: FutureBuilder<List<Message>>(
+                future: apiService.getUserMessages(widget.userId),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  } else if (snapshot.hasError) {
+                    return Center(child: Text('Error: \\${snapshot.error}'));
+                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Center(child: Text('No messages found.'));
+                  }
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _scrollToBottom();
+                  });
+                  return MessageService.buildMessageListView(
+                    snapshot.data!,
+                    apiService: apiService,
+                    scrollController: _scrollController,
+                  );
+                },
+              ),
             ),
-          ),
-          if (_selectedMediaFile != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Stack(
-                alignment: Alignment.topRight,
-                children: [
-                  _selectedMediaType == 'photo'
-                      ? ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.file(
-                          _selectedMediaFile!,
-                          width: double.infinity,
-                          height: 200,
-                          fit: BoxFit.contain,
-                        ),
-                      )
-                      : (_videoController != null &&
-                          _videoController!.value.isInitialized)
-                      ? ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Container(
-                          width: MediaQuery.of(context).size.width * 0.7,
-                          height: 200,
-                          color: Colors.black,
-                          child:
-                              _chewieController != null &&
-                                      _videoController != null &&
-                                      _videoController!.value.isInitialized
-                                  ? FittedBox(
-                                    fit: BoxFit.cover,
-                                    child: SizedBox(
-                                      width: _videoController!.value.size.width,
-                                      height:
-                                          _videoController!.value.size.height,
-                                      child: Chewie(
-                                        controller: _chewieController!,
-                                      ),
+            if (_selectedMediaFile != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child:
+                    _selectedMediaType == 'photo'
+                        ? ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Stack(
+                            children: [
+                              SizedBox(
+                                width: MediaQuery.of(context).size.width * 0.7,
+                                height: 200,
+                                child: Image.file(
+                                  _selectedMediaFile!,
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.7,
+                                  height: 200,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.grey,
+                                      width: 2,
                                     ),
-                                  )
-                                  : const Center(
-                                    child: CircularProgressIndicator(),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.08,
+                                        ),
+                                        blurRadius: 2,
+                                      ),
+                                    ],
                                   ),
-                        ),
-                      )
-                      : _selectedVideoThumbnail != null
-                      ? ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.file(
-                          _selectedVideoThumbnail!,
-                          width: double.infinity,
-                          height: 200,
-                          fit: BoxFit.contain,
-                        ),
-                      )
-                      : Container(
-                        width: 100,
-                        height: 100,
-                        color: Colors.black12,
-                        child: const Center(
-                          child: Icon(
-                            Icons.videocam,
-                            size: 40,
-                            color: Colors.blue,
+                                  child: IconButton(
+                                    icon: const Icon(
+                                      Icons.close,
+                                      color: Colors.black,
+                                      size: 18,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    splashRadius: 18,
+                                    onPressed: () {
+                                      setState(() {
+                                        _selectedMediaFile = null;
+                                        _selectedMediaType = null;
+                                        _selectedVideoThumbnail = null;
+                                        _videoController?.dispose();
+                                        _videoController = null;
+                                        _chewieController?.dispose();
+                                        _chewieController = null;
+                                      });
+                                    },
+                                    tooltip: 'Remove media',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                        : (_videoController != null &&
+                            _videoController!.value.isInitialized)
+                        ? ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Stack(
+                            children: [
+                              Container(
+                                width: MediaQuery.of(context).size.width * 0.7,
+                                height: 200,
+                                color: Colors.black,
+                                child:
+                                    _chewieController != null &&
+                                            _videoController != null &&
+                                            _videoController!
+                                                .value
+                                                .isInitialized
+                                        ? FittedBox(
+                                          fit: BoxFit.cover,
+                                          child: SizedBox(
+                                            width:
+                                                _videoController!
+                                                    .value
+                                                    .size
+                                                    .width,
+                                            height:
+                                                _videoController!
+                                                    .value
+                                                    .size
+                                                    .height,
+                                            child: Chewie(
+                                              controller: _chewieController!,
+                                            ),
+                                          ),
+                                        )
+                                        : const Center(
+                                          child: CircularProgressIndicator(),
+                                        ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.grey,
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.08,
+                                        ),
+                                        blurRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(
+                                      Icons.close,
+                                      color: Colors.red,
+                                      size: 18,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    splashRadius: 18,
+                                    onPressed: () {
+                                      setState(() {
+                                        _selectedMediaFile = null;
+                                        _selectedMediaType = null;
+                                        _selectedVideoThumbnail = null;
+                                        _videoController?.dispose();
+                                        _videoController = null;
+                                        _chewieController?.dispose();
+                                        _chewieController = null;
+                                      });
+                                    },
+                                    tooltip: 'Remove media',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                        : _selectedVideoThumbnail != null
+                        ? ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Stack(
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                height: 200,
+                                child: Image.file(
+                                  _selectedVideoThumbnail!,
+                                  width: double.infinity,
+                                  height: 200,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.grey,
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.08),
+                                        blurRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(
+                                      Icons.close,
+                                      color: Colors.red,
+                                      size: 18,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    splashRadius: 18,
+                                    onPressed: () {
+                                      setState(() {
+                                        _selectedMediaFile = null;
+                                        _selectedMediaType = null;
+                                        _selectedVideoThumbnail = null;
+                                        _videoController?.dispose();
+                                        _videoController = null;
+                                        _chewieController?.dispose();
+                                        _chewieController = null;
+                                      });
+                                    },
+                                    tooltip: 'Remove media',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                        : Container(
+                          width: 100,
+                          height: 100,
+                          color: Colors.black12,
+                          child: const Center(
+                            child: Icon(
+                              Icons.videocam,
+                              size: 40,
+                              color: Colors.blue,
+                            ),
                           ),
                         ),
-                      ),
+              ),
+            Container(
+              padding: const EdgeInsets.all(8.0),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    spreadRadius: 1,
+                    blurRadius: 3,
+                    offset: const Offset(0, -1),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.red),
-                    onPressed: () {
-                      setState(() {
-                        _selectedMediaFile = null;
-                        _selectedMediaType = null;
-                        _selectedVideoThumbnail = null;
-                        _videoController?.dispose();
-                        _videoController = null;
-                        _chewieController?.dispose();
-                        _chewieController = null;
-                      });
-                    },
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: _showMediaPicker,
+                    tooltip: 'Add Media',
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      style: const TextStyle(fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'Enter your message',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[100],
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.send, color: Colors.white),
+                      iconSize: 20,
+                      onPressed: () async {
+                        await _postMessage(apiService);
+                      },
+                      tooltip: 'Send Message',
+                    ),
                   ),
                 ],
               ),
             ),
-          Container(
-            padding: const EdgeInsets.all(8.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  spreadRadius: 1,
-                  blurRadius: 3,
-                  offset: const Offset(0, -1),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: _showMediaPicker,
-                  tooltip: 'Add Media',
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'Enter your message',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[100],
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.blue,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: () async {
-                      await _postMessage(apiService);
-                    },
-                    tooltip: 'Send Message',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
