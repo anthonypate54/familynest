@@ -27,6 +27,7 @@ class MessageScreen extends StatefulWidget {
 class _MessageScreenState extends State<MessageScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _messageController = TextEditingController();
+  final ValueNotifier<bool> _isSendButtonEnabled = ValueNotifier(false);
   File? _selectedMediaFile;
   String? _selectedMediaType;
   final ImagePicker _picker = ImagePicker();
@@ -49,9 +50,18 @@ class _MessageScreenState extends State<MessageScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _messageController.addListener(() {
+      _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
+    });
+  }
+
+  @override
   void dispose() {
     _scrollController.dispose();
     _messageController.dispose();
+    _isSendButtonEnabled.dispose();
     _videoController?.dispose();
     _chewieController?.dispose();
     super.dispose();
@@ -423,7 +433,7 @@ class _MessageScreenState extends State<MessageScreen> {
                 color: Theme.of(context).colorScheme.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 4,
                     offset: const Offset(0, -2),
                   ),
@@ -432,7 +442,7 @@ class _MessageScreenState extends State<MessageScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.attach_file),
+                    icon: const Icon(Icons.add_circle_outline),
                     onPressed: _showMediaPicker,
                     tooltip: 'Attach Media',
                   ),
@@ -447,10 +457,21 @@ class _MessageScreenState extends State<MessageScreen> {
                       textCapitalization: TextCapitalization.sentences,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.send),
-                    onPressed: () => _postMessage(apiService),
-                    tooltip: 'Send Message',
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _isSendButtonEnabled,
+                    builder: (context, isEnabled, child) {
+                      return IconButton(
+                        icon: const Icon(Icons.send),
+                        onPressed:
+                            isEnabled ? () => _postMessage(apiService) : null,
+                        tooltip: 'Send Message',
+
+                        color:
+                            isEnabled
+                                ? Theme.of(context).primaryColor
+                                : Colors.grey,
+                      );
+                    },
                   ),
                 ],
               ),
