@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/app_theme.dart';
 import '../widgets/video_message_card.dart';
+import '../screens/thread_screen.dart';
 
 class MessageService {
   static Widget buildMessageListView(
@@ -15,6 +16,7 @@ class MessageService {
     String? currentUserId,
     void Function(Message)? onThreadTap,
     String? currentlyPlayingVideoId,
+    String? content,
   }) {
     return ListView.builder(
       controller: scrollController,
@@ -89,15 +91,28 @@ class MessageService {
     return TimeOfDay.fromDateTime(dateTime).format(context);
   }
 
+  // Add a public method that wraps the private one
+  static String formatTime(BuildContext context, DateTime? dateTime) {
+    return _formatTime(context, dateTime);
+  }
+
   static String _getShortDayName(DateTime? dateTime) {
     if (dateTime == null) return '';
     return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][dateTime.weekday -
         1];
   }
 
+  static String getShortDayName(DateTime? dateTime) {
+    return _getShortDayName(dateTime);
+  }
+
   static bool _isSameDay(DateTime? a, DateTime? b) {
     if (a == null || b == null) return false;
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  static bool isSameDay(DateTime? a, DateTime? b) {
+    return _isSameDay(a, b);
   }
 }
 
@@ -143,8 +158,7 @@ class MessageCard extends StatelessWidget {
     final int commentCount = metrics['commentCount'] ?? 0;
     final int likeCount = metrics['likeCount'] ?? 0;
     final int loveCount = metrics['loveCount'] ?? 0;
-    final int laughCount = metrics['laughCount'] ?? 0;
-    final int viewCount = metrics['viewCount'] ?? 0;
+    final int userId = metrics['userId'] ?? 0;
 
     return Column(
       children: [
@@ -252,8 +266,8 @@ class MessageCard extends StatelessWidget {
                     commentCount,
                     likeCount,
                     loveCount,
-                    laughCount,
-                    viewCount,
+                    userId,
+                    message.toJson(),
                     context,
                   ),
                 ],
@@ -388,24 +402,41 @@ class MessageCard extends StatelessWidget {
     int commentCount,
     int likeCount,
     int loveCount,
-    int laughCount,
-    int viewCount,
+    int currentUserId,
+    Map<String, dynamic> message,
     BuildContext context,
   ) {
     final customColors = Theme.of(context).extension<CustomColors>()!;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Reply (comment) icon with count
-        Icon(
-          Icons.comment_outlined,
-          size: 16,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-        const SizedBox(width: 2),
-        Text(
-          commentCount.toString(),
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 12),
+        GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (context) =>
+                        ThreadScreen(userId: currentUserId, message: message),
+              ),
+            );
+          },
+          child: Row(
+            children: [
+              Icon(
+                Icons.comment_outlined,
+                size: 16,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+              const SizedBox(width: 2),
+              Text(
+                commentCount.toString(),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelSmall?.copyWith(fontSize: 12),
+              ),
+            ],
+          ),
         ),
         const SizedBox(width: 12),
         // Thumbs up icon with count
@@ -414,6 +445,7 @@ class MessageCard extends StatelessWidget {
           size: 16,
           color: Theme.of(context).colorScheme.onSurface,
         ),
+
         const SizedBox(width: 2),
         Text(
           likeCount.toString(),

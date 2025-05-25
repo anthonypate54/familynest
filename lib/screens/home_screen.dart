@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
 import '../services/api_service.dart';
 import 'invitations_screen.dart';
-import 'message_thread_screen.dart';
+import 'xxxmessage_thread_screen.dart';
 import 'dart:async';
 import 'package:familynest/theme/app_theme.dart';
 import 'package:familynest/theme/app_styles.dart';
@@ -2508,10 +2508,11 @@ class HomeScreenState extends State<HomeScreen>
                                         context,
                                         MaterialPageRoute(
                                           builder:
-                                              (context) => MessageThreadScreen(
-                                                userId: widget.userId,
-                                                message: message,
-                                              ),
+                                              (context) =>
+                                                  xxxMessageThreadScreen(
+                                                    userId: widget.userId,
+                                                    message: message,
+                                                  ),
                                         ),
                                       );
                                     }
@@ -2776,7 +2777,7 @@ class HomeScreenState extends State<HomeScreen>
                 context,
                 MaterialPageRoute(
                   builder:
-                      (context) => MessageThreadScreen(
+                      (context) => xxxMessageThreadScreen(
                         userId: widget.userId,
                         message: message,
                       ),
