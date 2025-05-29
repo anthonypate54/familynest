@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import 'home_screen.dart';
+import 'message_screen.dart';
 import 'package:provider/provider.dart';
 
 class FamilyScreen extends StatefulWidget {
@@ -33,7 +33,8 @@ class FamilyScreenState extends State<FamilyScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => HomeScreen(userId: widget.userId),
+            builder:
+                (context) => MessageScreen(userId: widget.userId.toString()),
           ),
         );
       } catch (e) {
@@ -61,7 +62,8 @@ class FamilyScreenState extends State<FamilyScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => HomeScreen(userId: widget.userId),
+            builder:
+                (context) => MessageScreen(userId: widget.userId.toString()),
           ),
         );
       } catch (e) {

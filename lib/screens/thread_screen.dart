@@ -1,158 +1,54 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/message.dart';
+import './compose_message_screen.dart';
+import '../config/ui_config.dart';
 import '../services/api_service.dart';
 import '../services/message_service.dart';
+import '../utils/auth_utils.dart';
+import 'dart:io';
+import 'dart:async';
+import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
+import '../utils/video_thumbnail_util.dart';
+import '../widgets/gradient_background.dart';
+import '../theme/app_theme.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ThreadScreen extends StatefulWidget {
   final int userId;
-  final Map<String, dynamic> message;
+  final Map<String, dynamic> message; // Add this
 
-  const ThreadScreen({Key? key, required this.userId, required this.message})
-    : super(key: key);
+  const ThreadScreen({
+    Key? key,
+    required this.userId,
+    required this.message, // Add this
+  }) : super(key: key);
 
   @override
   State<ThreadScreen> createState() => _ThreadScreenState();
 }
 
 class _ThreadScreenState extends State<ThreadScreen> {
-  late Future<List<Map<String, dynamic>>> _commentsFuture = Future.value([]);
-  bool _isLoadingComments = false;
-  late ApiService _apiService;
-
-  final TextEditingController _commentController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _messageController = TextEditingController();
+  final ValueNotifier<bool> _isSendButtonEnabled = ValueNotifier(false);
+  File? _selectedMediaFile;
+  String? _selectedMediaType;
+  final ImagePicker _picker = ImagePicker();
+  // Video preview fields for composing
+  VideoPlayerController? _videoController;
+  ChewieController? _chewieController;
+  File? _selectedVideoThumbnail;
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _apiService = Provider.of<ApiService>(context, listen: false);
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _commentsFuture = Future.value([]);
-    _loadComments(); // Add this line to load comments when screen opens
-  }
-
-  Future<void> _loadComments() async {
-    if (mounted) {
-      setState(() {
-        _isLoadingComments = true;
-      });
-    }
-
-    try {
-      // Check if message has an ID
-      final messageId = int.parse(widget.message['id'].toString());
-
-      final response = await _apiService.getMessageComments(
-        messageId,
-        sortDir: 'asc', // Show oldest first
-      );
-
-      if (mounted) {
-        if (response.containsKey('error')) {
-          debugPrint('Error loading comments: ${response['error']}');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error loading comments: ${response['error']}'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-          return;
-        }
-
-        // Get the comments list from the response
-        List<dynamic> commentsList = [];
-        if (response.containsKey('comments')) {
-          commentsList = response['comments'] as List<dynamic>;
-        }
-
-        // Update the comments future
-        _commentsFuture = Future.value(
-          commentsList
-              .map((comment) => comment as Map<String, dynamic>)
-              .toList(),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error loading comments: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading comments: $e')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingComments = false;
-        });
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _commentController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  // Stubbed method to fetch replies (fill in later)
-  Future<void> _fetchReplies() async {
-    // TODO: Implement API call to get comments
-    // Example:
-    // final replies = await ApiService().getComments(widget.message['id']);
-    // setState(() { _replies = replies; });
-  }
-
-  Future<void> _postComment() async {
-    final text = _commentController.text.trim();
-    if (text.isNotEmpty) {
-      try {
-        // Get message ID and convert to int
-        final messageId = int.parse(widget.message['id'].toString());
-
-        // Post the comment using API service
-        final response = await _apiService.addComment(messageId, text);
-
-        // Check for errors
-        if (response.containsKey('error')) {
-          debugPrint('Error posting comment: ${response['error']}');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error posting comment: ${response['error']}'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-          return;
-        }
-
-        // Clear the input field
-        _commentController.clear();
-
-        // Reload comments to show the new one
-        _loadComments();
-
-        // Scroll to bottom
-        _scrollToBottom();
-      } catch (e) {
-        debugPrint('Error posting comment: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to post comment: $e')));
-        }
-      }
-    }
-  }
+  // --- Inline video playback for message feed ---
+  String? _currentlyPlayingVideoId;
 
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        0,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
@@ -160,166 +56,485 @@ class _ThreadScreenState extends State<ThreadScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final apiService = ApiService(); // Replace with Provider if needed
-    final message = Message(
-      id: widget.message['id'] as String,
-      content: widget.message['content'] as String,
-      senderId: widget.message['senderId'] as String?,
-      senderUserName: widget.message['senderUserName'] as String?,
-      senderPhoto: widget.message['senderPhoto'] as String?,
-      mediaType: widget.message['mediaType'] as String?,
-      mediaUrl: widget.message['mediaUrl'] as String?,
-      thumbnailUrl: widget.message['thumbnailUrl'] as String?,
-      createdAt:
-          widget.message['createdAt'] != null
-              ? DateTime.parse(widget.message['createdAt'] as String)
-              : null,
-      metrics: widget.message['metrics'] as Map<String, dynamic>?,
+  void initState() {
+    super.initState();
+    _messageController.addListener(() {
+      _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _messageController.dispose();
+    _isSendButtonEnabled.dispose();
+    _videoController?.dispose();
+    _chewieController?.dispose();
+    super.dispose();
+  }
+
+  /// Handle logout action
+  void _logout() async {
+    await AuthUtils.showLogoutConfirmation(
+      context,
+      Provider.of<ApiService>(context, listen: false),
     );
+  }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Conversation')),
-      body: Column(
-        children: [
-          // Original message
-          MessageCard(
-            message: message,
-            apiService: apiService,
-            currentUserId:
-                widget.userId
-                    .toString(), // Convert int to String for MessageCard
-            timeText: MessageService.formatTime(context, message.createdAt),
-            dayText: MessageService.getShortDayName(message.createdAt),
-            shouldShowDateSeparator: false,
-            dateSeparatorText: null,
-            onTap: (msg) {
-              if (msg.mediaType == 'video') {
-                // Trigger video playback if needed
-                // Currently handled by VideoMessageCard
-              }
-            },
-            onThreadTap: null, // Disable further threading
-            currentlyPlayingVideoId: null, // Adjust if video playback is needed
+  void _showMediaPicker() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.photo_camera),
+                title: const Text('Take a photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickMedia(ImageSource.camera, 'photo');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickMedia(ImageSource.gallery, 'photo');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.videocam),
+                title: const Text('Record a video'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickMedia(ImageSource.camera, 'video');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.video_library),
+                title: const Text('Choose video from gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickMedia(ImageSource.gallery, 'video');
+                },
+              ),
+            ],
           ),
-          // Divider
-          Divider(
-            color: Colors.grey[600],
-            thickness: 0.5,
-            height: 1,
-            indent: 16,
-            endIndent: 16,
-          ),
-          // Reply list
-          Expanded(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _commentsFuture,
-              builder: (context, snapshot) {
-                if (_isLoadingComments) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+        );
+      },
+    );
+  }
 
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
+  Future<void> _pickMedia(ImageSource source, String type) async {
+    try {
+      final XFile? pickedFile;
+      if (type == 'photo') {
+        pickedFile = await _picker.pickImage(
+          source: source,
+          maxWidth: 1800,
+          maxHeight: 1800,
+          imageQuality: 85,
+        );
+      } else {
+        pickedFile = await _picker.pickVideo(
+          source: source,
+          maxDuration: const Duration(minutes: 10),
+        );
+      }
 
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('No comments yet'));
-                }
+      if (!mounted) return;
 
-                return ListView.builder(
-                  controller: _scrollController,
-                  itemCount: snapshot.data!.length,
-                  itemBuilder: (context, index) {
-                    final comment = snapshot.data![index];
-                    return ListTile(
-                      leading: CircleAvatar(
-                        child: Text(
-                          (comment['user']?['username']
-                                      ?.toString()
-                                      .isNotEmpty ??
-                                  false)
-                              ? comment['user']!['username'].toString()[0]
-                              : '?',
-                        ),
-                      ),
-                      title: Text(comment['user']?['username'] ?? 'Unknown'),
-                      subtitle: Text(comment['content'] ?? ''),
-                      trailing: Text(
-                        MessageService.formatTime(
-                          context,
-                          DateTime.fromMillisecondsSinceEpoch(
-                            comment['createdAt'],
-                          ),
-                        ),
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ), // Comment input
-          Container(
-            padding: const EdgeInsets.all(8.0),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _commentController,
-                    decoration: const InputDecoration(
-                      hintText: 'Add a reply...',
-                      border: InputBorder.none,
+      if (pickedFile != null) {
+        final file = pickedFile;
+        if (type == 'video') {
+          // Dispose previous controllers
+          _videoController?.dispose();
+          _chewieController?.dispose();
+          _videoController = null;
+          _chewieController = null;
+          _selectedVideoThumbnail = null;
+
+          // Generate thumbnail
+          final File? thumbnailFile =
+              await VideoThumbnailUtil.generateThumbnail('file://${file.path}');
+          _selectedVideoThumbnail = thumbnailFile;
+
+          // Initialize video controller
+          _videoController = VideoPlayerController.file(File(file.path));
+          await _videoController!.initialize();
+
+          // Initialize Chewie controller
+          _chewieController = ChewieController(
+            videoPlayerController: _videoController!,
+            aspectRatio: _videoController!.value.aspectRatio,
+            autoPlay: false,
+            looping: false,
+            autoInitialize: true,
+            showControls: true,
+            placeholder:
+                thumbnailFile != null
+                    ? Image.file(
+                      thumbnailFile,
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                    )
+                    : Container(
+                      color: Colors.black,
+                      child: const Center(child: CircularProgressIndicator()),
                     ),
-                    maxLines: null,
-                    textCapitalization: TextCapitalization.sentences,
-                  ),
-                ),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: _commentController,
-                  builder: (context, value, child) {
-                    final isEnabled = value.text.trim().isNotEmpty;
-                    return IconButton(
-                      icon: const Icon(Icons.send),
-                      onPressed: isEnabled ? _postComment : null,
-                      tooltip: 'Send Reply',
-                      color:
-                          isEnabled
-                              ? Theme.of(context).primaryColor
-                              : Colors.grey,
-                    );
-                  },
-                ),
-              ],
+            materialProgressColors: ChewieProgressColors(
+              playedColor: Colors.blue,
+              handleColor: Colors.blueAccent,
+              backgroundColor: Colors.grey.shade700,
+              bufferedColor: Colors.lightBlue.withOpacity(0.5),
             ),
+            errorBuilder: (context, errorMessage) {
+              return Center(
+                child: Text(
+                  'Error: $errorMessage',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              );
+            },
+          );
+        }
+        setState(() {
+          _selectedMediaFile = File(file.path);
+          _selectedMediaType = type;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking media: $e');
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking media: $e'),
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    }
+  }
+
+  Future<void> _postComment(ApiService apiService) async {
+    final text = _messageController.text.trim();
+    if (_selectedMediaFile != null) {
+      await apiService.postComment(
+        int.parse(widget.userId.toString()),
+        int.parse(widget.message['id'].toString()),
+        text,
+        mediaPath: _selectedMediaFile!.path,
+        mediaType: _selectedMediaType ?? 'photo',
+      );
+      setState(() {
+        _selectedMediaFile = null;
+        _selectedMediaType = null;
+      });
+    } else if (text.isNotEmpty) {
+      await apiService.postComment(
+        widget.userId, // userId
+        int.parse(widget.message['id']), // messageId
+        text, // content
+      );
+    }
+    _messageController.clear();
+    setState(() {}); // Refresh messages
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    return Scaffold(
+      backgroundColor: UIConfig.useDarkMode ? Colors.black : Colors.white,
+      appBar: AppBar(
+        title: const Text('Comments'),
+        actions: [
+          IconButton(
+            icon: Icon(
+              Icons.refresh,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
+            onPressed: () {
+              setState(() {});
+            },
+            tooltip: 'Refresh Messages',
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.logout,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
+            onPressed: _logout,
+            tooltip: 'Logout',
           ),
         ],
       ),
+      body: GradientBackground(
+        child: Column(
+          children: [
+            MessageCard(
+              message: Message.fromJson(widget.message),
+              apiService: apiService,
+              currentUserId:
+                  widget.userId
+                      .toString(), // Convert int to String for MessageCard
+              timeText: MessageService.formatTime(
+                context,
+                widget.message['timestamp'],
+              ),
+              dayText: MessageService.getShortDayName(
+                widget.message['timestamp'],
+              ),
+              shouldShowDateSeparator: false,
+              dateSeparatorText: null,
+              onTap: (msg) {
+                if (msg.mediaType == 'video') {
+                  // Trigger video playback if needed
+                  // Currently handled by VideoMessageCard
+                }
+              },
+              onThreadTap: null, // Disable further threading
+              currentlyPlayingVideoId:
+                  null, // Adjust if video playback is needed
+              suppressDateSeparator: true,
+              showCommentIcon: false,
+            ),
+            // Divider
+            /*
+            Divider(
+              color: Colors.grey[600],
+              thickness: 0.5,
+              height: 1,
+              indent: 16,
+              endIndent: 16,
+            ),
+*/
+            Expanded(
+              child: FutureBuilder<List<Message>>(
+                future: apiService.getComments(
+                  widget.message['id'].toString(),
+                ), // Keep as String
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  } else if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Center(child: Text('No messages found.'));
+                  }
+                  debugPrint('Parent ID: ${widget.message['id']}');
+                  debugPrint(
+                    'Comment IDs: ${snapshot.data!.map((msg) => msg.id).toList()}',
+                  );
+                  return MessageService.buildMessageListView(
+                    snapshot.data!,
+                    apiService: apiService,
+                    scrollController: _scrollController,
+                    currentUserId: widget.userId.toString(),
+                    onTap: (message) {
+                      if (message.mediaType == 'video') {
+                        setState(() {
+                          _currentlyPlayingVideoId = message.id;
+                        });
+                      }
+                    },
+                    currentlyPlayingVideoId: _currentlyPlayingVideoId,
+                    isThreadView: true,
+                  );
+                },
+              ),
+            ),
+            if (_selectedMediaFile != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child:
+                    _selectedMediaType == 'photo'
+                        ? ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Stack(
+                            children: [
+                              SizedBox(
+                                width: MediaQuery.of(context).size.width * 0.7,
+                                height: 200,
+                                child: Image.file(
+                                  _selectedMediaFile!,
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.7,
+                                  height: 200,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.grey,
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.08),
+                                        blurRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(
+                                      Icons.close,
+                                      color: Colors.black,
+                                      size: 18,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    splashRadius: 18,
+                                    onPressed: () {
+                                      setState(() {
+                                        _selectedMediaFile = null;
+                                        _selectedMediaType = null;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                        : _selectedMediaType == 'video'
+                        ? ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Stack(
+                            children: [
+                              SizedBox(
+                                width: MediaQuery.of(context).size.width * 0.7,
+                                height: 200,
+                                child:
+                                    _chewieController != null
+                                        ? Chewie(controller: _chewieController!)
+                                        : _selectedVideoThumbnail != null
+                                        ? Image.file(
+                                          _selectedVideoThumbnail!,
+                                          width:
+                                              MediaQuery.of(
+                                                context,
+                                              ).size.width *
+                                              0.7,
+                                          height: 200,
+                                          fit: BoxFit.cover,
+                                        )
+                                        : Container(
+                                          color: Colors.black,
+                                          child: const Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                        ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.grey,
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.08),
+                                        blurRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(
+                                      Icons.close,
+                                      color: Colors.black,
+                                      size: 18,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    splashRadius: 18,
+                                    onPressed: () {
+                                      setState(() {
+                                        _selectedMediaFile = null;
+                                        _selectedMediaType = null;
+                                        _videoController?.dispose();
+                                        _chewieController?.dispose();
+                                        _videoController = null;
+                                        _chewieController = null;
+                                        _selectedVideoThumbnail = null;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                        : const SizedBox.shrink(),
+              ),
+            Container(
+              padding: const EdgeInsets.all(8.0),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: _showMediaPicker,
+                    tooltip: 'Attach Media',
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      decoration: const InputDecoration(
+                        hintText: 'Type a message...',
+                        border: InputBorder.none,
+                      ),
+                      maxLines: null,
+                      textCapitalization: TextCapitalization.sentences,
+                    ),
+                  ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _isSendButtonEnabled,
+                    builder: (context, isEnabled, child) {
+                      return IconButton(
+                        icon: const Icon(Icons.send),
+                        onPressed:
+                            isEnabled ? () => _postComment(apiService) : null,
+                        tooltip: 'Send Message',
+
+                        color:
+                            isEnabled
+                                ? Theme.of(context).primaryColor
+                                : Colors.grey,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
-}
-
-// Placeholder Comment model (adjust based on models/message.dart)
-class Comment {
-  final String id;
-  final String text;
-  final String? senderUserName;
-  final DateTime? createdAt;
-
-  Comment({
-    required this.id,
-    required this.text,
-    this.senderUserName,
-    this.createdAt,
-  });
 }

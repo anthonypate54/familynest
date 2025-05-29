@@ -679,8 +679,133 @@ Network connection error. Please check:
         'User belongs to family: $effectiveFamilyId, proceeding with message',
       );
 
-      // Use the exact same endpoint format as the successful script
+      // Use the new endpoint format
       final url = '$baseUrl/api/users/$userId/messages';
+      debugPrint('Creating MultipartRequest for POST to $url');
+
+      var request = http.MultipartRequest('POST', Uri.parse(url));
+
+      if (_token != null) {
+        debugPrint('Adding authorization token to request');
+        request.headers['Authorization'] = 'Bearer $_token';
+      } else {
+        debugPrint('Warning: No token available for message posting');
+        throw Exception('No authentication token available');
+      }
+
+      if (content.isNotEmpty) {
+        debugPrint('Adding content field: $content');
+        request.fields['content'] = content;
+        // Add the family ID to the request explicitly
+        request.fields['familyId'] = effectiveFamilyId.toString();
+        debugPrint('Adding familyId field: $effectiveFamilyId');
+      } else {
+        debugPrint('No content provided for message');
+      }
+
+      // Handle remote video URLs from backend processing
+      if (videoUrl != null && videoUrl.startsWith('http')) {
+        debugPrint('Adding remote video URL to message: $videoUrl');
+        request.fields['videoUrl'] = videoUrl;
+      }
+
+      if (thumbnailUrl != null && thumbnailUrl.startsWith('http')) {
+        debugPrint('Adding thumbnail URL to message: $thumbnailUrl');
+        request.fields['thumbnailUrl'] = thumbnailUrl;
+      }
+
+      // Add media file if provided
+      if (mediaPath != null && mediaType != null && !kIsWeb) {
+        debugPrint('Adding media file to request: $mediaPath');
+        final file = File(mediaPath);
+        if (await file.exists()) {
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              'media',
+              file.path,
+              contentType:
+                  mediaType == 'image'
+                      ? MediaType('image', 'jpeg')
+                      : mediaType == 'video'
+                      ? MediaType('video', 'mp4')
+                      : MediaType('application', 'octet-stream'),
+            ),
+          );
+          debugPrint('Media file added successfully');
+          request.fields['mediaType'] = mediaType;
+        } else {
+          debugPrint('Warning: Media file does not exist: $mediaPath');
+        }
+      } else if (mediaPath != null && mediaType != null && kIsWeb) {
+        // Web-specific handling for media uploads
+        debugPrint('Web media upload not implemented yet');
+      }
+
+      debugPrint('Sending request...');
+      final response = await request.send();
+      final responseString = await response.stream.bytesToString();
+      debugPrint(
+        'Response: status=${response.statusCode}, body=$responseString',
+      );
+
+      if (response.statusCode == 201) {
+        debugPrint('✅ Message posted successfully');
+        return true;
+      } else {
+        debugPrint('❌ Failed to post message: $responseString');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Exception in postMessage: $e');
+      return false;
+    }
+  }
+
+  // Post a message
+  Future<bool> postComment(
+    int userId,
+    int messageId,
+    String content, {
+    String? mediaPath,
+    String? mediaType,
+    int? familyId,
+    String? videoUrl,
+    String? thumbnailUrl,
+  }) async {
+    try {
+      debugPrint('Starting postComment for userId: $messageId');
+      debugPrint('Content: "$content"');
+      debugPrint('Media path: $mediaPath, media type: $mediaType');
+      debugPrint('Video URL: $videoUrl, thumbnail URL: $thumbnailUrl');
+      debugPrint('Explicit family ID provided: $familyId');
+
+      // First get the user's active family if no explicit family ID is provided
+      int? effectiveFamilyId = familyId;
+      if (effectiveFamilyId == null) {
+        debugPrint(
+          'No explicit family ID provided, fetching user data to get active family',
+        );
+        final userData = await getUserById(userId);
+        debugPrint('User data received: $userData');
+
+        // Get the active family ID for the user
+        effectiveFamilyId = userData['familyId'];
+        debugPrint('Using family ID from user data: $effectiveFamilyId');
+
+        if (effectiveFamilyId == null) {
+          debugPrint('Error: User has no family ID');
+          throw Exception(
+            'You need to be part of a family to post messages. Please create or join a family first.',
+          );
+        }
+      }
+
+      debugPrint(
+        'User belongs to family: $effectiveFamilyId, proceeding with message',
+      );
+
+      // Use the new endpoint format
+      final url = '$baseUrl/api/messages/$messageId/comments';
       debugPrint('Creating MultipartRequest for POST to $url');
 
       var request = http.MultipartRequest('POST', Uri.parse(url));
@@ -1461,87 +1586,49 @@ Network connection error. Please check:
     }
   }
 
-  // Get comments for a message
-  Future<Map<String, dynamic>> getMessageComments(
-    int? messageId, {
-    int page = 0,
-    int size = 20,
-    String sortBy = 'createdAt',
-    String sortDir = 'desc',
-  }) async {
-    if (messageId == null) {
-      debugPrint('Error: Cannot get message comments - Message ID is null');
-      return {'comments': [], 'totalItems': 0};
-    }
-
-    debugPrint('Getting comments for message $messageId');
-
+  // Message-related methods
+  Future<List<Message>> getUserMessages(String userId) async {
     try {
-      final url = Uri.parse(
-        '$baseUrl/api/messages/$messageId/comments?page=$page&size=$size&sortBy=$sortBy&sortDir=$sortDir',
-      );
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await client.get(url, headers: headers);
-      debugPrint(
-        'Get comments response: status=${response.statusCode}, body=${response.body}',
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/users/$userId/messages'),
+        headers: {
+          'Accept': 'application/json',
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
+        final List<dynamic> jsonList = json.decode(response.body);
+        return jsonList.map((json) => Message.fromJson(json)).toList();
       } else {
-        throw Exception('Failed to get comments: ${response.body}');
+        throw Exception('Failed to load messages: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Error getting comments: $e');
-      return {'comments': [], 'totalItems': 0};
+      debugPrint('Error getting user messages: $e');
+      rethrow;
     }
   }
 
-  // Add a comment to a message
-  Future<Map<String, dynamic>> addComment(
-    int? messageId,
-    String content, {
-    int? parentCommentId,
-  }) async {
-    if (messageId == null) {
-      debugPrint('Error: Cannot add comment - Message ID is null');
-      return {'error': 'Message ID is null'};
-    }
-
-    debugPrint('Adding comment to message $messageId');
-
+  // Get comments for a message
+  Future<List<Message>> getComments(String messageId) async {
     try {
-      final url = Uri.parse('$baseUrl/api/messages/$messageId/comments');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final Map<String, dynamic> requestBody = {'content': content};
-
-      if (parentCommentId != null) {
-        requestBody['parentCommentId'] = parentCommentId;
-      }
-
-      final body = jsonEncode(requestBody);
-
-      final response = await client.post(url, headers: headers, body: body);
-      debugPrint(
-        'Add comment response: status=${response.statusCode}, body=${response.body}',
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/messages/$messageId/comments'),
+        headers: {
+          'Accept': 'application/json',
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
       );
 
-      if (response.statusCode == 201) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = json.decode(response.body);
+        return jsonList.map((json) => Message.fromJson(json)).toList();
       } else {
-        throw Exception('Failed to add comment: ${response.body}');
+        throw Exception('Failed to load messages: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Error adding comment: $e');
-      return {'error': e.toString()};
+      debugPrint('Error getting user messages: $e');
+      rethrow;
     }
   }
 
@@ -1644,29 +1731,6 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('Error adding reaction: $e');
       return {'error': e.toString()};
-    }
-  }
-
-  // Message-related methods
-  Future<List<Message>> getUserMessages(String userId) async {
-    try {
-      final response = await client.get(
-        Uri.parse('$baseUrl/api/users/$userId/messages'),
-        headers: {
-          'Accept': 'application/json',
-          if (_token != null) 'Authorization': 'Bearer $_token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> jsonList = json.decode(response.body);
-        return jsonList.map((json) => Message.fromJson(json)).toList();
-      } else {
-        throw Exception('Failed to load messages: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Error getting user messages: $e');
-      rethrow;
     }
   }
 

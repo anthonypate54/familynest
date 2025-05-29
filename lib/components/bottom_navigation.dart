@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 // Ensure correct imports for your screen classes
 // Adjust paths based on your project structure
-import '../screens/home_screen.dart';
 import '../screens/family_management_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/invitations_screen.dart';

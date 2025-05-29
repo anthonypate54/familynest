@@ -17,6 +17,7 @@ class MessageService {
     void Function(Message)? onThreadTap,
     String? currentlyPlayingVideoId,
     String? content,
+    bool isThreadView = false,
   }) {
     return ListView.builder(
       controller: scrollController,
@@ -70,6 +71,9 @@ class MessageService {
             ).format(messageDate); // e.g., "Jan 15, 2023"
           }
         }
+
+        final suppressDateSeparator = isThreadView && index == 0;
+
         return MessageCard(
           message: message,
           apiService: apiService,
@@ -81,6 +85,8 @@ class MessageService {
           currentUserId: currentUserId,
           onThreadTap: onThreadTap,
           currentlyPlayingVideoId: currentlyPlayingVideoId,
+          showCommentIcon: !isThreadView,
+          suppressDateSeparator: suppressDateSeparator,
         );
       },
     );
@@ -127,6 +133,8 @@ class MessageCard extends StatelessWidget {
   final String? currentUserId;
   final void Function(Message)? onThreadTap;
   final String? currentlyPlayingVideoId;
+  final bool suppressDateSeparator;
+  final bool showCommentIcon;
 
   const MessageCard({
     Key? key,
@@ -140,6 +148,8 @@ class MessageCard extends StatelessWidget {
     this.currentUserId,
     this.onThreadTap,
     this.currentlyPlayingVideoId,
+    this.suppressDateSeparator = false, // default: don't suppress
+    this.showCommentIcon = true, // default: show icon
   }) : super(key: key);
 
   @override
@@ -163,8 +173,10 @@ class MessageCard extends StatelessWidget {
     return Column(
       children: [
         // Date separator if needed (only before first message of a new day)
-        if (shouldShowDateSeparator &&
+        if (!suppressDateSeparator &&
+            shouldShowDateSeparator &&
             (dateSeparatorText != null && dateSeparatorText!.isNotEmpty))
+          // Render date separator
           Container(
             padding: const EdgeInsets.symmetric(vertical: 10.0),
             alignment: Alignment.center,
@@ -266,9 +278,10 @@ class MessageCard extends StatelessWidget {
                     commentCount,
                     likeCount,
                     loveCount,
-                    userId,
+                    int.parse(currentUserId ?? '0'),
                     message.toJson(),
                     context,
+                    showCommentIcon,
                   ),
                 ],
               ),
@@ -356,11 +369,12 @@ class MessageCard extends StatelessWidget {
 
   Widget _buildMediaWidgetAligned(BuildContext context, ApiService apiService) {
     if (message.mediaUrl != null && message.mediaUrl!.isNotEmpty) {
-      if (message.mediaType == 'image') {
+      if (message.mediaType == 'image' || message.mediaType == 'photo') {
         final displayUrl =
             message.mediaUrl!.startsWith('http')
                 ? message.mediaUrl!
                 : apiService.mediaBaseUrl + message.mediaUrl!;
+        debugPrint('🖼️ Image URL: $displayUrl');
         return ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: CachedNetworkImage(
@@ -405,6 +419,7 @@ class MessageCard extends StatelessWidget {
     int currentUserId,
     Map<String, dynamic> message,
     BuildContext context,
+    bool showCommentIcon,
   ) {
     final customColors = Theme.of(context).extension<CustomColors>()!;
     return Row(
@@ -423,18 +438,20 @@ class MessageCard extends StatelessWidget {
           },
           child: Row(
             children: [
-              Icon(
-                Icons.comment_outlined,
-                size: 16,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
+              if (showCommentIcon)
+                Icon(
+                  Icons.comment_outlined,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               const SizedBox(width: 2),
-              Text(
-                commentCount.toString(),
-                style: Theme.of(
-                  context,
-                ).textTheme.labelSmall?.copyWith(fontSize: 12),
-              ),
+              if (showCommentIcon)
+                Text(
+                  commentCount.toString(),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(fontSize: 12),
+                ),
             ],
           ),
         ),

@@ -279,6 +279,7 @@ class _MessageScreenState extends State<MessageScreen> {
                     snapshot.data!,
                     apiService: apiService,
                     scrollController: _scrollController,
+                    currentUserId: widget.userId.toString(),
                     onTap: (message) {
                       if (message.mediaType == 'video') {
                         setState(() {
