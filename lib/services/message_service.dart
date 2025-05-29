@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/app_theme.dart';
 import '../widgets/video_message_card.dart';
 import '../screens/thread_screen.dart';
+import '../utils/page_transitions.dart';
 
 class MessageService {
   static Widget buildMessageListView(
@@ -429,10 +430,8 @@ class MessageCard extends StatelessWidget {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder:
-                    (context) =>
-                        ThreadScreen(userId: currentUserId, message: message),
+              SlidePageRoute(
+                page: ThreadScreen(userId: currentUserId, message: message),
               ),
             );
           },
