@@ -15,6 +15,7 @@ import '../utils/video_thumbnail_util.dart';
 import '../widgets/gradient_background.dart';
 import '../theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../providers/message_provider.dart';
 
 class MessageScreen extends StatefulWidget {
   final String userId;
@@ -274,21 +275,29 @@ class _MessageScreenState extends State<MessageScreen> {
                     return Center(child: Text('Error: ${snapshot.error}'));
                   } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
                     return const Center(child: Text('No messages found.'));
+                  } else if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+                    Provider.of<MessageProvider>(
+                      context,
+                      listen: false,
+                    ).setMessages(snapshot.data!);
+                    final messages =
+                        Provider.of<MessageProvider>(context).messages;
+                    return MessageService.buildMessageListView(
+                      messages,
+                      apiService: apiService,
+                      scrollController: _scrollController,
+                      currentUserId: widget.userId.toString(),
+                      onTap: (message) {
+                        if (message.mediaType == 'video') {
+                          setState(() {
+                            _currentlyPlayingVideoId = message.id;
+                          });
+                        }
+                      },
+                      currentlyPlayingVideoId: _currentlyPlayingVideoId,
+                    );
                   }
-                  return MessageService.buildMessageListView(
-                    snapshot.data!,
-                    apiService: apiService,
-                    scrollController: _scrollController,
-                    currentUserId: widget.userId.toString(),
-                    onTap: (message) {
-                      if (message.mediaType == 'video') {
-                        setState(() {
-                          _currentlyPlayingVideoId = message.id;
-                        });
-                      }
-                    },
-                    currentlyPlayingVideoId: _currentlyPlayingVideoId,
-                  );
+                  return const SizedBox.shrink();
                 },
               ),
             ),

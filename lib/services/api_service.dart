@@ -1784,4 +1784,34 @@ Network connection error. Please check:
       rethrow;
     }
   }
+
+  Future<void> toggleMessageLike(String messageId, bool isLiked) async {
+    final response = await client.post(
+      Uri.parse('$baseUrl/messages/$messageId/like'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      },
+      body: jsonEncode({'liked': isLiked}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to toggle like: ${response.body}');
+    }
+  }
+
+  Future<void> toggleMessageLove(String messageId, bool isLoved) async {
+    final response = await client.post(
+      Uri.parse('$baseUrl/messages/$messageId/love'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      },
+      body: jsonEncode({'loved': isLoved}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to toggle love: ${response.body}');
+    }
+  }
 }

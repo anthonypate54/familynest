@@ -7,6 +7,8 @@ import '../theme/app_theme.dart';
 import '../widgets/video_message_card.dart';
 import '../screens/thread_screen.dart';
 import '../utils/page_transitions.dart';
+import 'package:provider/provider.dart';
+import '../providers/message_provider.dart';
 
 class MessageService {
   static Widget buildMessageListView(
@@ -123,7 +125,7 @@ class MessageService {
   }
 }
 
-class MessageCard extends StatelessWidget {
+class MessageCard extends StatefulWidget {
   final Message message;
   final ApiService apiService;
   final void Function(Message)? onTap;
@@ -149,34 +151,134 @@ class MessageCard extends StatelessWidget {
     this.currentUserId,
     this.onThreadTap,
     this.currentlyPlayingVideoId,
-    this.suppressDateSeparator = false, // default: don't suppress
-    this.showCommentIcon = true, // default: show icon
+    this.suppressDateSeparator = false,
+    this.showCommentIcon = true,
   }) : super(key: key);
+
+  @override
+  State<MessageCard> createState() => _MessageCardState();
+}
+
+class _MessageCardState extends State<MessageCard> {
+  late bool isFavorite;
+  late bool isLiked;
+
+  late int userId;
+
+  @override
+  void initState() {
+    super.initState();
+    isFavorite = false;
+    isLiked = false;
+    // Initialize metrics from message
+    userId = int.tryParse(widget.message.senderId ?? '0') ?? 0;
+  }
+
+  Future<void> _toggleFavorite() async {
+    try {
+      setState(() {
+        isFavorite = !isFavorite;
+      });
+      final newLoveCount =
+          (widget.message.loveCount ?? 0) + (isFavorite ? 1 : -1);
+      final updatedMessage = widget.message.copyWith(loveCount: newLoveCount);
+
+      Provider.of<MessageProvider>(
+        context,
+        listen: false,
+      ).updateMessage(updatedMessage);
+
+      /*
+      if (isFavorite) {
+        await widget.apiService.toggleMessageLove(widget.message.id, true);
+        /*
+        await widget.apiService.likeMessage(
+          widget.message.id,
+          widget.currentUserId ?? '',
+        );
+        */
+      } else {
+        await widget.apiService.toggleMessageLove(widget.message.id, false);
+        /*
+        await widget.apiService.unlikeMessage(
+          widget.message.id,
+          widget.currentUserId ?? '',
+        );
+        */
+      }
+      */
+    } catch (e) {
+      setState(() {
+        isFavorite = !isFavorite;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update like: $e')));
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    try {
+      setState(() {
+        isLiked = !isLiked;
+      });
+      final newLikeCount = (widget.message.likeCount ?? 0) + (isLiked ? 1 : -1);
+      final updatedMessage = widget.message.copyWith(likeCount: newLikeCount);
+
+      Provider.of<MessageProvider>(
+        context,
+        listen: false,
+      ).updateMessage(updatedMessage);
+
+      /*
+      if (isFavorite) {
+        await widget.apiService.toggleMessageLove(widget.message.id, true);
+        /*
+        await widget.apiService.likeMessage(
+          widget.message.id,
+          widget.currentUserId ?? '',
+        );
+        */
+      } else {
+        await widget.apiService.toggleMessageLove(widget.message.id, false);
+        /*
+        await widget.apiService.unlikeMessage(
+          widget.message.id,
+          widget.currentUserId ?? '',
+        );
+        */
+      }
+      */
+    } catch (e) {
+      setState(() {
+        isLiked = !isLiked;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update like: $e')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final bool isCurrentUser =
-        currentUserId != null && message.senderId == currentUserId;
+        widget.currentUserId != null &&
+        widget.message.senderId == widget.currentUserId;
     final String displayName =
-        message.senderUserName ?? message.senderId ?? '?';
+        widget.message.senderUserName ?? widget.message.senderId ?? '?';
     final String initials = _getInitials(displayName);
-    final String displayTime = timeText ?? '';
-    final String displayDay = dayText ?? '';
-    final String? mediaType = message.mediaType;
-    final String? mediaUrl = message.mediaUrl;
-    // Metrics fallback
-    final Map<String, dynamic> metrics = message.metrics ?? {};
-    final int commentCount = metrics['commentCount'] ?? 0;
-    final int likeCount = metrics['likeCount'] ?? 0;
-    final int loveCount = metrics['loveCount'] ?? 0;
-    final int userId = metrics['userId'] ?? 0;
+    final String displayTime = widget.timeText ?? '';
+    final String displayDay = widget.dayText ?? '';
+    final String? mediaType = widget.message.mediaType;
+    final String? mediaUrl = widget.message.mediaUrl;
 
     return Column(
       children: [
         // Date separator if needed (only before first message of a new day)
-        if (!suppressDateSeparator &&
-            shouldShowDateSeparator &&
-            (dateSeparatorText != null && dateSeparatorText!.isNotEmpty))
+        if (!widget.suppressDateSeparator &&
+            widget.shouldShowDateSeparator &&
+            (widget.dateSeparatorText != null &&
+                widget.dateSeparatorText!.isNotEmpty))
           // Render date separator
           Container(
             padding: const EdgeInsets.symmetric(vertical: 10.0),
@@ -187,11 +289,11 @@ class MessageCard extends StatelessWidget {
                 vertical: 4.0,
               ),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.8),
+                color: Colors.white.withOpacity(0.8),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
-                dateSeparatorText!,
+                widget.dateSeparatorText!,
                 style: TextStyle(
                   color: Colors.grey[800],
                   fontWeight: FontWeight.bold,
@@ -214,7 +316,10 @@ class MessageCard extends StatelessWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _buildAvatarForSender(message.senderPhoto, displayName),
+                      _buildAvatarForSender(
+                        widget.message.senderPhoto,
+                        displayName,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Container(
@@ -226,7 +331,7 @@ class MessageCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.05),
+                                color: Colors.black.withOpacity(0.05),
                                 spreadRadius: 1,
                                 blurRadius: 2,
                                 offset: const Offset(0, 1),
@@ -234,7 +339,7 @@ class MessageCard extends StatelessWidget {
                             ],
                           ),
                           child: SelectableText(
-                            message.content,
+                            widget.message.content,
                             style: Theme.of(context).textTheme.bodyLarge,
                           ),
                         ),
@@ -260,7 +365,10 @@ class MessageCard extends StatelessWidget {
                       child: Center(
                         child: Container(
                           width: MediaQuery.of(context).size.width * 0.9,
-                          child: _buildMediaWidgetAligned(context, apiService),
+                          child: _buildMediaWidgetAligned(
+                            context,
+                            widget.apiService,
+                          ),
                         ),
                       ),
                     ),
@@ -276,13 +384,13 @@ class MessageCard extends StatelessWidget {
                   ),
                   // Row 4: Metrics row
                   _buildMetricsRow(
-                    commentCount,
-                    likeCount,
-                    loveCount,
-                    int.parse(currentUserId ?? '0'),
-                    message.toJson(),
+                    widget.message.commentCount ?? 0,
+                    widget.message.likeCount ?? 0,
+                    widget.message.loveCount ?? 0,
+                    int.parse(widget.currentUserId ?? '0'),
+                    widget.message.toJson(),
                     context,
-                    showCommentIcon,
+                    widget.showCommentIcon,
                   ),
                 ],
               ),
@@ -320,7 +428,7 @@ class MessageCard extends StatelessWidget {
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
+            color: Colors.black.withOpacity(0.2),
             blurRadius: 4,
             spreadRadius: 1,
           ),
@@ -336,7 +444,7 @@ class MessageCard extends StatelessWidget {
                     imageUrl:
                         senderPhoto.startsWith('http')
                             ? senderPhoto
-                            : apiService.mediaBaseUrl + senderPhoto,
+                            : widget.apiService.mediaBaseUrl + senderPhoto,
                     fit: BoxFit.cover,
                     width: 40,
                     height: 40,
@@ -369,12 +477,14 @@ class MessageCard extends StatelessWidget {
   }
 
   Widget _buildMediaWidgetAligned(BuildContext context, ApiService apiService) {
-    if (message.mediaUrl != null && message.mediaUrl!.isNotEmpty) {
-      if (message.mediaType == 'image' || message.mediaType == 'photo') {
+    if (widget.message.mediaUrl != null &&
+        widget.message.mediaUrl!.isNotEmpty) {
+      if (widget.message.mediaType == 'image' ||
+          widget.message.mediaType == 'photo') {
         final displayUrl =
-            message.mediaUrl!.startsWith('http')
-                ? message.mediaUrl!
-                : apiService.mediaBaseUrl + message.mediaUrl!;
+            widget.message.mediaUrl!.startsWith('http')
+                ? widget.message.mediaUrl!
+                : apiService.mediaBaseUrl + widget.message.mediaUrl!;
         debugPrint('🖼️ Image URL: $displayUrl');
         return ClipRRect(
           borderRadius: BorderRadius.circular(6),
@@ -401,12 +511,13 @@ class MessageCard extends StatelessWidget {
                 ),
           ),
         );
-      } else if (message.mediaType == 'video') {
+      } else if (widget.message.mediaType == 'video') {
         return VideoMessageCard(
-          videoUrl: message.mediaUrl!,
-          thumbnailUrl: message.thumbnailUrl,
+          videoUrl: widget.message.mediaUrl!,
+          thumbnailUrl: widget.message.thumbnailUrl,
           apiService: apiService,
-          isCurrentlyPlaying: currentlyPlayingVideoId == message.id,
+          isCurrentlyPlaying:
+              widget.currentlyPlayingVideoId == widget.message.id,
         );
       }
     }
@@ -455,29 +566,48 @@ class MessageCard extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        // Thumbs up icon with count
-        Icon(
-          Icons.thumb_up_outlined,
-          size: 16,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-
-        const SizedBox(width: 2),
-        Text(
-          likeCount.toString(),
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontSize: 12),
+        // Heart icon with count
+        Row(
+          children: [
+            GestureDetector(
+              onTap: _toggleLike,
+              child: Icon(
+                isLiked ? Icons.thumb_up : Icons.thumb_up_outlined,
+                size: 16,
+                color: customColors.redColor,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Text(
+              likeCount.toString(),
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(fontSize: 12),
+            ),
+          ],
         ),
         const SizedBox(width: 12),
-        // Heart icon with count
-        Icon(Icons.favorite_outline, size: 16, color: customColors.redColor),
-        const SizedBox(width: 2),
-        Text(
-          loveCount.toString(),
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            fontSize: 12,
-            color: customColors.redColor,
-          ),
+        //
+        Row(
+          children: [
+            GestureDetector(
+              onTap: _toggleFavorite,
+              child: Icon(
+                isFavorite ? Icons.favorite : Icons.favorite_outline,
+                size: 16,
+                color: customColors.redColor,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Text(
+              loveCount.toString(),
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(fontSize: 12),
+            ),
+          ],
         ),
+
         const SizedBox(width: 12),
         // Share icon (no count)
         Icon(

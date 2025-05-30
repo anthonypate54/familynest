@@ -17,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async'; // For Timer
 import 'package:device_info_plus/device_info_plus.dart'; // For device infoimport 'screens/test_thread_screen.dart';
 import 'package:provider/provider.dart';
+import 'providers/message_provider.dart';
 
 // Function to get device model name
 Future<String?> getDeviceModel() async {
@@ -60,8 +61,11 @@ void main() async {
   }
 
   runApp(
-    Provider<ApiService>.value(
-      value: apiService,
+    MultiProvider(
+      providers: [
+        Provider<ApiService>.value(value: apiService),
+        ChangeNotifierProvider(create: (_) => MessageProvider()),
+      ],
       child: MyApp(initialRoute: '/'),
     ),
   );

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/*       messageMap.put("id", message.get("id"));
+/*                     messageMap.put("id", message.get("id"));
                 messageMap.put("content", message.get("content"));
                 messageMap.put("senderUsername", message.get("sender_username"));
                 messageMap.put("senderId", message.get("sender_id"));
@@ -12,6 +12,14 @@ import 'package:flutter/material.dart';
                 messageMap.put("timestamp", message.get("timestamp").toString());
                 messageMap.put("mediaType", message.get("media_type"));
                 messageMap.put("mediaUrl", message.get("media_url"));
+                messageMap.put("viewCount", message.get("view_count"));
+                messageMap.put("likeCount", message.get("like_count"));
+                messageMap.put("loveCount", message.get("love_count"));
+                messageMap.put("commentCount", message.get("comment_count"));
+                
+                // Add thumbnail URL without excessive logging
+                messageMap.put("thumbnailUrl", message.get("thumbnail_url")); 
+
        */
 class Message {
   final String id;
@@ -23,9 +31,11 @@ class Message {
   final DateTime? createdAt;
   final String? senderId;
   final String? senderUserName;
-  final Map<String, dynamic>? metrics;
   final String? thumbnailUrl;
   final String? senderPhoto;
+  final int? likeCount;
+  final int? loveCount;
+  final int? commentCount;
 
   Message({
     required this.id,
@@ -37,9 +47,11 @@ class Message {
     this.createdAt,
     this.senderId,
     this.senderUserName,
-    this.metrics,
     this.thumbnailUrl,
     this.senderPhoto,
+    this.likeCount,
+    this.loveCount,
+    this.commentCount,
   });
 
   // Factory constructor for creating a Message from JSON
@@ -65,10 +77,12 @@ class Message {
                   : null),
       senderId: json['senderId']?.toString(),
       senderUserName: json['senderUsername'] as String?,
-      metrics: json['metrics'] as Map<String, dynamic>?,
       thumbnailUrl:
           json['thumbnailUrl'] as String? ?? json['thumbnail_url'] as String?,
       senderPhoto: json['senderPhoto'] as String?,
+      likeCount: json['likeCount'] as int?,
+      loveCount: json['loveCount'] as int?,
+      commentCount: json['commentCount'] as int?,
     );
   }
 
@@ -84,9 +98,11 @@ class Message {
       'createdAt': createdAt?.toIso8601String(),
       'senderId': senderId,
       'senderUserName': senderUserName,
-      'metrics': metrics,
       'thumbnailUrl': thumbnailUrl,
       'senderPhoto': senderPhoto,
+      'likeCount': likeCount,
+      'loveCount': loveCount,
+      'commentCount': commentCount,
     };
   }
 
@@ -104,6 +120,9 @@ class Message {
     Map<String, dynamic>? metrics,
     String? thumbnailUrl,
     String? senderPhoto,
+    int? likeCount,
+    int? loveCount,
+    int? commentCount,
   }) {
     return Message(
       id: id ?? this.id,
@@ -115,9 +134,11 @@ class Message {
       createdAt: createdAt ?? this.createdAt,
       senderId: senderId ?? this.senderId,
       senderUserName: senderUserName ?? this.senderUserName,
-      metrics: metrics ?? this.metrics,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       senderPhoto: senderPhoto ?? this.senderPhoto,
+      likeCount: likeCount ?? this.likeCount,
+      loveCount: loveCount ?? this.loveCount,
+      commentCount: commentCount ?? this.commentCount,
     );
   }
 
@@ -140,24 +161,5 @@ class Message {
     }
 
     return '?';
-  }
-
-  // Helper method to get default metrics if none exist
-  Map<String, int> getDefaultMetrics() {
-    return metrics as Map<String, int>? ??
-        {'comments': 0, 'likes': 0, 'hearts': 0, 'views': 0};
-  }
-
-  // Getter for video thumbnail URL
-  String? get effectiveThumbnailUrl {
-    if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty) return thumbnailUrl;
-    if (metrics != null) {
-      if (metrics!.containsKey('thumbnailUrl')) {
-        return metrics!['thumbnailUrl'] as String?;
-      } else if (metrics!.containsKey('thumbnail_url')) {
-        return metrics!['thumbnail_url'] as String?;
-      }
-    }
-    return null;
   }
 }

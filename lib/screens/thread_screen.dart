@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../providers/message_provider.dart';
 import '../models/message.dart';
 import './compose_message_screen.dart';
 import '../config/ui_config.dart';
@@ -221,8 +222,9 @@ class _ThreadScreenState extends State<ThreadScreen> {
 
   Future<void> _postComment(ApiService apiService) async {
     final text = _messageController.text.trim();
+    bool success = false;
     if (_selectedMediaFile != null) {
-      await apiService.postComment(
+      success = await apiService.postComment(
         int.parse(widget.userId.toString()),
         int.parse(widget.message['id'].toString()),
         text,
@@ -234,7 +236,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
         _selectedMediaType = null;
       });
     } else if (text.isNotEmpty) {
-      await apiService.postComment(
+      success = await apiService.postComment(
         widget.userId, // userId
         int.parse(widget.message['id']), // messageId
         text, // content
@@ -242,6 +244,13 @@ class _ThreadScreenState extends State<ThreadScreen> {
     }
     _messageController.clear();
     setState(() {}); // Refresh messages
+    if (!mounted) return;
+    if (success) {
+      Provider.of<MessageProvider>(
+        context,
+        listen: false,
+      ).incrementCommentCount(widget.message['id'].toString());
+    }
   }
 
   @override
