@@ -36,6 +36,7 @@ class Message {
   final int? likeCount;
   final int? loveCount;
   final int? commentCount;
+  final int? parentMessageId;
 
   Message({
     required this.id,
@@ -52,6 +53,7 @@ class Message {
     this.likeCount,
     this.loveCount,
     this.commentCount,
+    this.parentMessageId,
   });
 
   // Factory constructor for creating a Message from JSON
@@ -83,6 +85,7 @@ class Message {
       likeCount: json['likeCount'] as int?,
       loveCount: json['loveCount'] as int?,
       commentCount: json['commentCount'] as int?,
+      parentMessageId: json['parentMessageId'] as int?,
     );
   }
 
@@ -103,6 +106,7 @@ class Message {
       'likeCount': likeCount,
       'loveCount': loveCount,
       'commentCount': commentCount,
+      'parentMessageId': parentMessageId,
     };
   }
 
@@ -123,6 +127,7 @@ class Message {
     int? likeCount,
     int? loveCount,
     int? commentCount,
+    int? parentMessageId,
   }) {
     return Message(
       id: id ?? this.id,
@@ -139,6 +144,7 @@ class Message {
       likeCount: likeCount ?? this.likeCount,
       loveCount: loveCount ?? this.loveCount,
       commentCount: commentCount ?? this.commentCount,
+      parentMessageId: parentMessageId ?? this.parentMessageId,
     );
   }
 

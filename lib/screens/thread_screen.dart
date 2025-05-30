@@ -42,9 +42,34 @@ class _ThreadScreenState extends State<ThreadScreen> {
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   File? _selectedVideoThumbnail;
+  List<Message> _comments = [];
 
   // --- Inline video playback for message feed ---
   String? _currentlyPlayingVideoId;
+
+  Future<void> _loadComments() async {
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    try {
+      final comments = await apiService.getComments(
+        widget.message['id'].toString(),
+      );
+      if (mounted) {
+        setState(() {
+          _comments = comments;
+        });
+        Provider.of<MessageProvider>(
+          context,
+          listen: false,
+        ).setMessages(comments);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading comments: $e')));
+      }
+    }
+  }
 
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
@@ -62,6 +87,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
     _messageController.addListener(() {
       _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
     });
+    _loadComments();
   }
 
   @override
@@ -310,6 +336,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                   null, // Adjust if video playback is needed
               suppressDateSeparator: true,
               showCommentIcon: false,
+              parentId: widget.message['parentMessageId'].toString(),
             ),
             // Divider
             /*
@@ -322,39 +349,24 @@ class _ThreadScreenState extends State<ThreadScreen> {
             ),
 */
             Expanded(
-              child: FutureBuilder<List<Message>>(
-                future: apiService.getComments(
-                  widget.message['id'].toString(),
-                ), // Keep as String
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  } else if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return const Center(child: Text('No messages found.'));
-                  }
-                  debugPrint('Parent ID: ${widget.message['id']}');
-                  debugPrint(
-                    'Comment IDs: ${snapshot.data!.map((msg) => msg.id).toList()}',
-                  );
-                  return MessageService.buildMessageListView(
-                    snapshot.data!,
-                    apiService: apiService,
-                    scrollController: _scrollController,
-                    currentUserId: widget.userId.toString(),
-                    onTap: (message) {
-                      if (message.mediaType == 'video') {
-                        setState(() {
-                          _currentlyPlayingVideoId = message.id;
-                        });
-                      }
-                    },
-                    currentlyPlayingVideoId: _currentlyPlayingVideoId,
-                    isThreadView: true,
-                  );
-                },
-              ),
+              child:
+                  _comments.isEmpty
+                      ? const Center(child: CircularProgressIndicator())
+                      : MessageService.buildMessageListView(
+                        _comments,
+                        apiService: apiService,
+                        scrollController: _scrollController,
+                        currentUserId: widget.userId.toString(),
+                        onTap: (message) {
+                          if (message.mediaType == 'video') {
+                            setState(() {
+                              _currentlyPlayingVideoId = message.id;
+                            });
+                          }
+                        },
+                        currentlyPlayingVideoId: _currentlyPlayingVideoId,
+                        isThreadView: true,
+                      ),
             ),
             if (_selectedMediaFile != null)
               Padding(

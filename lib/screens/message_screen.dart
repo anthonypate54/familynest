@@ -36,9 +36,32 @@ class _MessageScreenState extends State<MessageScreen> {
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   File? _selectedVideoThumbnail;
+  List<Message> _messages = [];
 
   // --- Inline video playback for message feed ---
   String? _currentlyPlayingVideoId;
+
+  Future<void> _loadMessages() async {
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    try {
+      final messages = await apiService.getUserMessages(widget.userId);
+      if (mounted) {
+        setState(() {
+          _messages = messages;
+        });
+        Provider.of<MessageProvider>(
+          context,
+          listen: false,
+        ).setMessages(messages);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading messages: $e')));
+      }
+    }
+  }
 
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
@@ -56,6 +79,7 @@ class _MessageScreenState extends State<MessageScreen> {
     _messageController.addListener(() {
       _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
     });
+    _loadMessages();
   }
 
   @override
@@ -266,40 +290,23 @@ class _MessageScreenState extends State<MessageScreen> {
         child: Column(
           children: [
             Expanded(
-              child: FutureBuilder<List<Message>>(
-                future: apiService.getUserMessages(widget.userId),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  } else if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return const Center(child: Text('No messages found.'));
-                  } else if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-                    Provider.of<MessageProvider>(
-                      context,
-                      listen: false,
-                    ).setMessages(snapshot.data!);
-                    final messages =
-                        Provider.of<MessageProvider>(context).messages;
-                    return MessageService.buildMessageListView(
-                      messages,
-                      apiService: apiService,
-                      scrollController: _scrollController,
-                      currentUserId: widget.userId.toString(),
-                      onTap: (message) {
-                        if (message.mediaType == 'video') {
-                          setState(() {
-                            _currentlyPlayingVideoId = message.id;
-                          });
-                        }
-                      },
-                      currentlyPlayingVideoId: _currentlyPlayingVideoId,
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
-              ),
+              child:
+                  _messages.isEmpty
+                      ? const Center(child: CircularProgressIndicator())
+                      : MessageService.buildMessageListView(
+                        _messages,
+                        apiService: apiService,
+                        scrollController: _scrollController,
+                        currentUserId: widget.userId.toString(),
+                        onTap: (message) {
+                          if (message.mediaType == 'video') {
+                            setState(() {
+                              _currentlyPlayingVideoId = message.id;
+                            });
+                          }
+                        },
+                        currentlyPlayingVideoId: _currentlyPlayingVideoId,
+                      ),
             ),
             if (_selectedMediaFile != null)
               Padding(

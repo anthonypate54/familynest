@@ -78,6 +78,7 @@ class MessageService {
         final suppressDateSeparator = isThreadView && index == 0;
 
         return MessageCard(
+          key: ValueKey(message.id),
           message: message,
           apiService: apiService,
           onTap: onTap,
@@ -138,6 +139,7 @@ class MessageCard extends StatefulWidget {
   final String? currentlyPlayingVideoId;
   final bool suppressDateSeparator;
   final bool showCommentIcon;
+  final String? parentId;
 
   const MessageCard({
     Key? key,
@@ -153,6 +155,7 @@ class MessageCard extends StatefulWidget {
     this.currentlyPlayingVideoId,
     this.suppressDateSeparator = false,
     this.showCommentIcon = true,
+    this.parentId,
   }) : super(key: key);
 
   @override
@@ -179,41 +182,67 @@ class _MessageCardState extends State<MessageCard> {
       setState(() {
         isFavorite = !isFavorite;
       });
-      final newLoveCount =
-          (widget.message.loveCount ?? 0) + (isFavorite ? 1 : -1);
-      final updatedMessage = widget.message.copyWith(loveCount: newLoveCount);
 
-      Provider.of<MessageProvider>(
-        context,
-        listen: false,
-      ).updateMessage(updatedMessage);
-
-      /*
-      if (isFavorite) {
-        await widget.apiService.toggleMessageLove(widget.message.id, true);
-        /*
-        await widget.apiService.likeMessage(
-          widget.message.id,
-          widget.currentUserId ?? '',
+      if (!widget.showCommentIcon) {
+        // This is a comment
+        // parentId: the id of the parent message
+        // widget.message.id: the id of the comment
+        final provider = Provider.of<MessageProvider>(context, listen: false);
+        final parentMessage = provider.messages.firstWhere(
+          (m) => m.id == widget.parentId,
         );
-        */
+
+        final commentIndex = parentMessage.replies.indexWhere(
+          (c) => c.id == widget.message.id,
+        );
+        if (commentIndex != -1) {
+          final newLoveCount =
+              (parentMessage.replies[commentIndex].loveCount ?? 0) +
+              (isFavorite ? 1 : -1);
+          final updatedComment = parentMessage.replies[commentIndex].copyWith(
+            loveCount: newLoveCount,
+          );
+          final updatedReplies = List<Message>.from(parentMessage.replies)
+            ..[commentIndex] = updatedComment;
+          final updatedParentMessage = parentMessage.copyWith(
+            replies: updatedReplies,
+          );
+
+          provider.updateMessage(updatedParentMessage);
+        }
+
+        // Call your API for comment love
+        await widget.apiService.toggleCommentLove(
+          widget.message.id,
+          isFavorite,
+        );
       } else {
-        await widget.apiService.toggleMessageLove(widget.message.id, false);
-        /*
-        await widget.apiService.unlikeMessage(
+        // This is a main message
+        final newLoveCount =
+            (widget.message.loveCount ?? 0) + (isFavorite ? 1 : -1);
+        final updatedMessage = widget.message.copyWith(loveCount: newLoveCount);
+
+        Provider.of<MessageProvider>(
+          context,
+          listen: false,
+        ).updateMessage(updatedMessage);
+
+        // Call your API for message love
+        await widget.apiService.toggleMessageLove(
           widget.message.id,
-          widget.currentUserId ?? '',
+          isFavorite,
         );
-        */
       }
-      */
     } catch (e) {
       setState(() {
         isFavorite = !isFavorite;
       });
+      debugPrint('Failed to update favorite: $e');
+
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to update like: $e')));
+      ).showSnackBar(SnackBar(content: Text('Failed to update favorite: $e')));
     }
   }
 
@@ -230,29 +259,16 @@ class _MessageCardState extends State<MessageCard> {
         listen: false,
       ).updateMessage(updatedMessage);
 
-      /*
-      if (isFavorite) {
-        await widget.apiService.toggleMessageLove(widget.message.id, true);
-        /*
-        await widget.apiService.likeMessage(
-          widget.message.id,
-          widget.currentUserId ?? '',
-        );
-        */
+      if (isLiked) {
+        await widget.apiService.toggleMessageLike(widget.message.id, true);
       } else {
-        await widget.apiService.toggleMessageLove(widget.message.id, false);
-        /*
-        await widget.apiService.unlikeMessage(
-          widget.message.id,
-          widget.currentUserId ?? '',
-        );
-        */
+        await widget.apiService.toggleMessageLike(widget.message.id, false);
       }
-      */
     } catch (e) {
       setState(() {
         isLiked = !isLiked;
       });
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to update like: $e')));
@@ -289,7 +305,7 @@ class _MessageCardState extends State<MessageCard> {
                 vertical: 4.0,
               ),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
@@ -331,7 +347,7 @@ class _MessageCardState extends State<MessageCard> {
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
+                                color: Colors.black.withValues(alpha: 0.05),
                                 spreadRadius: 1,
                                 blurRadius: 2,
                                 offset: const Offset(0, 1),
@@ -428,7 +444,7 @@ class _MessageCardState extends State<MessageCard> {
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 4,
             spreadRadius: 1,
           ),
@@ -485,7 +501,9 @@ class _MessageCardState extends State<MessageCard> {
             widget.message.mediaUrl!.startsWith('http')
                 ? widget.message.mediaUrl!
                 : apiService.mediaBaseUrl + widget.message.mediaUrl!;
-        debugPrint('🖼️ Image URL: $displayUrl');
+        debugPrint(
+          '🖼️ Image URL: $displayUrl for message ${widget.message.id}',
+        );
         return ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: CachedNetworkImage(
