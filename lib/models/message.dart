@@ -67,8 +67,8 @@ class Message {
               .toList() ??
           [],
       depth: json['depth'] as int? ?? 0,
-      mediaUrl: json['mediaUrl'] as String?,
-      mediaType: json['mediaType'] as String?,
+      mediaUrl: json['mediaUrl'] as String? ?? json['media_url'] as String?,
+      mediaType: json['mediaType'] as String? ?? json['media_type'] as String?,
       createdAt:
           json['timestamp'] != null
               ? (json['timestamp'] is int
@@ -77,18 +77,22 @@ class Message {
               : (json['createdAt'] != null
                   ? DateTime.tryParse(json['createdAt'].toString())
                   : null),
-      senderId: json['senderId']?.toString(),
-      senderUserName: json['senderUsername'] as String?,
+      senderId: json['senderId']?.toString() ?? json['sender_id']?.toString(),
+      senderUserName:
+          json['senderUsername'] as String? ??
+          json['sender_username'] as String?,
       thumbnailUrl:
           json['thumbnailUrl'] as String? ?? json['thumbnail_url'] as String?,
-      senderPhoto: json['senderPhoto'] as String?,
-      likeCount: json['likeCount'] as int?,
-      loveCount: json['loveCount'] as int?,
-      commentCount: json['commentCount'] as int?,
-      parentMessageId: json['parentMessageId'] as int?,
+      senderPhoto:
+          json['senderPhoto'] as String? ?? json['sender_photo'] as String?,
+      likeCount: json['likeCount'] as int? ?? json['like_count'] as int?,
+      loveCount: json['loveCount'] as int? ?? json['love_count'] as int?,
+      commentCount:
+          json['commentCount'] as int? ?? json['comment_count'] as int?,
+      parentMessageId:
+          json['parentMessageId'] as int? ?? json['parent_message_id'] as int?,
     );
   }
-
   // Convert Message to JSON
   Map<String, dynamic> toJson() {
     return {

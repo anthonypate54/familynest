@@ -241,7 +241,7 @@ class _MessageScreenState extends State<MessageScreen> {
   Future<void> _postMessage(ApiService apiService) async {
     final text = _messageController.text.trim();
     if (_selectedMediaFile != null) {
-      await apiService.postMessage(
+      Message newMessage = await apiService.postMessage(
         int.tryParse(widget.userId) ?? 0,
         text,
         mediaPath: _selectedMediaFile!.path,
@@ -250,12 +250,19 @@ class _MessageScreenState extends State<MessageScreen> {
       setState(() {
         _selectedMediaFile = null;
         _selectedMediaType = null;
+        _messages.insert(0, newMessage); // Add new message to the list
       });
     } else if (text.isNotEmpty) {
-      await apiService.postMessage(int.tryParse(widget.userId) ?? 0, text);
+      Message newMessage = await apiService.postMessage(
+        int.tryParse(widget.userId) ?? 0,
+        text,
+      );
+      setState(() {
+        _messages.insert(0, newMessage); // Add new message to the list
+      });
     }
     _messageController.clear();
-    setState(() {}); // Refresh messages
+    await _loadMessages(); // Reload messages after posting
   }
 
   @override

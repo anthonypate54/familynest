@@ -248,35 +248,42 @@ class _ThreadScreenState extends State<ThreadScreen> {
 
   Future<void> _postComment(ApiService apiService) async {
     final text = _messageController.text.trim();
-    bool success = false;
     if (_selectedMediaFile != null) {
-      success = await apiService.postComment(
+      Message newMessage = await apiService.postComment(
         int.parse(widget.userId.toString()),
         int.parse(widget.message['id'].toString()),
         text,
         mediaPath: _selectedMediaFile!.path,
         mediaType: _selectedMediaType ?? 'photo',
       );
+      if (!mounted) return;
       setState(() {
         _selectedMediaFile = null;
         _selectedMediaType = null;
+        _comments.insert(0, newMessage); // Add new message to the list
       });
+      // Update comment count after successful post
+      Provider.of<MessageProvider>(
+        context,
+        listen: false,
+      ).incrementCommentCount(widget.message['id'].toString());
     } else if (text.isNotEmpty) {
-      success = await apiService.postComment(
-        widget.userId, // userId
-        int.parse(widget.message['id']), // messageId
-        text, // content
+      Message newMessage = await apiService.postComment(
+        widget.userId,
+        int.parse(widget.message['id']),
+        text,
       );
-    }
-    _messageController.clear();
-    setState(() {}); // Refresh messages
-    if (!mounted) return;
-    if (success) {
+      if (!mounted) return;
+      setState(() {
+        _comments.insert(0, newMessage); // Add new message to the list
+      });
+      // Update comment count after successful post
       Provider.of<MessageProvider>(
         context,
         listen: false,
       ).incrementCommentCount(widget.message['id'].toString());
     }
+    _messageController.clear();
   }
 
   @override

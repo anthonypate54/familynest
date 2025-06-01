@@ -638,7 +638,7 @@ Network connection error. Please check:
   }
 
   // Post a message
-  Future<bool> postMessage(
+  Future<Message> postMessage(
     int userId,
     String content, {
     String? mediaPath,
@@ -750,19 +750,20 @@ Network connection error. Please check:
 
       if (response.statusCode == 201) {
         debugPrint('✅ Message posted successfully');
-        return true;
+        final Map<String, dynamic> responseData = json.decode(responseString);
+        return Message.fromJson(responseData);
       } else {
         debugPrint('❌ Failed to post message: $responseString');
-        return false;
+        throw Exception('Failed to post message: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('Exception in postMessage: $e');
-      return false;
+      rethrow; // or handle the error as needed
     }
   }
 
   // Post a message
-  Future<bool> postComment(
+  Future<Message> postComment(
     int userId,
     int messageId,
     String content, {
@@ -874,20 +875,21 @@ Network connection error. Please check:
       );
 
       if (response.statusCode == 201) {
-        debugPrint('✅ Message posted successfully');
-        return true;
+        debugPrint('✅ Comment posted successfully');
+        final Map<String, dynamic> responseData = json.decode(responseString);
+        return Message.fromJson(responseData);
       } else {
-        debugPrint('❌ Failed to post message: $responseString');
-        return false;
+        debugPrint('❌ Failed to post comment: $responseString');
+        throw Exception('Failed to post comment: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Exception in postMessage: $e');
-      return false;
+      debugPrint('Exception in postComment: $e');
+      rethrow;
     }
   }
 
   // Post message with video processing
-  Future<bool> postMessageWithVideoProcessing(
+  Future<Message> postMessageWithVideoProcessing(
     int userId,
     String content, {
     String? mediaPath,
@@ -924,7 +926,7 @@ Network connection error. Please check:
     }
 
     // Proceed with posting the message
-    bool success = await postMessage(
+    Message newMessage = await postMessage(
       userId,
       content,
       mediaPath: effectiveMediaPath,
@@ -935,7 +937,7 @@ Network connection error. Please check:
       thumbnailUrl: videoData?['thumbnailUrl'],
     );
 
-    return success;
+    return newMessage;
   }
 
   // Update user photo

@@ -33,7 +33,7 @@ class AppConfig {
   /// Get the base URL for API requests based on platform and environment
   /// ngrok http 8080
   String get ngrokUrl =>
-      "https://93c3-2601-1c0-5900-1370-7422-e05f-ad4f-4ffd.ngrok-free.app";
+      "https://7a1f-2601-1c0-5900-1370-18b4-d181-e92-bbdd.ngrok-free.app";
 
   ///
   String get baseUrl {
@@ -45,20 +45,20 @@ class AppConfig {
     // Otherwise, choose based on environment and platform
     switch (_environment) {
       case Environment.production:
-        return "https://api.familynest.example.com"; // Replace with actual production URL
+        return "http://api.familynest.example.com"; // Replace with actual production URL
 
       case Environment.staging:
-        return "https://staging-api.familynest.example.com"; // Replace with actual staging URL
+        return "http://staging-api.familynest.example.com"; // Replace with actual staging URL
 
       case Environment.development:
       default:
         // For development, we need different URLs based on the platform
         if (kIsWeb) {
-          return "https://localhost:8080"; // Use HTTPS for web
+          return "https://localhost:8080"; // Use HTTP for web
         } else if (Platform.isAndroid) {
-          return "https://10.0.2.2:8080"; // Use 10.0.2.2 for Android emulator
+          return "https://10.0.2.2:8080"; // Use HTTP for Android emulator
         } else {
-          return "https://localhost:8080"; // Use HTTPS for iOS simulator and others
+          return "http://localhost:8080"; // Use HTTP for iOS simulator and others
         }
     }
   }
