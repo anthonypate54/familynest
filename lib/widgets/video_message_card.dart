@@ -44,18 +44,14 @@ class VideoMessageCardState extends State<VideoMessageCard> {
         _initializeVideo();
       } else {
         _controller?.pause();
-        _controller?.dispose();
-        _chewieController?.dispose();
-        _controller = null;
-        _chewieController = null;
-        setState(() {
-          _isPlaying = false;
-        });
+        _disposeControllers();
       }
     }
   }
 
   void _initializeVideo() async {
+    _disposeControllers();
+
     final String displayUrl =
         widget.videoUrl.startsWith('http')
             ? widget.videoUrl
@@ -86,19 +82,34 @@ class VideoMessageCardState extends State<VideoMessageCard> {
       }
     }
 
-    _controller?.addListener(() {
-      if (_controller!.value.hasError && mounted) {
-        setState(() {
-          _errorMessage = _controller!.value.errorDescription;
-        });
-      }
-    });
+    _controller?.addListener(_onVideoError);
+  }
+
+  void _onVideoError() {
+    if (_controller?.value.hasError == true && mounted) {
+      setState(() {
+        _errorMessage = _controller!.value.errorDescription;
+      });
+    }
+  }
+
+  void _disposeControllers() {
+    _controller?.removeListener(_onVideoError); // Remove listener first
+    _chewieController?.dispose(); // Dispose Chewie first
+    _controller?.dispose(); // Then VideoPlayer
+    _chewieController = null;
+    _controller = null;
+    if (mounted) {
+      setState(() {
+        _isPlaying = false;
+        _errorMessage = null;
+      });
+    }
   }
 
   @override
   void dispose() {
-    _chewieController?.dispose();
-    _controller?.dispose();
+    _disposeControllers(); // Use centralized disposal
     super.dispose();
   }
 
@@ -122,7 +133,19 @@ class VideoMessageCardState extends State<VideoMessageCard> {
               if (_controller != null &&
                   _controller!.value.isInitialized &&
                   _chewieController != null)
-                Chewie(controller: _chewieController!)
+                SizedBox(
+                  width: double.infinity,
+                  height: 200,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: ClipRect(
+                      child: Chewie(
+                        key: ValueKey('playback-${widget.videoUrl}'),
+                        controller: _chewieController!,
+                      ),
+                    ),
+                  ),
+                )
               else if (widget.thumbnailUrl != null &&
                   widget.thumbnailUrl!.isNotEmpty)
                 CachedNetworkImage(

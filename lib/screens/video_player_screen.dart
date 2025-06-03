@@ -121,7 +121,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ),
               )
               : _isInitialized
-              ? SafeArea(child: Chewie(controller: _chewieController!))
+              ? SafeArea(
+                child: Chewie(
+                  key: ValueKey('fullscreen-${widget.videoUrl}'),
+                  controller: _chewieController!,
+                ),
+              )
               : const Center(
                 child: CircularProgressIndicator(
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),

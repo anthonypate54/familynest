@@ -33,7 +33,7 @@ class AppConfig {
   /// Get the base URL for API requests based on platform and environment
   /// ngrok http 8080
   String get ngrokUrl =>
-      "https://7a1f-2601-1c0-5900-1370-18b4-d181-e92-bbdd.ngrok-free.app";
+      "https://2f62-2601-1c0-5900-1370-2859-c8e2-3b73-41ab.ngrok-free.app";
 
   ///
   String get baseUrl {

@@ -43,11 +43,15 @@ class _ThreadScreenState extends State<ThreadScreen> {
   ChewieController? _chewieController;
   File? _selectedVideoThumbnail;
   List<Message> _comments = [];
+  bool _isLoading = true;
 
   // --- Inline video playback for message feed ---
   String? _currentlyPlayingVideoId;
 
   Future<void> _loadComments() async {
+    setState(() {
+      _isLoading = true;
+    });
     final apiService = Provider.of<ApiService>(context, listen: false);
     try {
       final comments = await apiService.getComments(
@@ -56,14 +60,14 @@ class _ThreadScreenState extends State<ThreadScreen> {
       if (mounted) {
         setState(() {
           _comments = comments;
+          _isLoading = false;
         });
-        Provider.of<MessageProvider>(
-          context,
-          listen: false,
-        ).setMessages(comments);
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error loading comments: $e')));
@@ -246,6 +250,16 @@ class _ThreadScreenState extends State<ThreadScreen> {
     }
   }
 
+  void _scrollToBottomIfNeeded() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0.0, // For reverse: true, this is the bottom
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   Future<void> _postComment(ApiService apiService) async {
     final text = _messageController.text.trim();
     if (_selectedMediaFile != null) {
@@ -260,13 +274,21 @@ class _ThreadScreenState extends State<ThreadScreen> {
       setState(() {
         _selectedMediaFile = null;
         _selectedMediaType = null;
-        _comments.insert(0, newMessage); // Add new message to the list
+        _comments.add(newMessage); // Add new message to the list
       });
-      // Update comment count after successful post
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0.0, // Always scroll to the bottom in reverse mode
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      }); // Update comment count after successful post
       Provider.of<MessageProvider>(
         context,
         listen: false,
-      ).incrementCommentCount(widget.message['id'].toString());
+      ).incrementCommentCount(newMessage.parentMessageId.toString());
     } else if (text.isNotEmpty) {
       Message newMessage = await apiService.postComment(
         widget.userId,
@@ -281,7 +303,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
       Provider.of<MessageProvider>(
         context,
         listen: false,
-      ).incrementCommentCount(widget.message['id'].toString());
+      ).incrementCommentCount(newMessage.parentMessageId.toString());
     }
     _messageController.clear();
   }
@@ -289,6 +311,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
   @override
   Widget build(BuildContext context) {
     final apiService = Provider.of<ApiService>(context, listen: false);
+    final parentMessage = Message.fromJson(widget.message);
     return Scaffold(
       backgroundColor: UIConfig.useDarkMode ? Colors.black : Colors.white,
       appBar: AppBar(
@@ -317,64 +340,65 @@ class _ThreadScreenState extends State<ThreadScreen> {
       body: GradientBackground(
         child: Column(
           children: [
-            MessageCard(
-              message: Message.fromJson(widget.message),
-              apiService: apiService,
-              currentUserId:
-                  widget.userId
-                      .toString(), // Convert int to String for MessageCard
-              timeText: MessageService.formatTime(
-                context,
-                widget.message['timestamp'],
-              ),
-              dayText: MessageService.getShortDayName(
-                widget.message['timestamp'],
-              ),
-              shouldShowDateSeparator: false,
-              dateSeparatorText: null,
-              onTap: (msg) {
-                if (msg.mediaType == 'video') {
-                  // Trigger video playback if needed
-                  // Currently handled by VideoMessageCard
-                }
-              },
-              onThreadTap: null, // Disable further threading
-              currentlyPlayingVideoId:
-                  null, // Adjust if video playback is needed
-              suppressDateSeparator: true,
-              showCommentIcon: false,
-              parentId: widget.message['parentMessageId'].toString(),
-            ),
-            // Divider
-            /*
-            Divider(
-              color: Colors.grey[600],
-              thickness: 0.5,
-              height: 1,
-              indent: 16,
-              endIndent: 16,
-            ),
-*/
+            // The scrollable area with sticky parent and comments
             Expanded(
-              child:
-                  _comments.isEmpty
-                      ? const Center(child: CircularProgressIndicator())
-                      : MessageService.buildMessageListView(
-                        _comments,
+              child: CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _ParentMessageHeaderDelegate(
+                      hasMedia:
+                          parentMessage.mediaUrl != null &&
+                          parentMessage.mediaUrl!.isNotEmpty,
+                      child: MessageCard(
+                        message: parentMessage,
                         apiService: apiService,
-                        scrollController: _scrollController,
                         currentUserId: widget.userId.toString(),
-                        onTap: (message) {
-                          if (message.mediaType == 'video') {
-                            setState(() {
-                              _currentlyPlayingVideoId = message.id;
-                            });
-                          }
-                        },
-                        currentlyPlayingVideoId: _currentlyPlayingVideoId,
-                        isThreadView: true,
+                        timeText: MessageService.formatTime(
+                          context,
+                          parentMessage.createdAt,
+                        ),
+                        dayText: MessageService.getShortDayName(
+                          parentMessage.createdAt,
+                        ),
+                        shouldShowDateSeparator: false,
+                        dateSeparatorText: null,
+                        onTap: (msg) {},
+                        onThreadTap: null,
+                        currentlyPlayingVideoId: null,
+                        suppressDateSeparator: true,
+                        showCommentIcon: false,
+                        parentId: widget.message['parentMessageId'].toString(),
                       ),
+                    ),
+                  ),
+                  SliverFillRemaining(
+                    hasScrollBody: true,
+                    child:
+                        _isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : MessageService.buildMessageListView(
+                              context,
+                              _comments,
+                              apiService: apiService,
+                              scrollController: _scrollController,
+                              currentUserId: widget.userId.toString(),
+                              onTap: (message) {
+                                if (message.mediaType == 'video') {
+                                  setState(() {
+                                    _currentlyPlayingVideoId = message.id;
+                                  });
+                                }
+                              },
+                              currentlyPlayingVideoId: _currentlyPlayingVideoId,
+                              isThreadView: true,
+                            ),
+                  ),
+                ],
+              ),
             ),
+            // Media preview (if any)
             if (_selectedMediaFile != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -382,142 +406,54 @@ class _ThreadScreenState extends State<ThreadScreen> {
                     _selectedMediaType == 'photo'
                         ? ClipRRect(
                           borderRadius: BorderRadius.circular(6),
-                          child: Stack(
-                            children: [
-                              SizedBox(
-                                width: MediaQuery.of(context).size.width * 0.7,
-                                height: 200,
-                                child: Image.file(
-                                  _selectedMediaFile!,
-                                  width:
-                                      MediaQuery.of(context).size.width * 0.7,
-                                  height: 200,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.grey,
-                                      width: 2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.08),
-                                        blurRadius: 2,
-                                      ),
-                                    ],
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.close,
-                                      color: Colors.black,
-                                      size: 18,
-                                    ),
-                                    padding: EdgeInsets.zero,
-                                    splashRadius: 18,
-                                    onPressed: () {
-                                      setState(() {
-                                        _selectedMediaFile = null;
-                                        _selectedMediaType = null;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
+                          child: Image.file(
+                            _selectedMediaFile!,
+                            width: MediaQuery.of(context).size.width * 0.7,
+                            height: 200,
+                            fit: BoxFit.cover,
                           ),
                         )
                         : _selectedMediaType == 'video'
                         ? ClipRRect(
                           borderRadius: BorderRadius.circular(6),
-                          child: Stack(
-                            children: [
-                              SizedBox(
-                                width: MediaQuery.of(context).size.width * 0.7,
-                                height: 200,
+                          child: Container(
+                            width: MediaQuery.of(context).size.width * 0.7,
+                            height: 200,
+                            constraints: const BoxConstraints(
+                              maxHeight: 200,
+                              minHeight: 200,
+                            ),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxHeight: 200,
+                                minHeight: 200,
+                              ),
+                              child: ClipRect(
                                 child:
                                     _chewieController != null
-                                        ? Chewie(controller: _chewieController!)
-                                        : _selectedVideoThumbnail != null
-                                        ? Image.file(
-                                          _selectedVideoThumbnail!,
-                                          width:
-                                              MediaQuery.of(
-                                                context,
-                                              ).size.width *
-                                              0.7,
-                                          height: 200,
-                                          fit: BoxFit.cover,
-                                        )
-                                        : Container(
-                                          color: Colors.black,
-                                          child: const Center(
-                                            child: CircularProgressIndicator(),
+                                        ? Chewie(
+                                          key: const ValueKey(
+                                            'thread-composition-video',
                                           ),
+                                          controller: _chewieController!,
+                                        )
+                                        : const Center(
+                                          child: CircularProgressIndicator(),
                                         ),
                               ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.grey,
-                                      width: 2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.08),
-                                        blurRadius: 2,
-                                      ),
-                                    ],
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.close,
-                                      color: Colors.black,
-                                      size: 18,
-                                    ),
-                                    padding: EdgeInsets.zero,
-                                    splashRadius: 18,
-                                    onPressed: () {
-                                      setState(() {
-                                        _selectedMediaFile = null;
-                                        _selectedMediaType = null;
-                                        _videoController?.dispose();
-                                        _chewieController?.dispose();
-                                        _videoController = null;
-                                        _chewieController = null;
-                                        _selectedVideoThumbnail = null;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         )
                         : const SizedBox.shrink(),
               ),
+            // Input bar
             Container(
               padding: const EdgeInsets.all(8.0),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
+                    color: Colors.black.withOpacity(0.1),
                     blurRadius: 4,
                     offset: const Offset(0, -2),
                   ),
@@ -549,7 +485,6 @@ class _ThreadScreenState extends State<ThreadScreen> {
                         onPressed:
                             isEnabled ? () => _postComment(apiService) : null,
                         tooltip: 'Send Message',
-
                         color:
                             isEnabled
                                 ? Theme.of(context).primaryColor
@@ -564,5 +499,46 @@ class _ThreadScreenState extends State<ThreadScreen> {
         ),
       ),
     );
+  }
+}
+
+class _ParentMessageHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final bool hasMedia;
+  _ParentMessageHeaderDelegate({required this.child, this.hasMedia = false});
+
+  @override
+  double get minExtent {
+    return hasMedia ? 200 : 100;
+  }
+
+  @override
+  double get maxExtent {
+    return hasMedia ? 280 : 120;
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    // Calculate the progress of shrinking (0.0 = fully expanded, 1.0 = fully shrunk)
+    final double shrinkProgress = shrinkOffset / (maxExtent - minExtent);
+    final double clampedProgress = shrinkProgress.clamp(0.0, 1.0);
+
+    // Interpolate the current height
+    final double currentHeight =
+        maxExtent - (shrinkOffset.clamp(0.0, maxExtent - minExtent));
+
+    return SizedBox(height: currentHeight, child: child);
+  }
+
+  @override
+  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) {
+    if (oldDelegate is _ParentMessageHeaderDelegate) {
+      return hasMedia != oldDelegate.hasMedia;
+    }
+    return true;
   }
 }

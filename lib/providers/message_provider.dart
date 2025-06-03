@@ -20,7 +20,9 @@ class MessageProvider extends ChangeNotifier {
   }
 
   void incrementCommentCount(String messageId) {
-    final idx = _messages.indexWhere((m) => m.id == messageId);
+    final idx = _messages.indexWhere((m) {
+      return m.id == messageId;
+    });
     if (idx != -1) {
       final msg = _messages[idx];
       _messages[idx] = msg.copyWith(commentCount: (msg.commentCount ?? 0) + 1);

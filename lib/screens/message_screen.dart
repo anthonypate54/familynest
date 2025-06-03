@@ -37,17 +37,22 @@ class _MessageScreenState extends State<MessageScreen> {
   ChewieController? _chewieController;
   File? _selectedVideoThumbnail;
   List<Message> _messages = [];
+  bool _isLoading = true;
 
   // --- Inline video playback for message feed ---
   String? _currentlyPlayingVideoId;
 
   Future<void> _loadMessages() async {
+    setState(() {
+      _isLoading = true;
+    });
     final apiService = Provider.of<ApiService>(context, listen: false);
     try {
       final messages = await apiService.getUserMessages(widget.userId);
       if (mounted) {
         setState(() {
           _messages = messages;
+          _isLoading = false;
         });
         Provider.of<MessageProvider>(
           context,
@@ -56,6 +61,10 @@ class _MessageScreenState extends State<MessageScreen> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error loading messages: $e')));
@@ -238,6 +247,16 @@ class _MessageScreenState extends State<MessageScreen> {
     }
   }
 
+  void _scrollToBottomIfNeeded() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0.0, // For reverse: true, this is the bottom
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   Future<void> _postMessage(ApiService apiService) async {
     final text = _messageController.text.trim();
     if (_selectedMediaFile != null) {
@@ -250,7 +269,16 @@ class _MessageScreenState extends State<MessageScreen> {
       setState(() {
         _selectedMediaFile = null;
         _selectedMediaType = null;
-        _messages.insert(0, newMessage); // Add new message to the list
+        _messages.add(newMessage); // Add new message to the list
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0.0, // Always scroll to the bottom in reverse mode
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       });
     } else if (text.isNotEmpty) {
       Message newMessage = await apiService.postMessage(
@@ -298,21 +326,26 @@ class _MessageScreenState extends State<MessageScreen> {
           children: [
             Expanded(
               child:
-                  _messages.isEmpty
+                  _isLoading
                       ? const Center(child: CircularProgressIndicator())
-                      : MessageService.buildMessageListView(
-                        _messages,
-                        apiService: apiService,
-                        scrollController: _scrollController,
-                        currentUserId: widget.userId.toString(),
-                        onTap: (message) {
-                          if (message.mediaType == 'video') {
-                            setState(() {
-                              _currentlyPlayingVideoId = message.id;
-                            });
-                          }
+                      : Consumer<MessageProvider>(
+                        builder: (context, messageProvider, child) {
+                          return MessageService.buildMessageListView(
+                            context,
+                            messageProvider.messages,
+                            apiService: apiService,
+                            scrollController: _scrollController,
+                            currentUserId: widget.userId.toString(),
+                            onTap: (message) {
+                              if (message.mediaType == 'video') {
+                                setState(() {
+                                  _currentlyPlayingVideoId = message.id;
+                                });
+                              }
+                            },
+                            currentlyPlayingVideoId: _currentlyPlayingVideoId,
+                          ); // buildMessageListView
                         },
-                        currentlyPlayingVideoId: _currentlyPlayingVideoId,
                       ),
             ),
             if (_selectedMediaFile != null)
@@ -385,7 +418,12 @@ class _MessageScreenState extends State<MessageScreen> {
                                 height: 200,
                                 child:
                                     _chewieController != null
-                                        ? Chewie(controller: _chewieController!)
+                                        ? Chewie(
+                                          key: const ValueKey(
+                                            'message-composition-video',
+                                          ),
+                                          controller: _chewieController!,
+                                        )
                                         : _selectedVideoThumbnail != null
                                         ? Image.file(
                                           _selectedVideoThumbnail!,

@@ -765,7 +765,7 @@ Network connection error. Please check:
   // Post a message
   Future<Message> postComment(
     int userId,
-    int messageId,
+    int parentMessageId,
     String content, {
     String? mediaPath,
     String? mediaType,
@@ -774,7 +774,7 @@ Network connection error. Please check:
     String? thumbnailUrl,
   }) async {
     try {
-      debugPrint('Starting postComment for userId: $messageId');
+      debugPrint('Starting postComment for parentMessageId: $parentMessageId');
       debugPrint('Content: "$content"');
       debugPrint('Media path: $mediaPath, media type: $mediaType');
       debugPrint('Video URL: $videoUrl, thumbnail URL: $thumbnailUrl');
@@ -806,7 +806,7 @@ Network connection error. Please check:
       );
 
       // Use the new endpoint format
-      final url = '$baseUrl/api/messages/$messageId/comments';
+      final url = '$baseUrl/api/messages/$parentMessageId/comments';
       debugPrint('Creating MultipartRequest for POST to $url');
 
       var request = http.MultipartRequest('POST', Uri.parse(url));

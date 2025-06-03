@@ -37,7 +37,7 @@ class Message {
   final int? loveCount;
   final int? commentCount;
   final int? parentMessageId;
-
+  final String? userName;
   Message({
     required this.id,
     required this.content,
@@ -54,6 +54,7 @@ class Message {
     this.loveCount,
     this.commentCount,
     this.parentMessageId,
+    this.userName,
   });
 
   // Factory constructor for creating a Message from JSON
@@ -79,6 +80,12 @@ class Message {
                   : null),
       senderId: json['senderId']?.toString() ?? json['sender_id']?.toString(),
       senderUserName:
+          json['senderUserName']
+              as String? // <-- add this line!
+              ??
+          json['senderUsername'] as String? ??
+          json['sender_username'] as String?,
+      userName:
           json['senderUsername'] as String? ??
           json['sender_username'] as String?,
       thumbnailUrl:
@@ -111,6 +118,7 @@ class Message {
       'loveCount': loveCount,
       'commentCount': commentCount,
       'parentMessageId': parentMessageId,
+      'userName': userName,
     };
   }
 
@@ -132,6 +140,7 @@ class Message {
     int? loveCount,
     int? commentCount,
     int? parentMessageId,
+    String? userName,
   }) {
     return Message(
       id: id ?? this.id,
@@ -149,6 +158,7 @@ class Message {
       loveCount: loveCount ?? this.loveCount,
       commentCount: commentCount ?? this.commentCount,
       parentMessageId: parentMessageId ?? this.parentMessageId,
+      userName: userName ?? this.userName,
     );
   }
 

@@ -12,6 +12,7 @@ import '../providers/message_provider.dart';
 
 class MessageService {
   static Widget buildMessageListView(
+    BuildContext context,
     List<Message> messages, {
     required ApiService apiService,
     ScrollController? scrollController,
@@ -29,7 +30,6 @@ class MessageService {
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       itemBuilder: (context, index) {
         final message = messages[index];
-        // Calculate time and day
         String timeText = '';
         String dayText = '';
         String dateSeparatorText = '';
@@ -39,16 +39,21 @@ class MessageService {
           timeText = _formatTime(context, messageDateTime);
           dayText = _getShortDayName(messageDateTime);
         }
-        // Date separator logic
+
         bool shouldShowDateSeparator = false;
+        final currentMessage = messages[index];
+        final currentDate = currentMessage.createdAt;
+
+        // Only show the separator if this is the oldest message for the day
         if (index == messages.length - 1) {
           shouldShowDateSeparator = true;
         } else {
-          final nextCreatedAt = messages[index + 1].createdAt;
-          if (messageDateTime != null && nextCreatedAt != null) {
-            if (!_isSameDay(messageDateTime, nextCreatedAt)) {
-              shouldShowDateSeparator = true;
-            }
+          final nextMessage = messages[index + 1];
+          final nextDate = nextMessage.createdAt;
+          if (currentDate != null &&
+              nextDate != null &&
+              !_isSameDay(currentDate, nextDate)) {
+            shouldShowDateSeparator = true;
           }
         }
         if (shouldShowDateSeparator && messageDateTime != null) {
@@ -74,23 +79,51 @@ class MessageService {
             ).format(messageDate); // e.g., "Jan 15, 2023"
           }
         }
-
         final suppressDateSeparator = isThreadView && index == 0;
+        return Column(
+          children: [
+            if (!suppressDateSeparator &&
+                shouldShowDateSeparator &&
+                (dateSeparatorText.isNotEmpty))
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 10.0),
+                alignment: Alignment.center,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 4.0,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    dateSeparatorText,
+                    style: TextStyle(
+                      color: Colors.grey[800],
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
 
-        return MessageCard(
-          key: ValueKey(message.id),
-          message: message,
-          apiService: apiService,
-          onTap: onTap,
-          timeText: timeText,
-          dayText: dayText,
-          shouldShowDateSeparator: shouldShowDateSeparator,
-          dateSeparatorText: dateSeparatorText,
-          currentUserId: currentUserId,
-          onThreadTap: onThreadTap,
-          currentlyPlayingVideoId: currentlyPlayingVideoId,
-          showCommentIcon: !isThreadView,
-          suppressDateSeparator: suppressDateSeparator,
+            MessageCard(
+              key: ValueKey(message.id),
+              message: message,
+              apiService: apiService,
+              onTap: onTap,
+              timeText: timeText,
+              dayText: dayText,
+              shouldShowDateSeparator: shouldShowDateSeparator,
+              dateSeparatorText: dateSeparatorText,
+              currentUserId: currentUserId,
+              onThreadTap: onThreadTap,
+              currentlyPlayingVideoId: currentlyPlayingVideoId,
+              showCommentIcon: !isThreadView,
+              suppressDateSeparator: suppressDateSeparator,
+            ),
+          ],
         );
       },
     );
@@ -284,41 +317,15 @@ class _MessageCardState extends State<MessageCard> {
         widget.message.senderUserName ?? widget.message.senderId ?? '?';
     final String initials = _getInitials(displayName);
     final String displayTime = widget.timeText ?? '';
+
     final String displayDay = widget.dayText ?? '';
     final String? mediaType = widget.message.mediaType;
     final String? mediaUrl = widget.message.mediaUrl;
-
+    if (displayDay.isEmpty) {
+      debugPrint('Message is null: widget.dayText = $widget.dayText');
+    }
     return Column(
       children: [
-        // Date separator if needed (only before first message of a new day)
-        if (!widget.suppressDateSeparator &&
-            widget.shouldShowDateSeparator &&
-            (widget.dateSeparatorText != null &&
-                widget.dateSeparatorText!.isNotEmpty))
-          // Render date separator
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 10.0),
-            alignment: Alignment.center,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16.0,
-                vertical: 4.0,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                widget.dateSeparatorText!,
-                style: TextStyle(
-                  color: Colors.grey[800],
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ),
-
         // Message card
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
@@ -501,9 +508,6 @@ class _MessageCardState extends State<MessageCard> {
             widget.message.mediaUrl!.startsWith('http')
                 ? widget.message.mediaUrl!
                 : apiService.mediaBaseUrl + widget.message.mediaUrl!;
-        debugPrint(
-          '🖼️ Image URL: $displayUrl for message ${widget.message.id}',
-        );
         return ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: CachedNetworkImage(
@@ -559,6 +563,7 @@ class _MessageCardState extends State<MessageCard> {
           onTap: () {
             Navigator.push(
               context,
+
               SlidePageRoute(
                 page: ThreadScreen(userId: currentUserId, message: message),
               ),
