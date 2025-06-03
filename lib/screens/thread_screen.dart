@@ -9,13 +9,15 @@ import '../services/message_service.dart';
 import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'dart:async';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../utils/video_thumbnail_util.dart';
 import '../widgets/gradient_background.dart';
 import '../theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../config/app_config.dart';
+import '../dialogs/large_video_dialog.dart';
 
 class ThreadScreen extends StatefulWidget {
   final int userId;
@@ -37,7 +39,6 @@ class _ThreadScreenState extends State<ThreadScreen> {
   final ValueNotifier<bool> _isSendButtonEnabled = ValueNotifier(false);
   File? _selectedMediaFile;
   String? _selectedMediaType;
-  final ImagePicker _picker = ImagePicker();
   // Video preview fields for composing
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
@@ -124,7 +125,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                 title: const Text('Take a photo'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia(ImageSource.camera, 'photo');
+                  _pickMedia('photo');
                 },
               ),
               ListTile(
@@ -132,7 +133,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                 title: const Text('Choose from gallery'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia(ImageSource.gallery, 'photo');
+                  _pickMedia('photo');
                 },
               ),
               ListTile(
@@ -140,7 +141,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                 title: const Text('Record a video'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia(ImageSource.camera, 'video');
+                  _pickMedia('video');
                 },
               ),
               ListTile(
@@ -148,7 +149,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                 title: const Text('Choose video from gallery'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia(ImageSource.gallery, 'video');
+                  _pickMedia('video');
                 },
               ),
             ],
@@ -158,28 +159,45 @@ class _ThreadScreenState extends State<ThreadScreen> {
     );
   }
 
-  Future<void> _pickMedia(ImageSource source, String type) async {
+  Future<void> _pickMedia(String type) async {
     try {
-      final XFile? pickedFile;
+      FilePickerResult? result;
       if (type == 'photo') {
-        pickedFile = await _picker.pickImage(
-          source: source,
-          maxWidth: 1800,
-          maxHeight: 1800,
-          imageQuality: 85,
-        );
+        result = await FilePicker.platform.pickFiles(type: FileType.image);
       } else {
-        pickedFile = await _picker.pickVideo(
-          source: source,
-          maxDuration: const Duration(minutes: 10),
-        );
+        result = await FilePicker.platform.pickFiles(type: FileType.video);
       }
 
+      final pickedFile = result?.files.first;
       if (!mounted) return;
 
       if (pickedFile != null) {
         final file = pickedFile;
+
         if (type == 'video') {
+          final int fileSizeBytes = file.size;
+          final double fileSizeMB = fileSizeBytes / (1024 * 1024);
+
+          if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
+            final action = await LargeVideoDialog.show(context, fileSizeMB);
+
+            if (action == VideoSizeAction.chooseDifferent) {
+              // Re-open picker
+              _showMediaPicker();
+            } else if (action == VideoSizeAction.shareAsLink) {
+              // Show instruction and re-open picker for cloud selection
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Upload your video to Google Drive or Dropbox first, then select it from there.',
+                  ),
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              _showMediaPicker(); // Re-open picker
+            }
+            return; // Exit early
+          }
           // Dispose previous controllers
           _videoController?.dispose();
           _chewieController?.dispose();
@@ -193,7 +211,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
           _selectedVideoThumbnail = thumbnailFile;
 
           // Initialize video controller
-          _videoController = VideoPlayerController.file(File(file.path));
+          _videoController = VideoPlayerController.file(File(file.path!));
           await _videoController!.initialize();
 
           // Initialize Chewie controller
@@ -233,7 +251,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
           );
         }
         setState(() {
-          _selectedMediaFile = File(file.path);
+          _selectedMediaFile = File(file.path!);
           _selectedMediaType = type;
         });
       }
@@ -262,50 +280,86 @@ class _ThreadScreenState extends State<ThreadScreen> {
 
   Future<void> _postComment(ApiService apiService) async {
     final text = _messageController.text.trim();
-    if (_selectedMediaFile != null) {
-      Message newMessage = await apiService.postComment(
-        int.parse(widget.userId.toString()),
-        int.parse(widget.message['id'].toString()),
-        text,
-        mediaPath: _selectedMediaFile!.path,
-        mediaType: _selectedMediaType ?? 'photo',
-      );
-      if (!mounted) return;
-      setState(() {
-        _selectedMediaFile = null;
-        _selectedMediaType = null;
-        _comments.add(newMessage); // Add new message to the list
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            0.0, // Always scroll to the bottom in reverse mode
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
+
+    try {
+      if (_selectedMediaFile != null) {
+        // Show loading indicator for large files
+        if (_selectedMediaType == 'video') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Uploading video, please wait...'),
+              duration: Duration(seconds: 2),
+            ),
           );
         }
-      }); // Update comment count after successful post
-      Provider.of<MessageProvider>(
-        context,
-        listen: false,
-      ).incrementCommentCount(newMessage.parentMessageId.toString());
-    } else if (text.isNotEmpty) {
-      Message newMessage = await apiService.postComment(
-        widget.userId,
-        int.parse(widget.message['id']),
-        text,
-      );
+
+        Message newMessage = await apiService.postComment(
+          int.parse(widget.userId.toString()),
+          int.parse(widget.message['id'].toString()),
+          text,
+          mediaPath: _selectedMediaFile!.path,
+          mediaType: _selectedMediaType ?? 'photo',
+        );
+
+        if (!mounted) return;
+        setState(() {
+          _selectedMediaFile = null;
+          _selectedMediaType = null;
+          _comments.add(newMessage); // Add new message to the list
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              0.0, // Always scroll to the bottom in reverse mode
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+        // Update comment count after successful post
+        Provider.of<MessageProvider>(
+          context,
+          listen: false,
+        ).incrementCommentCount(newMessage.parentMessageId.toString());
+
+        // Clear any error messages
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Comment posted successfully!'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      } else if (text.isNotEmpty) {
+        Message newMessage = await apiService.postComment(
+          widget.userId,
+          int.parse(widget.message['id']),
+          text,
+        );
+        if (!mounted) return;
+        setState(() {
+          _comments.insert(0, newMessage); // Add new message to the list
+        });
+        // Update comment count after successful post
+        Provider.of<MessageProvider>(
+          context,
+          listen: false,
+        ).incrementCommentCount(newMessage.parentMessageId.toString());
+      }
+      _messageController.clear();
+    } catch (e) {
+      debugPrint('Error posting comment: $e');
       if (!mounted) return;
-      setState(() {
-        _comments.insert(0, newMessage); // Add new message to the list
-      });
-      // Update comment count after successful post
-      Provider.of<MessageProvider>(
-        context,
-        listen: false,
-      ).incrementCommentCount(newMessage.parentMessageId.toString());
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to post comment: $e'),
+          duration: const Duration(seconds: 5),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
-    _messageController.clear();
   }
 
   @override
@@ -509,12 +563,22 @@ class _ParentMessageHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   double get minExtent {
-    return hasMedia ? 200 : 100;
+    final isIOS = Platform.isIOS;
+    if (hasMedia) {
+      return isIOS ? 240 : 200; // iOS needs more space for media (+20px)
+    } else {
+      return isIOS ? 130 : 100; // iOS needs more space for text
+    }
   }
 
   @override
   double get maxExtent {
-    return hasMedia ? 280 : 120;
+    final isIOS = Platform.isIOS;
+    if (hasMedia) {
+      return isIOS ? 320 : 320; // iOS needs more space for media (+20px)
+    } else {
+      return isIOS ? 150 : 120; // iOS needs more space for text
+    }
   }
 
   @override

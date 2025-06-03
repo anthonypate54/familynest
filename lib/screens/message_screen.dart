@@ -8,7 +8,7 @@ import '../services/message_service.dart';
 import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'dart:async';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../utils/video_thumbnail_util.dart';
@@ -16,6 +16,8 @@ import '../widgets/gradient_background.dart';
 import '../theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/message_provider.dart';
+import '../dialogs/large_video_dialog.dart';
+import '../config/app_config.dart';
 
 class MessageScreen extends StatefulWidget {
   final String userId;
@@ -31,7 +33,6 @@ class _MessageScreenState extends State<MessageScreen> {
   final ValueNotifier<bool> _isSendButtonEnabled = ValueNotifier(false);
   File? _selectedMediaFile;
   String? _selectedMediaType;
-  final ImagePicker _picker = ImagePicker();
   // Video preview fields for composing
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
@@ -121,7 +122,7 @@ class _MessageScreenState extends State<MessageScreen> {
                 title: const Text('Take a photo'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia(ImageSource.camera, 'photo');
+                  _pickMedia('photo');
                 },
               ),
               ListTile(
@@ -129,7 +130,7 @@ class _MessageScreenState extends State<MessageScreen> {
                 title: const Text('Choose from gallery'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia(ImageSource.gallery, 'photo');
+                  _pickMedia('photo');
                 },
               ),
               ListTile(
@@ -137,7 +138,7 @@ class _MessageScreenState extends State<MessageScreen> {
                 title: const Text('Record a video'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia(ImageSource.camera, 'video');
+                  _pickMedia('video');
                 },
               ),
               ListTile(
@@ -145,7 +146,7 @@ class _MessageScreenState extends State<MessageScreen> {
                 title: const Text('Choose video from gallery'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia(ImageSource.gallery, 'video');
+                  _pickMedia('video');
                 },
               ),
             ],
@@ -155,29 +156,68 @@ class _MessageScreenState extends State<MessageScreen> {
     );
   }
 
-  Future<void> _pickMedia(ImageSource source, String type) async {
+  Future<void> _pickMedia(String type) async {
     try {
-      final XFile? pickedFile;
+      FilePickerResult? result;
       if (type == 'photo') {
-        pickedFile = await _picker.pickImage(
-          source: source,
-          maxWidth: 1800,
-          maxHeight: 1800,
-          imageQuality: 85,
-        );
+        result = await FilePicker.platform.pickFiles(type: FileType.image);
       } else {
-        pickedFile = await _picker.pickVideo(
-          source: source,
-          maxDuration: const Duration(minutes: 10),
-        );
+        result = await FilePicker.platform.pickFiles(type: FileType.video);
       }
 
+      final pickedFile = result?.files.first;
+
+      if (pickedFile != null) {
+        debugPrint('🔍 ##Picked file path: ${pickedFile.path}');
+        debugPrint('🔍 Picked file name: ${pickedFile.name}');
+        debugPrint('🔍 Picked file size: ${pickedFile.size}');
+
+        // Add cloud detection:
+        debugPrint('🔍 ###File identifier: ${pickedFile.identifier}');
+        debugPrint('🔍 Has path: ${pickedFile.path != null}');
+        debugPrint('🔍 Has identifier: ${pickedFile.identifier != null}');
+
+        if (pickedFile.path != null) {
+          debugPrint('🔍 ✅ LOCAL FILE detected');
+        } else if (pickedFile.identifier != null) {
+          debugPrint('🔍 ☁️ CLOUD FILE detected');
+        }
+      }
       if (!mounted) return;
 
       if (pickedFile != null) {
         final file = pickedFile;
         if (type == 'video') {
-          // Dispose previous controllers
+          final int fileSizeBytes = file.size;
+          final double fileSizeMB = fileSizeBytes / (1024 * 1024);
+
+          final File tmpfile = File(file.path!);
+          final int tmpfileSizeBytes = await tmpfile.length();
+          final double tmpfileSizeMB = tmpfileSizeBytes / (1024 * 1024);
+
+          debugPrint(
+            '🔍 Tmp file size: ${tmpfileSizeMB}MB, limit: ${AppConfig.maxFileUploadSizeMB}MB',
+          );
+          if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
+            final action = await LargeVideoDialog.show(context, fileSizeMB);
+
+            if (action == VideoSizeAction.chooseDifferent) {
+              // Re-open picker
+              _showMediaPicker();
+            } else if (action == VideoSizeAction.shareAsLink) {
+              // Show instruction and re-open picker for cloud selection
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Upload your video to Google Drive or Dropbox first, then select it from there.',
+                  ),
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              _showMediaPicker(); // Re-open picker
+            }
+            return; // Exit early
+          } // Dispose previous controllers
           _videoController?.dispose();
           _chewieController?.dispose();
           _videoController = null;
@@ -190,7 +230,7 @@ class _MessageScreenState extends State<MessageScreen> {
           _selectedVideoThumbnail = thumbnailFile;
 
           // Initialize video controller
-          _videoController = VideoPlayerController.file(File(file.path));
+          _videoController = VideoPlayerController.file(File(file.path!));
           await _videoController!.initialize();
 
           // Initialize Chewie controller
@@ -230,7 +270,7 @@ class _MessageScreenState extends State<MessageScreen> {
           );
         }
         setState(() {
-          _selectedMediaFile = File(file.path);
+          _selectedMediaFile = File(file.path!);
           _selectedMediaType = type;
         });
       }

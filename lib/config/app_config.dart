@@ -33,7 +33,7 @@ class AppConfig {
   /// Get the base URL for API requests based on platform and environment
   /// ngrok http 8080
   String get ngrokUrl =>
-      "https://2f62-2601-1c0-5900-1370-2859-c8e2-3b73-41ab.ngrok-free.app";
+      "https://7c15-2601-1c0-5900-1370-78a9-a220-c82e-2acc.ngrok-free.app";
 
   ///
   String get baseUrl {
@@ -86,4 +86,25 @@ class AppConfig {
 
   /// Helper method to determine if we're in a development environment
   bool get isDevelopment => _environment == Environment.development;
+
+  // Media Upload Configuration
+  /// Maximum file size for direct upload (in MB)
+  static const double maxFileUploadSizeMB = 20.0;
+
+  /// Maximum video duration for uploads (in minutes)
+  static const int maxVideoDurationMinutes = 10;
+
+  /// Supported video formats
+  static const List<String> supportedVideoFormats = ['mp4', 'mov', 'm4v'];
+
+  /// Supported image formats
+  static const List<String> supportedImageFormats = [
+    'jpg',
+    'jpeg',
+    'png',
+    'heic',
+  ];
+
+  /// Whether to show link sharing option for large files
+  static const bool enableLinkSharing = true;
 }

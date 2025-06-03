@@ -27,6 +27,7 @@ class VideoMessageCardState extends State<VideoMessageCard> {
   ChewieController? _chewieController;
   bool _isPlaying = false;
   String? _errorMessage;
+  bool _isDisposing = false;
 
   @override
   void initState() {
@@ -50,6 +51,7 @@ class VideoMessageCardState extends State<VideoMessageCard> {
   }
 
   void _initializeVideo() async {
+    if (_isDisposing) return;
     _disposeControllers();
 
     final String displayUrl =
@@ -61,7 +63,7 @@ class VideoMessageCardState extends State<VideoMessageCard> {
 
     try {
       await _controller!.initialize();
-      if (mounted) {
+      if (mounted && !_isDisposing) {
         _chewieController = ChewieController(
           videoPlayerController: _controller!,
           autoPlay: true,
@@ -75,7 +77,7 @@ class VideoMessageCardState extends State<VideoMessageCard> {
         });
       }
     } catch (error) {
-      if (mounted) {
+      if (mounted && !_isDisposing) {
         setState(() {
           _errorMessage = 'Failed to load video: $error';
         });
@@ -86,7 +88,7 @@ class VideoMessageCardState extends State<VideoMessageCard> {
   }
 
   void _onVideoError() {
-    if (_controller?.value.hasError == true && mounted) {
+    if (_controller?.value.hasError == true && mounted && !_isDisposing) {
       setState(() {
         _errorMessage = _controller!.value.errorDescription;
       });
@@ -99,7 +101,9 @@ class VideoMessageCardState extends State<VideoMessageCard> {
     _controller?.dispose(); // Then VideoPlayer
     _chewieController = null;
     _controller = null;
-    if (mounted) {
+
+    // Only setState if we're not in the middle of disposing and widget is still mounted
+    if (mounted && !_isDisposing) {
       setState(() {
         _isPlaying = false;
         _errorMessage = null;
@@ -109,6 +113,7 @@ class VideoMessageCardState extends State<VideoMessageCard> {
 
   @override
   void dispose() {
+    _isDisposing = true; // Set flag before disposal
     _disposeControllers(); // Use centralized disposal
     super.dispose();
   }
