@@ -167,8 +167,33 @@ class VideoMessageCardState extends State<VideoMessageCard> {
                         color: Colors.black54,
                         child: const Center(child: CircularProgressIndicator()),
                       ),
-                  errorWidget:
-                      (context, url, error) => _buildDefaultVideoPlaceholder(),
+                  errorWidget: (context, url, error) {
+                    // Handle fake/corrupted thumbnails gracefully
+                    if (error.toString().contains('Invalid image data') ||
+                        error.toString().contains('Image file is corrupted') ||
+                        error.toString().contains('HttpException') ||
+                        url.contains(
+                          '15',
+                        ) || // catch any suspiciously small file references
+                        error.toString().toLowerCase().contains('format')) {
+                      // Show user-friendly message for corrupted thumbnails
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Video thumbnail temporarily unavailable',
+                              ),
+                              duration: Duration(seconds: 2),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                        }
+                      });
+                    }
+                    // Always return the default placeholder, don't log the error
+                    return _buildDefaultVideoPlaceholder();
+                  },
                 )
               else
                 _buildDefaultVideoPlaceholder(),

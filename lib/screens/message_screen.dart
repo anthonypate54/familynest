@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/message.dart';
 import './compose_message_screen.dart';
@@ -158,130 +159,415 @@ class _MessageScreenState extends State<MessageScreen> {
 
   Future<void> _pickMedia(String type) async {
     try {
-      FilePickerResult? result;
-      if (type == 'photo') {
-        result = await FilePicker.platform.pickFiles(type: FileType.image);
-      } else {
-        result = await FilePicker.platform.pickFiles(type: FileType.video);
-      }
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: type == 'photo' ? FileType.image : FileType.video,
+        allowMultiple: false,
+        withData: false, // Don't download large cloud files to memory
+      );
 
-      final pickedFile = result?.files.first;
-
-      if (pickedFile != null) {
-        debugPrint('🔍 ##Picked file path: ${pickedFile.path}');
-        debugPrint('🔍 Picked file name: ${pickedFile.name}');
-        debugPrint('🔍 Picked file size: ${pickedFile.size}');
-
-        // Add cloud detection:
-        debugPrint('🔍 ###File identifier: ${pickedFile.identifier}');
-        debugPrint('🔍 Has path: ${pickedFile.path != null}');
-        debugPrint('🔍 Has identifier: ${pickedFile.identifier != null}');
-
-        if (pickedFile.path != null) {
-          debugPrint('🔍 ✅ LOCAL FILE detected');
-        } else if (pickedFile.identifier != null) {
-          debugPrint('🔍 ☁️ CLOUD FILE detected');
-        }
-      }
       if (!mounted) return;
 
-      if (pickedFile != null) {
-        final file = pickedFile;
+      if (result != null) {
+        PlatformFile file = result.files.first;
+
+        // Debug output
+        debugPrint('🔍 Picked file path: ${file.path}');
+        debugPrint('🔍 Picked file name: ${file.name}');
+        debugPrint('🔍 Picked file size: ${file.size}');
+        debugPrint('🔍 File identifier: ${file.identifier}');
+
+        // Determine file source
+        bool isCloudFile =
+            file.identifier != null &&
+            file.identifier!.startsWith('content://') &&
+            !file.identifier!.contains('com.android.providers.media.documents');
+
+        if (isCloudFile) {
+          debugPrint('🔍 ☁️ CLOUD FILE detected (cached)');
+        } else {
+          debugPrint('🔍 ✅ LOCAL FILE detected');
+        }
+
         if (type == 'video') {
           final int fileSizeBytes = file.size;
           final double fileSizeMB = fileSizeBytes / (1024 * 1024);
-
-          final File tmpfile = File(file.path!);
-          final int tmpfileSizeBytes = await tmpfile.length();
-          final double tmpfileSizeMB = tmpfileSizeBytes / (1024 * 1024);
-
           debugPrint(
-            '🔍 Tmp file size: ${tmpfileSizeMB}MB, limit: ${AppConfig.maxFileUploadSizeMB}MB',
+            '🔍 File size: ${fileSizeMB}MB, limit: ${AppConfig.maxFileUploadSizeMB}MB',
           );
+
           if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
-            final action = await LargeVideoDialog.show(context, fileSizeMB);
+            // LARGE FILE - different handling based on source
+            if (isCloudFile) {
+              // LARGE CLOUD FILE (cached) - handle as external video
+              debugPrint('🔍 Large cloud file - handling as external video');
+              await _processExternalVideo(File(file.path!));
+            } else {
+              // LARGE LOCAL FILE - show upload dialog
+              debugPrint('🔍 Large local file - showing upload dialog');
+              final action = await LargeVideoDialog.show(context, fileSizeMB);
 
-            if (action == VideoSizeAction.chooseDifferent) {
-              // Re-open picker
-              _showMediaPicker();
-            } else if (action == VideoSizeAction.shareAsLink) {
-              // Show instruction and re-open picker for cloud selection
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Upload your video to Google Drive or Dropbox first, then select it from there.',
-                  ),
-                  duration: Duration(seconds: 4),
-                ),
-              );
-              _showMediaPicker(); // Re-open picker
-            }
-            return; // Exit early
-          } // Dispose previous controllers
-          _videoController?.dispose();
-          _chewieController?.dispose();
-          _videoController = null;
-          _chewieController = null;
-          _selectedVideoThumbnail = null;
-
-          // Generate thumbnail
-          final File? thumbnailFile =
-              await VideoThumbnailUtil.generateThumbnail('file://${file.path}');
-          _selectedVideoThumbnail = thumbnailFile;
-
-          // Initialize video controller
-          _videoController = VideoPlayerController.file(File(file.path!));
-          await _videoController!.initialize();
-
-          // Initialize Chewie controller
-          _chewieController = ChewieController(
-            videoPlayerController: _videoController!,
-            aspectRatio: _videoController!.value.aspectRatio,
-            autoPlay: false,
-            looping: false,
-            autoInitialize: true,
-            showControls: true,
-            placeholder:
-                thumbnailFile != null
-                    ? Image.file(
-                      thumbnailFile,
-                      fit: BoxFit.contain,
-                      width: double.infinity,
-                      height: double.infinity,
-                    )
-                    : Container(
-                      color: Colors.black,
-                      child: const Center(child: CircularProgressIndicator()),
+              if (action == VideoSizeAction.chooseDifferent) {
+                _showMediaPicker();
+              } else if (action == VideoSizeAction.shareAsLink) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Upload your video to Google Drive or Dropbox first, then select it from there.',
                     ),
-            materialProgressColors: ChewieProgressColors(
-              playedColor: Colors.blue,
-              handleColor: Colors.blueAccent,
-              backgroundColor: Colors.grey.shade700,
-              bufferedColor: Colors.lightBlue.withOpacity(0.5),
-            ),
-            errorBuilder: (context, errorMessage) {
-              return Center(
-                child: Text(
-                  'Error: $errorMessage',
-                  style: const TextStyle(color: Colors.white),
-                ),
-              );
-            },
-          );
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+                _showMediaPicker();
+              }
+            }
+            return; // Exit early for large files
+          }
         }
-        setState(() {
-          _selectedMediaFile = File(file.path!);
-          _selectedMediaType = type;
-        });
+
+        // SMALL FILE (any source) - process normally
+        debugPrint('🔍 Small file - processing normally');
+        await _processLocalFile(File(file.path!), type);
       }
     } catch (e) {
-      debugPrint('Error picking media: $e');
-      if (!mounted) return;
+      if (e is PlatformException && e.code == 'unknown_path') {
+        // VERY LARGE CLOUD FILE - couldn't cache
+        debugPrint('🔍 Very large cloud file - showing URL input dialog');
+        await _handleVeryLargeCloudFile(type);
+      } else {
+        debugPrint('Error picking media: $e');
+        if (!mounted) return;
 
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking media: $e'),
+            duration: const Duration(seconds: 10),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _processLocalFile(File file, String type) async {
+    // Dispose previous controllers
+    _videoController?.dispose();
+    _chewieController?.dispose();
+    _videoController = null;
+    _chewieController = null;
+    _selectedVideoThumbnail = null;
+
+    if (type == 'video') {
+      // Generate thumbnail
+      final File? thumbnailFile = await VideoThumbnailUtil.generateThumbnail(
+        'file://${file.path}',
+      );
+      _selectedVideoThumbnail = thumbnailFile;
+
+      // Initialize video controller
+      _videoController = VideoPlayerController.file(file);
+      await _videoController!.initialize();
+
+      // Initialize Chewie controller
+      _chewieController = ChewieController(
+        videoPlayerController: _videoController!,
+        aspectRatio: _videoController!.value.aspectRatio,
+        autoPlay: false,
+        looping: false,
+        autoInitialize: true,
+        showControls: true,
+        placeholder:
+            thumbnailFile != null
+                ? Image.file(
+                  thumbnailFile,
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  height: double.infinity,
+                )
+                : Container(
+                  color: Colors.black,
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
+        materialProgressColors: ChewieProgressColors(
+          playedColor: Colors.blue,
+          handleColor: Colors.blueAccent,
+          backgroundColor: Colors.grey.shade700,
+          bufferedColor: Colors.lightBlue.withOpacity(0.5),
+        ),
+        errorBuilder: (context, errorMessage) {
+          return Center(
+            child: Text(
+              'Error: $errorMessage',
+              style: const TextStyle(color: Colors.white),
+            ),
+          );
+        },
+      );
+    }
+
+    setState(() {
+      _selectedMediaFile = file;
+      _selectedMediaType = type;
+    });
+  }
+
+  Future<void> _processExternalVideo(File file) async {
+    // LARGE CLOUD FILE (cached) - we have cached file + cloud URI
+    try {
+      // Generate thumbnail from cached file
+      final File? thumbnailFile = await VideoThumbnailUtil.generateThumbnail(
+        'file://${file.path!}',
+      );
+
+      if (thumbnailFile != null) {
+        debugPrint('🔍 Generated thumbnail for external video');
+
+        // Show URL input dialog
+        final String? dialogResult = await _showVideoUrlDialog();
+
+        if (dialogResult != null && dialogResult.trim().isNotEmpty) {
+          // Parse the result - format is "message|||url"
+          final parts = dialogResult.split('|||');
+          final userMessage = parts.length > 0 ? parts[0].trim() : '';
+          final userUrl = parts.length > 1 ? parts[1].trim() : '';
+
+          if (_isValidVideoUrl(userUrl)) {
+            debugPrint('🔍 Valid URL provided: $userUrl');
+            debugPrint('🔍 User message: $userMessage');
+
+            // Post the external video message with thumbnail
+            try {
+              final apiService = Provider.of<ApiService>(
+                context,
+                listen: false,
+              );
+
+              Message newMessage = await apiService.postMessage(
+                int.tryParse(widget.userId) ?? 0,
+                userMessage.isNotEmpty
+                    ? userMessage
+                    : 'Shared external video', // Use user message or fallback
+                mediaPath: thumbnailFile.path, // Thumbnail file path
+                mediaType: 'image', // Thumbnail is an image
+                videoUrl: userUrl, // External video URL
+              );
+
+              // Add to local message list and refresh
+              setState(() {
+                _messages.insert(0, newMessage);
+              });
+              await _loadMessages(); // Reload messages to get updated data
+
+              // Show success message
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('External video posted successfully!'),
+                  duration: Duration(seconds: 3),
+                  backgroundColor: Colors.green,
+                ),
+              );
+
+              // Scroll to bottom
+              _scrollToBottomIfNeeded();
+            } catch (e) {
+              debugPrint('Error posting external video message: $e');
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error posting external video: $e'),
+                  duration: const Duration(seconds: 3),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Please enter a valid video URL (must start with https://)',
+                ),
+                duration: Duration(seconds: 3),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        } else {
+          debugPrint('🔍 User cancelled URL input');
+        }
+      } else {
+        debugPrint('🔍 Failed to generate thumbnail');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not generate thumbnail for external video'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error processing external video: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error picking media: $e'),
-          duration: const Duration(seconds: 10),
+          content: Text('Error processing external video: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<String?> _showVideoUrlDialog() async {
+    final TextEditingController urlController = TextEditingController();
+    final TextEditingController messageController = TextEditingController();
+
+    return showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Share Video Link'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Add a message for your video:',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: messageController,
+                decoration: const InputDecoration(
+                  hintText: 'What would you like to say about this video?',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 2,
+                textCapitalization: TextCapitalization.sentences,
+                autofocus: true,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Please paste the shareable link to your video:',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: urlController,
+                decoration: const InputDecoration(
+                  hintText: 'https://drive.google.com/file/d/...',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.url,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Make sure the link is publicly accessible or shared with your family.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final url = urlController.text.trim();
+                final message = messageController.text.trim();
+                if (url.isNotEmpty) {
+                  Navigator.of(
+                    context,
+                  ).pop('$message|||$url'); // Use delimiter to pass both
+                }
+              },
+              child: const Text('Share Video'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  bool _isValidVideoUrl(String url) {
+    return url.startsWith('https://') && url.length > 10;
+  }
+
+  Future<void> _handleVeryLargeCloudFile(String type) async {
+    // VERY LARGE CLOUD FILE - no cached file available, need user URL
+    if (type == 'video') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Video too large to cache. You can still share it using a direct link.',
+          ),
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      // Show URL input dialog for very large cloud files
+      final String? dialogResult = await _showVideoUrlDialog();
+
+      if (dialogResult != null && dialogResult.trim().isNotEmpty) {
+        // Parse the result - format is "message|||url"
+        final parts = dialogResult.split('|||');
+        final userMessage = parts.length > 0 ? parts[0].trim() : '';
+        final userUrl = parts.length > 1 ? parts[1].trim() : '';
+
+        if (_isValidVideoUrl(userUrl)) {
+          debugPrint('🔍 Very large file - Valid URL provided: $userUrl');
+          debugPrint('🔍 Very large file - User message: $userMessage');
+
+          // Post the external video message without thumbnail (very large file)
+          try {
+            final apiService = Provider.of<ApiService>(context, listen: false);
+
+            Message newMessage = await apiService.postMessage(
+              int.tryParse(widget.userId) ?? 0,
+              userMessage.isNotEmpty ? userMessage : 'Shared external video',
+              videoUrl: userUrl, // External video URL, no thumbnail file
+            );
+
+            // Add to local message list and refresh
+            setState(() {
+              _messages.insert(0, newMessage);
+            });
+            await _loadMessages(); // Reload messages to get updated data
+
+            // Show success message
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('External video posted successfully!'),
+                duration: Duration(seconds: 3),
+                backgroundColor: Colors.green,
+              ),
+            );
+
+            // Scroll to bottom
+            _scrollToBottomIfNeeded();
+          } catch (e) {
+            debugPrint('Error posting very large external video: $e');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error posting external video: $e'),
+                duration: const Duration(seconds: 3),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Please enter a valid video URL (must start with https://)',
+              ),
+              duration: Duration(seconds: 3),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } else {
+        debugPrint('🔍 User cancelled very large file URL input');
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Photo too large to process.'),
+          duration: Duration(seconds: 3),
         ),
       );
     }

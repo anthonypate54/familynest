@@ -89,7 +89,7 @@ class AppConfig {
 
   // Media Upload Configuration
   /// Maximum file size for direct upload (in MB)
-  static const double maxFileUploadSizeMB = 20.0;
+  static const double maxFileUploadSizeMB = 5.0;
 
   /// Maximum video duration for uploads (in minutes)
   static const int maxVideoDurationMinutes = 10;

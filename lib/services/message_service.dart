@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/app_theme.dart';
 import '../widgets/video_message_card.dart';
+import '../widgets/external_video_message_card.dart';
 import '../screens/thread_screen.dart';
 import '../utils/page_transitions.dart';
 import 'package:provider/provider.dart';
@@ -501,6 +502,13 @@ class _MessageCardState extends State<MessageCard> {
 
   Widget _buildMediaWidgetAligned(BuildContext context, ApiService apiService) {
     if (widget.message.mediaUrl != null &&
+        widget.message.mediaType == 'cloud_video') {
+      return ExternalVideoMessageCard(
+        externalVideoUrl: widget.message.mediaUrl!,
+        thumbnailUrl: widget.message.thumbnailUrl,
+        apiService: apiService,
+      );
+    } else if (widget.message.mediaUrl != null &&
         widget.message.mediaUrl!.isNotEmpty) {
       if (widget.message.mediaType == 'image' ||
           widget.message.mediaType == 'photo') {
@@ -522,15 +530,38 @@ class _MessageCardState extends State<MessageCard> {
                   height: 200,
                   child: const Center(child: CircularProgressIndicator()),
                 ),
-            errorWidget:
-                (context, url, error) => Container(
-                  color: Colors.grey[300],
-                  width: double.infinity,
-                  height: 200,
-                  child: const Center(
-                    child: Icon(Icons.broken_image, color: Colors.grey),
-                  ),
+            errorWidget: (context, url, error) {
+              // Handle fake/corrupted images gracefully
+              if (error.toString().contains('Invalid image data') ||
+                  error.toString().contains('Image file is corrupted') ||
+                  error.toString().contains('HttpException') ||
+                  url.contains(
+                    '15',
+                  ) || // catch any suspiciously small file references
+                  error.toString().toLowerCase().contains('format')) {
+                // Show user-friendly message for corrupted images
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Image temporarily unavailable'),
+                        duration: Duration(seconds: 2),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                });
+              }
+              // Always return the broken image icon, don't log the error
+              return Container(
+                color: Colors.grey[300],
+                width: double.infinity,
+                height: 200,
+                child: const Center(
+                  child: Icon(Icons.broken_image, color: Colors.grey),
                 ),
+              );
+            },
           ),
         );
       } else if (widget.message.mediaType == 'video') {
