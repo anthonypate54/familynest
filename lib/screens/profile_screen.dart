@@ -77,27 +77,47 @@ class ProfileScreenState extends State<ProfileScreen>
 
   // Load invitations using the improved invitation service
   Future<void> _loadInvitations() async {
-    // Get the service just when needed
-    final invitationService = ServiceProvider().invitationService;
+    try {
+      // Check if ServiceProvider is initialized before accessing services
+      final serviceProvider = ServiceProvider();
 
-    await invitationService.loadInvitations(
-      userId: widget.userId,
-      setLoadingState: (isLoading) {
-        if (mounted) {
-          setState(() {
-            _isLoadingInvitations = isLoading;
-          });
-        }
-      },
-      setInvitationsState: (invitations) {
-        if (mounted) {
-          setState(() {
-            _invitations = invitations;
-          });
-        }
-      },
-      checkIfMounted: () => mounted,
-    );
+      // Wait for ServiceProvider to be initialized if it's not ready yet
+      if (!serviceProvider.isInitialized) {
+        debugPrint(
+          'ServiceProvider not ready yet, skipping invitation loading',
+        );
+        return; // Exit gracefully, invitations will remain empty
+      }
+
+      final invitationService = serviceProvider.invitationService;
+
+      await invitationService.loadInvitations(
+        userId: widget.userId,
+        setLoadingState: (isLoading) {
+          if (mounted) {
+            setState(() {
+              _isLoadingInvitations = isLoading;
+            });
+          }
+        },
+        setInvitationsState: (invitations) {
+          if (mounted) {
+            setState(() {
+              _invitations = invitations;
+            });
+          }
+        },
+        checkIfMounted: () => mounted,
+      );
+    } catch (e) {
+      debugPrint('Error loading invitations (ServiceProvider not ready): $e');
+      // Invitations will remain empty, which is fine - screen will work without them
+      if (mounted) {
+        setState(() {
+          _isLoadingInvitations = false;
+        });
+      }
+    }
   }
 
   // Respond to an invitation using the invitation service

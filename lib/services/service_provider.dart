@@ -43,6 +43,9 @@ class ServiceProvider {
     }
   }
 
+  // Check if services are initialized without throwing
+  bool get isInitialized => _isInitialized;
+
   // Reset all services (for logout)
   void reset() {
     // Add any cleanup logic here if needed

@@ -104,9 +104,8 @@ class ExternalVideoMessageCard extends StatelessWidget {
                     // Handle fake/corrupted thumbnails gracefully
                     if (error.toString().contains('Invalid image data') ||
                         error.toString().contains('Image file is corrupted') ||
-                        error.toString().contains('HttpException') ||
-                        url.contains(
-                          '15',
+                        error.toString().contains(
+                          'HttpException',
                         ) || // catch any suspiciously small file references
                         error.toString().toLowerCase().contains('format')) {
                       // Show user-friendly message for corrupted thumbnails
