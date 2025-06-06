@@ -10,6 +10,7 @@ import '../screens/thread_screen.dart';
 import '../utils/page_transitions.dart';
 import 'package:provider/provider.dart';
 import '../providers/message_provider.dart';
+import '../services/share_service.dart';
 
 class MessageService {
   static Widget buildMessageListView(
@@ -664,10 +665,20 @@ class _MessageCardState extends State<MessageCard> {
 
         const SizedBox(width: 12),
         // Share icon (no count)
-        Icon(
-          Icons.share_outlined,
-          size: 16,
-          color: Theme.of(context).colorScheme.onSurface,
+        // Share icon (no count)
+        GestureDetector(
+          onTap: () {
+            ShareService.shareMessage(
+              context,
+              message,
+              widget.apiService.baseUrl,
+            );
+          },
+          child: Icon(
+            Icons.share_outlined,
+            size: 16,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
         ),
       ],
     );

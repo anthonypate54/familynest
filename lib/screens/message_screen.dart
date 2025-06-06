@@ -19,6 +19,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/message_provider.dart';
 import '../dialogs/large_video_dialog.dart';
 import '../config/app_config.dart';
+import '../services/share_service.dart';
 
 class MessageScreen extends StatefulWidget {
   final String userId;
@@ -232,7 +233,8 @@ class _MessageScreenState extends State<MessageScreen> {
       if (e is PlatformException && e.code == 'unknown_path') {
         // VERY LARGE CLOUD FILE - couldn't cache
         debugPrint('🔍 Very large cloud file - showing URL input dialog');
-        await _handleVeryLargeCloudFile(type);
+        if (!mounted) return;
+        await _handleVeryLargeCloudFile('video');
       } else {
         debugPrint('Error picking media: $e');
         if (!mounted) return;
@@ -243,6 +245,67 @@ class _MessageScreenState extends State<MessageScreen> {
             duration: const Duration(seconds: 10),
           ),
         );
+      }
+    }
+  }
+
+  Future<void> _handleVeryLargeCloudFile(String type) async {
+    // VERY LARGE CLOUD FILE - no cached file available, need user URL
+    if (type == 'video') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Video too large to cache. You can still share it using a direct link.',
+          ),
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      // Show URL input dialog for very large cloud files
+      final String? dialogResult = await ShareService.showVideoUrlDialog(
+        context,
+      );
+
+      if (dialogResult != null) {
+        final parts = dialogResult.split('|||');
+        final userMessage = parts.length > 1 ? parts[0] : '';
+        final userUrl = parts.length > 1 ? parts[1] : parts[0];
+
+        if (ShareService.isValidVideoUrl(userUrl)) {
+          try {
+            final apiService = Provider.of<ApiService>(context, listen: false);
+            await apiService.postMessage(
+              int.tryParse(widget.userId) ?? 0,
+              userMessage.isNotEmpty ? userMessage : 'Shared external video',
+              videoUrl: userUrl,
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('External video shared successfully!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          } catch (e) {
+            debugPrint('Error posting external video: $e');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error sharing video: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enter a valid HTTPS video URL'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
     }
   }
@@ -321,7 +384,10 @@ class _MessageScreenState extends State<MessageScreen> {
         debugPrint('🔍 Generated thumbnail for external video');
 
         // Show URL input dialog
-        final String? dialogResult = await _showVideoUrlDialog();
+        if (!mounted) return;
+        final String? dialogResult = await ShareService.showVideoUrlDialog(
+          context,
+        );
 
         if (dialogResult != null && dialogResult.trim().isNotEmpty) {
           // Parse the result - format is "message|||url"
@@ -329,7 +395,7 @@ class _MessageScreenState extends State<MessageScreen> {
           final userMessage = parts.length > 0 ? parts[0].trim() : '';
           final userUrl = parts.length > 1 ? parts[1].trim() : '';
 
-          if (_isValidVideoUrl(userUrl)) {
+          if (ShareService.isValidVideoUrl(userUrl)) {
             debugPrint('🔍 Valid URL provided: $userUrl');
             debugPrint('🔍 User message: $userMessage');
 
@@ -406,168 +472,6 @@ class _MessageScreenState extends State<MessageScreen> {
         SnackBar(
           content: Text('Error processing external video: $e'),
           duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  Future<String?> _showVideoUrlDialog() async {
-    final TextEditingController urlController = TextEditingController();
-    final TextEditingController messageController = TextEditingController();
-
-    return showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Share Video Link'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Add a message for your video:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: messageController,
-                decoration: const InputDecoration(
-                  hintText: 'What would you like to say about this video?',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 2,
-                textCapitalization: TextCapitalization.sentences,
-                autofocus: true,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Please paste the shareable link to your video:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: urlController,
-                decoration: const InputDecoration(
-                  hintText: 'https://drive.google.com/file/d/...',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.url,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Make sure the link is publicly accessible or shared with your family.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final url = urlController.text.trim();
-                final message = messageController.text.trim();
-                if (url.isNotEmpty) {
-                  Navigator.of(
-                    context,
-                  ).pop('$message|||$url'); // Use delimiter to pass both
-                }
-              },
-              child: const Text('Share Video'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  bool _isValidVideoUrl(String url) {
-    return url.startsWith('https://') && url.length > 10;
-  }
-
-  Future<void> _handleVeryLargeCloudFile(String type) async {
-    // VERY LARGE CLOUD FILE - no cached file available, need user URL
-    if (type == 'video') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Video too large to cache. You can still share it using a direct link.',
-          ),
-          duration: Duration(seconds: 3),
-        ),
-      );
-
-      // Show URL input dialog for very large cloud files
-      final String? dialogResult = await _showVideoUrlDialog();
-
-      if (dialogResult != null && dialogResult.trim().isNotEmpty) {
-        // Parse the result - format is "message|||url"
-        final parts = dialogResult.split('|||');
-        final userMessage = parts.length > 0 ? parts[0].trim() : '';
-        final userUrl = parts.length > 1 ? parts[1].trim() : '';
-
-        if (_isValidVideoUrl(userUrl)) {
-          debugPrint('🔍 Very large file - Valid URL provided: $userUrl');
-          debugPrint('🔍 Very large file - User message: $userMessage');
-
-          // Post the external video message without thumbnail (very large file)
-          try {
-            final apiService = Provider.of<ApiService>(context, listen: false);
-
-            Message newMessage = await apiService.postMessage(
-              int.tryParse(widget.userId) ?? 0,
-              userMessage.isNotEmpty ? userMessage : 'Shared external video',
-              videoUrl: userUrl, // External video URL, no thumbnail file
-            );
-
-            // Add to local message list and refresh
-            setState(() {
-              _messages.insert(0, newMessage);
-            });
-            await _loadMessages(); // Reload messages to get updated data
-
-            // Show success message
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('External video posted successfully!'),
-                duration: Duration(seconds: 3),
-                backgroundColor: Colors.green,
-              ),
-            );
-
-            // Scroll to bottom
-            _scrollToBottomIfNeeded();
-          } catch (e) {
-            debugPrint('Error posting very large external video: $e');
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error posting external video: $e'),
-                duration: const Duration(seconds: 3),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Please enter a valid video URL (must start with https://)',
-              ),
-              duration: Duration(seconds: 3),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      } else {
-        debugPrint('🔍 User cancelled very large file URL input');
-      }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Photo too large to process.'),
-          duration: Duration(seconds: 3),
         ),
       );
     }

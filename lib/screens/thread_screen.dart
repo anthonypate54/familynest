@@ -19,6 +19,7 @@ import '../theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../config/app_config.dart';
 import '../dialogs/large_video_dialog.dart';
+import '../services/share_service.dart';
 
 class ThreadScreen extends StatefulWidget {
   final int userId;
@@ -312,10 +313,6 @@ class _ThreadScreenState extends State<ThreadScreen> {
     });
   }
 
-  bool _isValidVideoUrl(String url) {
-    return url.startsWith('https://') && url.length > 10;
-  }
-
   Future<void> _processExternalVideo(File file) async {
     // LARGE CLOUD FILE (cached) - we have cached file + cloud URI
     try {
@@ -328,7 +325,10 @@ class _ThreadScreenState extends State<ThreadScreen> {
         debugPrint('🔍 Generated thumbnail for external video');
 
         // Show URL input dialog
-        final String? dialogResult = await _showVideoUrlDialog();
+        if (!mounted) return;
+        final String? dialogResult = await ShareService.showVideoUrlDialog(
+          context,
+        );
 
         if (dialogResult != null && dialogResult.trim().isNotEmpty) {
           // Parse the result - format is "message|||url"
@@ -336,7 +336,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
           final userMessage = parts.length > 0 ? parts[0].trim() : '';
           final userUrl = parts.length > 1 ? parts[1].trim() : '';
 
-          if (_isValidVideoUrl(userUrl)) {
+          if (ShareService.isValidVideoUrl(userUrl)) {
             debugPrint('🔍 Valid URL provided: $userUrl');
             debugPrint('🔍 User message: $userMessage');
 
@@ -419,78 +419,6 @@ class _ThreadScreenState extends State<ThreadScreen> {
     }
   }
 
-  Future<String?> _showVideoUrlDialog() async {
-    final TextEditingController urlController = TextEditingController();
-    final TextEditingController messageController = TextEditingController();
-
-    return showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Share Video Link'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Add a message for your video:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: messageController,
-                decoration: const InputDecoration(
-                  hintText: 'What would you like to say about this video?',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 2,
-                textCapitalization: TextCapitalization.sentences,
-                autofocus: true,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Please paste the shareable link to your video:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: urlController,
-                decoration: const InputDecoration(
-                  hintText: 'https://drive.google.com/file/d/...',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.url,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Make sure the link is publicly accessible or shared with your family.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final url = urlController.text.trim();
-                final message = messageController.text.trim();
-                if (url.isNotEmpty) {
-                  Navigator.of(
-                    context,
-                  ).pop('$message|||$url'); // Use delimiter to pass both
-                }
-              },
-              child: const Text('Share Video'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _handleVeryLargeCloudFile(String type) async {
     // VERY LARGE CLOUD FILE - no cached file available, need user URL
     if (type == 'video') {
@@ -504,7 +432,9 @@ class _ThreadScreenState extends State<ThreadScreen> {
       );
 
       // Show URL input dialog for very large cloud files
-      final String? dialogResult = await _showVideoUrlDialog();
+      final String? dialogResult = await ShareService.showVideoUrlDialog(
+        context,
+      );
 
       if (dialogResult != null && dialogResult.trim().isNotEmpty) {
         // Parse the result - format is "message|||url"
@@ -512,7 +442,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
         final userMessage = parts.length > 0 ? parts[0].trim() : '';
         final userUrl = parts.length > 1 ? parts[1].trim() : '';
 
-        if (_isValidVideoUrl(userUrl)) {
+        if (ShareService.isValidVideoUrl(userUrl)) {
           debugPrint('🔍 Very large file - Valid URL provided: $userUrl');
           debugPrint('🔍 Very large file - User message: $userMessage');
 
