@@ -6,6 +6,7 @@ import 'screens/profile_screen.dart';
 import 'screens/family_management_screen.dart';
 import 'screens/invitations_screen.dart';
 import 'screens/message_screen.dart';
+import 'screens/dm_list_screen.dart';
 import 'theme/app_theme.dart';
 import 'utils/page_transitions.dart';
 import 'config/app_config.dart';
@@ -200,6 +201,7 @@ class MainAppContainerState extends State<MainAppContainer> {
     super.initState();
     _screens = [
       MessageScreen(userId: widget.userId.toString()),
+      DMListScreen(userId: widget.userId),
       ProfileScreen(
         userId: widget.userId,
         userRole: widget.userRole,

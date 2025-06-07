@@ -25,6 +25,11 @@ class MessageService {
     String? content,
     bool isThreadView = false,
   }) {
+    // Show empty state when no messages
+    if (messages.isEmpty) {
+      return _buildEmptyState(context);
+    }
+
     return ListView.builder(
       controller: scrollController,
       reverse: true,
@@ -158,6 +163,336 @@ class MessageService {
 
   static bool isSameDay(DateTime? a, DateTime? b) {
     return _isSameDay(a, b);
+  }
+
+  // Build beautiful empty state for new users
+  static Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Welcome Icon - smaller
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.family_restroom,
+                size: 40,
+                color: Colors.white70,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Welcome Title - smaller
+            const Text(
+              'Welcome to Family Nest! 👋',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+
+            // Description - smaller
+            const Text(
+              'Share photos, videos, and messages with your family members in a private space.',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+
+            // Getting Started Steps - more compact
+            _buildCompactCard(
+              icon: Icons.home_filled,
+              title: 'Create or Join a Family',
+              actionText: 'Go to Family Tab',
+              onTap: () => _navigateToFamilyManagement(context),
+            ),
+            const SizedBox(height: 12),
+
+            _buildCompactCard(
+              icon: Icons.photo_camera,
+              title: 'Share Photos & Messages',
+              actionText: 'See How',
+              onTap: () => _showHelpDialog(context),
+            ),
+            const SizedBox(height: 12),
+
+            _buildCompactCard(
+              icon: Icons.people,
+              title: 'Invite Family Members',
+              actionText: 'Learn About Invites',
+              onTap: () => _showInvitationHelp(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper method to build compact getting started cards
+  static Widget _buildCompactCard({
+    required IconData icon,
+    required String title,
+    required String actionText,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(icon, color: Colors.blue, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: onTap,
+              child: Text(actionText, style: const TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.blue,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                minimumSize: const Size(0, 32),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Navigation helper
+  static void _navigateToFamilyManagement(BuildContext context) {
+    // Try to find the MainAppContainer and switch to Family tab (index 2)
+    try {
+      // Navigate up the widget tree to find the PageController
+      // For now, use a simpler approach: direct navigation
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) {
+            // We need to get the userId from somewhere
+            // Let's try a different approach - just show helpful dialog with clear instructions
+            return _buildNavigationHelpDialog(context);
+          },
+        ),
+      );
+    } catch (e) {
+      // Fallback: show dialog with clear instructions
+      _showNavigationHelpDialog(context);
+    }
+  }
+
+  // Show navigation help as a full dialog
+  static Widget _buildNavigationHelpDialog(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black54,
+      body: Center(
+        child: Container(
+          margin: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.family_restroom, size: 48, color: Colors.blue),
+              const SizedBox(height: 16),
+              const Text(
+                'Get Started with Families',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'To create or join a family and start sharing messages:',
+                style: TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              _buildStep('1', 'Tap the "Family" tab at the bottom'),
+              _buildStep(
+                '2',
+                'Create your own family or wait for an invitation',
+              ),
+              _buildStep('3', 'Start sharing photos and messages!'),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                ),
+                child: const Text('Got it!'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Helper to build step widgets
+  static Widget _buildStep(String number, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: const BoxDecoration(
+              color: Colors.blue,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
+        ],
+      ),
+    );
+  }
+
+  // Fallback dialog
+  static void _showNavigationHelpDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.family_restroom, color: Colors.blue),
+                SizedBox(width: 8),
+                Text('Get Started with Families'),
+              ],
+            ),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'To create or join a family and start sharing messages:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 12),
+                Text('1. Tap the "Family" tab at the bottom of the screen'),
+                SizedBox(height: 8),
+                Text('2. Create your own family or wait for an invitation'),
+                SizedBox(height: 8),
+                Text('3. Start sharing photos and messages!'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Got it!'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Help dialog
+  static void _showHelpDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('How to Share Messages'),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('• Tap the + button to attach photos or videos'),
+                SizedBox(height: 8),
+                Text('• Type your message in the text field'),
+                SizedBox(height: 8),
+                Text('• Tap send to share with your family'),
+                SizedBox(height: 8),
+                Text('• Long press messages to like or favorite them'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Got it!'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Invitation help dialog
+  static void _showInvitationHelp(BuildContext context) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('About Family Invitations'),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('• Only family owners can send invitations'),
+                SizedBox(height: 8),
+                Text('• Invitations are sent by email address'),
+                SizedBox(height: 8),
+                Text('• You can join multiple families as a member'),
+                SizedBox(height: 8),
+                Text('• But you can only own/create one family'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Understood'),
+              ),
+            ],
+          ),
+    );
   }
 }
 

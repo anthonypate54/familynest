@@ -65,7 +65,11 @@ class ProfileScreenState extends State<ProfileScreen>
     _navigationController =
         widget.navigationController ?? BottomNavigationController();
     _userDataFuture = _loadUser();
-    _loadInvitations();
+
+    // Add delayed ServiceProvider initialization check
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeServiceProvider();
+    });
   }
 
   @override
@@ -123,6 +127,7 @@ class ProfileScreenState extends State<ProfileScreen>
   // Respond to an invitation using the invitation service
   Future<void> _respondToInvitation(int invitationId, bool accept) async {
     try {
+      if (!mounted) return;
       setState(() => _isLoadingInvitations = true);
 
       // Get the service just when needed
@@ -207,9 +212,11 @@ class ProfileScreenState extends State<ProfileScreen>
         // Handle file size checking
         int fileSizeKB = 0;
 
-        setState(() {
-          _photoFile = pickedFile;
-        });
+        if (mounted) {
+          setState(() {
+            _photoFile = pickedFile;
+          });
+        }
 
         // Attempt upload
         try {
@@ -249,9 +256,11 @@ class ProfileScreenState extends State<ProfileScreen>
               );
 
               // Refresh user data
-              setState(() {
-                _userDataFuture = _loadUser();
-              });
+              if (mounted) {
+                setState(() {
+                  _userDataFuture = _loadUser();
+                });
+              }
 
               // Close the progress dialog
               if (!mounted) return;
@@ -310,9 +319,11 @@ class ProfileScreenState extends State<ProfileScreen>
             ).updatePhoto(widget.userId, pickedFile.path);
 
             // Refresh the user data after successful upload
-            setState(() {
-              _userDataFuture = _loadUser();
-            });
+            if (mounted) {
+              setState(() {
+                _userDataFuture = _loadUser();
+              });
+            }
 
             // Close the progress dialog
             if (!mounted) return;
@@ -561,9 +572,11 @@ class ProfileScreenState extends State<ProfileScreen>
       ).updateDemographics(widget.userId, data);
 
       // Refresh the user data
-      setState(() {
-        _userDataFuture = _loadUser();
-      });
+      if (mounted) {
+        setState(() {
+          _userDataFuture = _loadUser();
+        });
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -886,9 +899,11 @@ class ProfileScreenState extends State<ProfileScreen>
         IconButton(
           icon: const Icon(Icons.refresh, color: Colors.white),
           onPressed: () {
-            setState(() {
-              _userDataFuture = _loadUser();
-            });
+            if (mounted) {
+              setState(() {
+                _userDataFuture = _loadUser();
+              });
+            }
           },
           tooltip: 'Refresh',
         ),
@@ -1071,6 +1086,30 @@ class ProfileScreenState extends State<ProfileScreen>
         ),
       ),
     );
+  }
+
+  // Add this new method
+  void _initializeServiceProvider() {
+    try {
+      if (ServiceProvider().isInitialized) {
+        _loadInvitations(); // Load invitations only after ServiceProvider is ready
+      } else {
+        // Retry after a short delay
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _initializeServiceProvider();
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('ServiceProvider not ready yet, will retry: $e');
+      // Retry after a longer delay
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted) {
+          _initializeServiceProvider();
+        }
+      });
+    }
   }
 }
 

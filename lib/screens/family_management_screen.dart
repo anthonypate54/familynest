@@ -59,8 +59,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 1, vsync: this);
-    // Initialize the invitation service
-    _invitationService = ServiceProvider().invitationService;
     _loadData();
     _searchController.addListener(() {
       setState(() {
@@ -70,6 +68,11 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     _loadUserData();
     _loadUserPreferences();
     _loadMessagePreferences();
+
+    // Add delayed ServiceProvider initialization check
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeServiceProvider();
+    });
   }
 
   @override
@@ -89,7 +92,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       await Future.wait([
         _loadUserData(),
         _getUserFamilies(),
-        _loadInvitations(),
         _loadMessagePreferences(),
       ]);
     } catch (e) {
@@ -372,6 +374,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
   }
 
   Future<void> _loadUserData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
@@ -395,15 +398,19 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
           // If the family name is not already in userData, try to get it from the first member
           if (members.isNotEmpty && members[0].containsKey('familyName')) {
-            setState(() {
-              _userData!['familyName'] = members[0]['familyName'];
-            });
+            if (mounted) {
+              setState(() {
+                _userData!['familyName'] = members[0]['familyName'];
+              });
+            }
             debugPrint('Updated family name: ${_userData!['familyName']}');
           } else if (members.isNotEmpty && members[0].containsKey('lastName')) {
             // If there's no familyName field but there's a lastName, use that
-            setState(() {
-              _userData!['familyName'] = members[0]['lastName'];
-            });
+            if (mounted) {
+              setState(() {
+                _userData!['familyName'] = members[0]['lastName'];
+              });
+            }
             debugPrint(
               'Using lastName as family name: ${_userData!['familyName']}',
             );
@@ -415,9 +422,11 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     } catch (e) {
       debugPrint('Error loading user data: $e');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -443,6 +452,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       return;
     }
 
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
@@ -457,7 +467,9 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
             ),
           ),
         );
-        setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
         return;
       }
 
@@ -482,7 +494,9 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         context,
       ).showSnackBar(SnackBar(content: Text(errorMessage)));
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -493,7 +507,9 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         listen: false,
       ).leaveFamily(widget.userId);
       await _loadUserData(); // Reload user data with updated family info
-      setState(() {}); // Trigger FutureBuilder to reload
+      if (mounted) {
+        setState(() {}); // Trigger FutureBuilder to reload
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -528,6 +544,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       return;
     }
 
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
@@ -571,7 +588,9 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
       );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -916,8 +935,8 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
             const SizedBox(height: 24),
           ],
 
-          // No families message
-          if (_ownedFamily == null && _joinedFamilies.isEmpty)
+          // No families message - only show if user doesn't own a family
+          if (_ownedFamily == null)
             Center(
               child: Padding(
                 padding: const EdgeInsets.all(32.0),
@@ -930,9 +949,11 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                       color: Colors.white70,
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'You don\'t have any families yet.',
-                      style: TextStyle(
+                    Text(
+                      _joinedFamilies.isEmpty
+                          ? 'You don\'t have any families yet.'
+                          : 'You haven\'t created your own family yet.',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -940,9 +961,14 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Create a family or wait for an invitation to join one.',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    Text(
+                      _joinedFamilies.isEmpty
+                          ? 'Create a family or wait for an invitation to join one.'
+                          : 'Create your own family to manage and invite others.',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
@@ -1582,5 +1608,30 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
     // If total is 0, return at least 1 for the current user
     return total > 0 ? total : 1;
+  }
+
+  // Add this new method
+  void _initializeServiceProvider() {
+    try {
+      if (ServiceProvider().isInitialized) {
+        _invitationService = ServiceProvider().invitationService;
+        _loadInvitations(); // Load invitations only after ServiceProvider is ready
+      } else {
+        // Retry after a short delay
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _initializeServiceProvider();
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('ServiceProvider not ready yet, will retry: $e');
+      // Retry after a longer delay
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted) {
+          _initializeServiceProvider();
+        }
+      });
+    }
   }
 }

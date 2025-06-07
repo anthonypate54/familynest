@@ -1024,6 +1024,31 @@ Network connection error. Please check:
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
     }
+
+    // First try to get the user's active family
+    try {
+      final userFamilies = await getJoinedFamilies(userId);
+      if (userFamilies.isNotEmpty) {
+        final familyId = userFamilies.first['familyId'];
+
+        // Try the new family-based endpoint
+        final response = await client.get(
+          Uri.parse('$baseUrl/api/families/$familyId/members'),
+          headers: headers,
+        );
+
+        if (response.statusCode == 200) {
+          return (jsonDecode(response.body) as List)
+              .cast<Map<String, dynamic>>();
+        }
+      }
+    } catch (e) {
+      debugPrint(
+        'New family endpoint failed, falling back to old endpoint: $e',
+      );
+    }
+
+    // Fallback to the old user-based endpoint
     final response = await client.get(
       Uri.parse('$baseUrl/api/users/$userId/family-members'),
       headers: headers,
@@ -1120,17 +1145,24 @@ Network connection error. Please check:
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
     }
-    final response = await client.get(
-      Uri.parse('$baseUrl/api/users/$userId/owned-family'),
-      headers: headers,
-    );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
-    } else if (response.statusCode == 404) {
-      return null; // User doesn't own a family
-    } else {
-      throw Exception('Failed to get owned family: ${response.body}');
+
+    try {
+      // Use the new dedicated endpoint for checking owned family
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/families/owned'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 404) {
+        return null; // User doesn't own a family
+      }
+    } catch (e) {
+      debugPrint('Error checking owned family: $e');
     }
+
+    return null; // User doesn't own a family
   }
 
   // Update user demographics
@@ -1217,7 +1249,7 @@ Network connection error. Please check:
     final response = await client.post(
       Uri.parse('$baseUrl/api/families'),
       headers: headers,
-      body: jsonEncode({'userId': userId, 'name': familyName}),
+      body: jsonEncode({'name': familyName}),
     );
 
     if (response.statusCode == 200 || response.statusCode == 201) {
@@ -1234,6 +1266,29 @@ Network connection error. Please check:
       if (_token != null) 'Authorization': 'Bearer $_token',
     };
 
+    // First get the user's active family to determine which family to leave
+    try {
+      final userFamilies = await getJoinedFamilies(userId);
+      if (userFamilies.isNotEmpty) {
+        final familyId = userFamilies.first['familyId'];
+
+        // Try the new family-based endpoint
+        final response = await client.post(
+          Uri.parse('$baseUrl/api/families/$familyId/leave'),
+          headers: headers,
+        );
+
+        if (response.statusCode == 200) {
+          return jsonDecode(response.body) as Map<String, dynamic>;
+        }
+      }
+    } catch (e) {
+      debugPrint(
+        'New family leave endpoint failed, falling back to old endpoint: $e',
+      );
+    }
+
+    // Fallback to the old user-based endpoint
     final response = await client.post(
       Uri.parse('$baseUrl/api/users/$userId/leave-family'),
       headers: headers,
@@ -1253,6 +1308,23 @@ Network connection error. Please check:
       if (_token != null) 'Authorization': 'Bearer $_token',
     };
 
+    // Try the new family-based endpoint first
+    try {
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/families/$familyId/join'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        return; // Success
+      }
+    } catch (e) {
+      debugPrint(
+        'New family join endpoint failed, falling back to old endpoint: $e',
+      );
+    }
+
+    // Fallback to the old user-based endpoint
     final response = await client.post(
       Uri.parse('$baseUrl/api/users/$userId/join-family/$familyId'),
       headers: headers,
