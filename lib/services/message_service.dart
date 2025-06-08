@@ -24,10 +24,11 @@ class MessageService {
     String? currentlyPlayingVideoId,
     String? content,
     bool isThreadView = false,
+    bool isFirstTimeUser = true,
   }) {
     // Show empty state when no messages
     if (messages.isEmpty) {
-      return _buildEmptyState(context);
+      return _buildEmptyState(context, isFirstTimeUser: isFirstTimeUser);
     }
 
     return ListView.builder(
@@ -166,7 +167,54 @@ class MessageService {
   }
 
   // Build beautiful empty state for new users
-  static Widget _buildEmptyState(BuildContext context) {
+  static Widget _buildEmptyState(
+    BuildContext context, {
+    bool isFirstTimeUser = true,
+  }) {
+    // If user is not a first-time user (has DMs), show simple empty state
+    if (!isFirstTimeUser) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.message_outlined,
+                  size: 30,
+                  color: Colors.white70,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'No messages yet',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Start sharing photos and messages with your family',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Show full welcome dialog for first-time users
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),

@@ -384,7 +384,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         context,
         listen: false,
       ).getUserById(widget.userId);
-      debugPrint('Loaded user data: $_userData');
 
       // Try to load family details if the user belongs to a family
       if (_userData != null && _userData!['familyId'] != null) {
@@ -394,7 +393,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
             context,
             listen: false,
           ).getFamilyMembers(widget.userId);
-          debugPrint('Loaded family members: $members');
 
           // If the family name is not already in userData, try to get it from the first member
           if (members.isNotEmpty && members[0].containsKey('familyName')) {
@@ -403,7 +401,6 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
                 _userData!['familyName'] = members[0]['familyName'];
               });
             }
-            debugPrint('Updated family name: ${_userData!['familyName']}');
           } else if (members.isNotEmpty && members[0].containsKey('lastName')) {
             // If there's no familyName field but there's a lastName, use that
             if (mounted) {

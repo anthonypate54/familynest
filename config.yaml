@@ -1,6 +1,6 @@
 environments:
   dev:
-    api_base_url: "http://10.0.0.10:8080"
+    api_base_url: "http://localhost:8080"
     debug: true
   prod:
     api_base_url: "https://api.familynest.app"
@@ -9,7 +9,7 @@ environments:
 platforms:
   android_emulator:
     device_id: "emulator-5554"
-    api_url: "http://10.0.2.2:8080"
+    api_url: "http://localhost:8080"
     description: "Android Emulator"
     setup_command: "adb reverse tcp:8080 tcp:8080"
     

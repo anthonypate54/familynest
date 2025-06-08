@@ -1020,44 +1020,70 @@ Network connection error. Please check:
 
   // Get family members
   Future<List<Map<String, dynamic>>> getFamilyMembers(int userId) async {
+    print('🔍 API DEBUG: getFamilyMembers called for userId: $userId');
+
     final headers = {'Content-Type': 'application/json'};
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
+      print(
+        '🔍 API DEBUG: Token available - ${_token!.substring(0, Math.min(10, _token!.length))}...',
+      );
+    } else {
+      print('🔍 API DEBUG: No token available!');
     }
 
     // First try to get the user's active family
     try {
       final userFamilies = await getJoinedFamilies(userId);
+
       if (userFamilies.isNotEmpty) {
         final familyId = userFamilies.first['familyId'];
-
         // Try the new family-based endpoint
-        final response = await client.get(
-          Uri.parse('$baseUrl/api/families/$familyId/members'),
-          headers: headers,
-        );
+        final url = '$baseUrl/api/families/$familyId/members';
+
+        final response = await client.get(Uri.parse(url), headers: headers);
 
         if (response.statusCode == 200) {
-          return (jsonDecode(response.body) as List)
-              .cast<Map<String, dynamic>>();
+          final result =
+              (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+          return result;
         }
+      } else {
+        print('🔍 API DEBUG: No user families found');
       }
     } catch (e) {
-      debugPrint(
-        'New family endpoint failed, falling back to old endpoint: $e',
+      print(
+        '🔍 API DEBUG: Family endpoint failed, falling back to old endpoint: $e',
       );
     }
 
     // Fallback to the old user-based endpoint
-    final response = await client.get(
-      Uri.parse('$baseUrl/api/users/$userId/family-members'),
-      headers: headers,
+    final fallbackUrl = '$baseUrl/api/users/$userId/family-members';
+    print('🔍 API DEBUG: Calling fallback endpoint: $fallbackUrl');
+
+    final response = await client.get(Uri.parse(fallbackUrl), headers: headers);
+
+    print(
+      '🔍 API DEBUG: Fallback endpoint response status: ${response.statusCode}',
     );
+    print('🔍 API DEBUG: Fallback endpoint response body: ${response.body}');
+
     if (response.statusCode == 200) {
-      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+      final result =
+          (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+      print(
+        '🔍 API DEBUG: Fallback endpoint success - returning ${result.length} members',
+      );
+      return result;
     } else if (response.statusCode == 400) {
+      print(
+        '🔍 API DEBUG: Fallback endpoint returned 400 - returning empty list',
+      );
       return [];
     } else {
+      print(
+        '🔍 API DEBUG: Fallback endpoint failed with status ${response.statusCode}',
+      );
       throw Exception('Failed to get family members: ${response.body}');
     }
   }
@@ -1916,6 +1942,186 @@ Network connection error. Please check:
 
     if (response.statusCode != 200) {
       throw Exception('Failed to toggle love: ${response.body}');
+    }
+  }
+
+  // ===== DIRECT MESSAGE (DM) METHODS =====
+
+  /// Get or create a conversation with another user
+  /// Returns conversation details including the other user info
+  Future<Map<String, dynamic>?> getOrCreateConversation(int otherUserId) async {
+    try {
+      debugPrint('Getting/creating conversation with user: $otherUserId');
+
+      final url = Uri.parse('$baseUrl/api/dm/conversations/$otherUserId');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.post(url, headers: headers);
+      debugPrint(
+        'Get/create conversation response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        debugPrint('Failed to get/create conversation: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error getting/creating conversation: $e');
+      return null;
+    }
+  }
+
+  /// Get all conversations for the current user
+  /// Returns list of conversations with other user details and last message info
+  Future<List<Map<String, dynamic>>> getDMConversations() async {
+    try {
+      debugPrint('Getting DM conversations');
+
+      final url = Uri.parse('$baseUrl/api/dm/conversations');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.get(url, headers: headers);
+      debugPrint('Get conversations response: status=${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final conversations = data['conversations'] as List<dynamic>;
+        return conversations.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint('Failed to get conversations: ${response.body}');
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Error getting conversations: $e');
+      return [];
+    }
+  }
+
+  /// Send a DM message (text or media)
+  /// Returns the sent message details
+  Future<Map<String, dynamic>?> sendDMMessage({
+    required int conversationId,
+    String? content,
+    String? mediaUrl,
+    String? mediaType,
+    String? mediaThumbnail,
+    String? mediaFilename,
+    int? mediaSize,
+    int? mediaDuration,
+  }) async {
+    try {
+      debugPrint('Sending DM message to conversation: $conversationId');
+
+      final url = Uri.parse('$baseUrl/api/dm/messages');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final body = <String, dynamic>{
+        'conversationId': conversationId,
+        if (content != null) 'content': content,
+        if (mediaUrl != null) 'mediaUrl': mediaUrl,
+        if (mediaType != null) 'mediaType': mediaType,
+        if (mediaThumbnail != null) 'mediaThumbnail': mediaThumbnail,
+        if (mediaFilename != null) 'mediaFilename': mediaFilename,
+        if (mediaSize != null) 'mediaSize': mediaSize,
+        if (mediaDuration != null) 'mediaDuration': mediaDuration,
+      };
+
+      final response = await client.post(
+        url,
+        headers: headers,
+        body: jsonEncode(body),
+      );
+      debugPrint(
+        'Send DM message response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        debugPrint('Failed to send DM message: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error sending DM message: $e');
+      return null;
+    }
+  }
+
+  /// Get messages for a conversation with pagination
+  /// Returns messages and pagination info
+  Future<Map<String, dynamic>?> getDMMessages({
+    required int conversationId,
+    int page = 0,
+    int size = 50,
+  }) async {
+    try {
+      debugPrint(
+        'Getting DM messages for conversation: $conversationId (page: $page, size: $size)',
+      );
+
+      final url = Uri.parse(
+        '$baseUrl/api/dm/conversations/$conversationId/messages?page=$page&size=$size',
+      );
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.get(url, headers: headers);
+      debugPrint('Get DM messages response: status=${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        debugPrint('Failed to get DM messages: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error getting DM messages: $e');
+      return null;
+    }
+  }
+
+  /// Mark all messages in a conversation as read
+  /// Returns the number of messages marked as read
+  Future<int> markDMConversationAsRead(int conversationId) async {
+    try {
+      debugPrint('Marking DM conversation as read: $conversationId');
+
+      final url = Uri.parse(
+        '$baseUrl/api/dm/conversations/$conversationId/read',
+      );
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.put(url, headers: headers);
+      debugPrint(
+        'Mark DM conversation as read response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return data['markedAsRead'] as int? ?? 0;
+      } else {
+        debugPrint('Failed to mark DM conversation as read: ${response.body}');
+        return 0;
+      }
+    } catch (e) {
+      debugPrint('Error marking DM conversation as read: $e');
+      return 0;
     }
   }
 }

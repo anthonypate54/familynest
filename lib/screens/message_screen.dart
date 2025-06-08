@@ -20,6 +20,7 @@ import '../providers/message_provider.dart';
 import '../dialogs/large_video_dialog.dart';
 import '../config/app_config.dart';
 import '../services/share_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MessageScreen extends StatefulWidget {
   final String userId;
@@ -41,6 +42,7 @@ class _MessageScreenState extends State<MessageScreen> {
   File? _selectedVideoThumbnail;
   List<Message> _messages = [];
   bool _isLoading = true;
+  bool _isFirstTimeUser = true; // Track if user is truly new
 
   // --- Inline video playback for message feed ---
   String? _currentlyPlayingVideoId;
@@ -92,6 +94,77 @@ class _MessageScreenState extends State<MessageScreen> {
       _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
     });
     _loadMessages();
+    _checkIfFirstTimeUser(); // Check if user has DMs
+  }
+
+  // Check if user is a first-time user using SharedPreferences
+  Future<void> _checkIfFirstTimeUser() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasSeenWelcome = prefs.getBool('hasSeenWelcome') ?? false;
+
+      if (hasSeenWelcome) {
+        // User has already seen welcome or has activity - not first time
+        if (mounted) {
+          setState(() {
+            _isFirstTimeUser = false;
+          });
+        }
+        return;
+      }
+
+      // Check if user has any activity (DMs or messages)
+      final apiService = Provider.of<ApiService>(context, listen: false);
+
+      // Check for DMs and messages in parallel
+      final results = await Future.wait([
+        apiService.getDMConversations(),
+        apiService.getUserMessages(widget.userId),
+      ]);
+
+      final conversations = results[0] as List<Map<String, dynamic>>;
+      final messages = results[1] as List<Message>;
+
+      final hasActivity = conversations.isNotEmpty || messages.isNotEmpty;
+
+      if (mounted) {
+        setState(() {
+          _isFirstTimeUser = !hasActivity;
+        });
+
+        // If user has activity, mark them as having seen welcome
+        if (hasActivity) {
+          await prefs.setBool('hasSeenWelcome', true);
+          print('🔍 User has activity - marked hasSeenWelcome = true');
+        } else {
+          print('🔍 New user - will show welcome dialog');
+        }
+      }
+    } catch (e) {
+      print('Error checking first-time user status: $e');
+      // If error, assume first-time user (safer for UX)
+      if (mounted) {
+        setState(() {
+          _isFirstTimeUser = true;
+        });
+      }
+    }
+  }
+
+  // Method to mark user as having seen welcome (call when they take any action)
+  Future<void> _markWelcomeSeen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('hasSeenWelcome', true);
+      if (mounted) {
+        setState(() {
+          _isFirstTimeUser = false;
+        });
+      }
+      print('🔍 User took action - marked hasSeenWelcome = true');
+    } catch (e) {
+      print('Error marking welcome as seen: $e');
+    }
   }
 
   @override
@@ -489,6 +562,12 @@ class _MessageScreenState extends State<MessageScreen> {
 
   Future<void> _postMessage(ApiService apiService) async {
     final text = _messageController.text.trim();
+
+    // Mark welcome as seen when user posts their first message
+    if (_isFirstTimeUser) {
+      await _markWelcomeSeen();
+    }
+
     if (_selectedMediaFile != null) {
       Message newMessage = await apiService.postMessage(
         int.tryParse(widget.userId) ?? 0,
@@ -574,6 +653,7 @@ class _MessageScreenState extends State<MessageScreen> {
                               }
                             },
                             currentlyPlayingVideoId: _currentlyPlayingVideoId,
+                            isFirstTimeUser: _isFirstTimeUser,
                           ); // buildMessageListView
                         },
                       ),

@@ -31,9 +31,8 @@ class AppConfig {
   }
 
   /// Get the base URL for API requests based on platform and environment
-  /// ngrok http 8080
-  String get ngrokUrl =>
-      "https://7c15-2601-1c0-5900-1370-78a9-a220-c82e-2acc.ngrok-free.app";
+  /// ngrok http 8080 --domain=familynest.ngrok.io
+  String get ngrokUrl => "https://familynest.ngrok.io";
 
   ///
   String get baseUrl {
@@ -52,14 +51,8 @@ class AppConfig {
 
       case Environment.development:
       default:
-        // For development, we need different URLs based on the platform
-        if (kIsWeb) {
-          return "https://localhost:8080"; // Use HTTP for web
-        } else if (Platform.isAndroid) {
-          return "https://10.0.2.2:8080"; // Use HTTP for Android emulator
-        } else {
-          return "http://localhost:8080"; // Use HTTP for iOS simulator and others
-        }
+        // For development, use ngrok for consistent HTTPS access across all platforms
+        return ngrokUrl;
     }
   }
 

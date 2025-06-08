@@ -19,6 +19,7 @@ import 'dart:async'; // For Timer
 import 'package:device_info_plus/device_info_plus.dart'; // For device infoimport 'screens/test_thread_screen.dart';
 import 'package:provider/provider.dart';
 import 'providers/message_provider.dart';
+import 'models/message.dart';
 
 // Function to get device model name
 Future<String?> getDeviceModel() async {
@@ -40,7 +41,8 @@ void main() async {
   final config = AppConfig();
   config.setCustomBaseUrl(EnvConfig().apiUrl);
 
-  debugPrint('🌐 Using API URL: ${EnvConfig().apiUrl}');
+  debugPrint('🌐 EnvConfig API URL: ${EnvConfig().apiUrl}');
+  debugPrint('🔧 AppConfig baseUrl after setCustom: ${config.baseUrl}');
   debugPrint('🌍 Environment: ${EnvConfig().environment}');
   debugPrint('📱 Platform: ${Platform.operatingSystem}');
 
@@ -196,6 +198,9 @@ class MainAppContainerState extends State<MainAppContainer> {
   // Add a timer instance variable to allow cancellation
   Timer? _authCheckTimer;
 
+  // Add loading state for initial screen determination
+  bool _isCheckingInitialScreen = true;
+
   @override
   void initState() {
     super.initState();
@@ -217,10 +222,8 @@ class MainAppContainerState extends State<MainAppContainer> {
       ),
     ];
 
-    // Set initial page after _currentIndex is properly initialized
-    if (_pageController.hasClients) {
-      _pageController.jumpToPage(_currentIndex);
-    }
+    // Check for existing DMs and set initial screen accordingly
+    _checkForExistingDMs();
 
     // Register callbacks
     _navigationController.updatePendingInvitationsCount = (count) {
@@ -235,6 +238,90 @@ class MainAppContainerState extends State<MainAppContainer> {
 
     // Start an immediate check to ensure we're authenticated
     _checkAuthenticationState();
+  }
+
+  // Check for existing DM conversations and navigate accordingly
+  Future<void> _checkForExistingDMs() async {
+    try {
+      print('🔍 STARTUP: Checking user activity for initial screen...');
+
+      final prefs = await SharedPreferences.getInstance();
+      final hasSeenWelcome = prefs.getBool('hasSeenWelcome') ?? false;
+
+      if (hasSeenWelcome) {
+        // User has seen welcome before - check if they have DMs to go to DM screen
+        print('🔍 STARTUP: User has seen welcome - checking for DMs');
+        final apiService = Provider.of<ApiService>(context, listen: false);
+        final conversations = await apiService.getDMConversations();
+
+        if (mounted) {
+          setState(() {
+            if (conversations.isNotEmpty) {
+              print('🔍 STARTUP: Has DMs - navigating to DM screen');
+              _currentIndex = 1; // DM screen index
+            } else {
+              print(
+                '🔍 STARTUP: No DMs - staying on MessageScreen (no welcome dialog)',
+              );
+              _currentIndex = 0; // MessageScreen index
+            }
+            _isCheckingInitialScreen = false;
+          });
+        }
+      } else {
+        // New user - check for any activity
+        print('🔍 STARTUP: New user - checking for any activity');
+        final apiService = Provider.of<ApiService>(context, listen: false);
+
+        final results = await Future.wait([
+          apiService.getDMConversations(),
+          apiService.getUserMessages(widget.userId.toString()),
+        ]);
+
+        final conversations = results[0] as List<Map<String, dynamic>>;
+        final messages = results[1] as List<Message>;
+        final hasActivity = conversations.isNotEmpty || messages.isNotEmpty;
+
+        if (mounted) {
+          setState(() {
+            if (hasActivity) {
+              // User has activity - mark welcome seen and go to appropriate screen
+              print('🔍 STARTUP: Found activity - marking welcome seen');
+              prefs.setBool('hasSeenWelcome', true);
+              _currentIndex =
+                  conversations.isNotEmpty
+                      ? 1
+                      : 0; // DM screen if has DMs, otherwise Messages
+            } else {
+              print(
+                '🔍 STARTUP: No activity - staying on MessageScreen (will show welcome)',
+              );
+              _currentIndex = 0; // MessageScreen with welcome dialog
+            }
+            _isCheckingInitialScreen = false;
+          });
+        }
+      }
+
+      // Navigate to the determined screen after build completes
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(_currentIndex);
+          }
+        });
+      }
+    } catch (e) {
+      print(
+        '🔍 STARTUP: Error checking activity: $e - staying on default screen',
+      );
+      if (mounted) {
+        setState(() {
+          _currentIndex = 0; // Default to MessageScreen
+          _isCheckingInitialScreen = false;
+        });
+      }
+    }
   }
 
   // Check if we're still authenticated
@@ -288,7 +375,25 @@ class MainAppContainerState extends State<MainAppContainer> {
 
   @override
   Widget build(BuildContext context) {
-    // THUMBNAIL TEST OVERLAY - add this at the beginning of build
+    // Show loading indicator while determining initial screen
+    if (_isCheckingInitialScreen) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Loading...',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       // Use PageView for native slide animations
       body: PageView(
