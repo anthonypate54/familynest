@@ -30,7 +30,8 @@ class MessageScreen extends StatefulWidget {
   State<MessageScreen> createState() => _MessageScreenState();
 }
 
-class _MessageScreenState extends State<MessageScreen> {
+class _MessageScreenState extends State<MessageScreen>
+    with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _messageController = TextEditingController();
   final ValueNotifier<bool> _isSendButtonEnabled = ValueNotifier(false);
@@ -47,18 +48,39 @@ class _MessageScreenState extends State<MessageScreen> {
   // --- Inline video playback for message feed ---
   String? _currentlyPlayingVideoId;
 
-  Future<void> _loadMessages() async {
-    setState(() {
-      _isLoading = true;
-    });
+  // --- Polling for new messages ---
+  Timer? _messagePollingTimer;
+  bool _isScreenActive = true;
+  DateTime? _lastMessageTime;
+
+  Future<void> _loadMessages({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     final apiService = Provider.of<ApiService>(context, listen: false);
     try {
       final messages = await apiService.getUserMessages(widget.userId);
       if (mounted) {
+        final hasNewMessages = _hasNewMessages(messages);
         setState(() {
           _messages = messages;
-          _isLoading = false;
+          if (showLoading) _isLoading = false;
         });
+
+        // Update last message time for polling optimization
+        if (messages.isNotEmpty) {
+          _lastMessageTime = messages.first.createdAt;
+        }
+
+        // Auto-scroll to bottom if there are new messages
+        if (hasNewMessages) {
+          Future.delayed(Duration(milliseconds: 100), () {
+            _scrollToBottom();
+          });
+        }
+
         Provider.of<MessageProvider>(
           context,
           listen: false,
@@ -67,13 +89,93 @@ class _MessageScreenState extends State<MessageScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          if (showLoading) _isLoading = false;
         });
 
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading messages: $e')));
+        // Only show error for manual refreshes, not background polling
+        if (showLoading) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error loading messages: $e')));
+        }
       }
+    }
+  }
+
+  // Check if there are new messages compared to current list
+  bool _hasNewMessages(List<Message> newMessages) {
+    if (_messages.isEmpty && newMessages.isNotEmpty) return true;
+    if (_messages.isEmpty || newMessages.isEmpty) return false;
+
+    // Check if the latest message is different
+    return _messages.first.id != newMessages.first.id;
+  }
+
+  void _startMessagePolling() {
+    _stopMessagePolling(); // Ensure no duplicate timers
+
+    _messagePollingTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+      if (mounted && _isScreenActive) {
+        debugPrint('🔄 Polling for new messages...');
+        _loadMessages(showLoading: false); // Silent refresh
+      }
+    });
+
+    debugPrint('✅ Message polling started (every 30 seconds)');
+  }
+
+  void _stopMessagePolling() {
+    _messagePollingTimer?.cancel();
+    _messagePollingTimer = null;
+    debugPrint('🛑 Message polling stopped');
+  }
+
+  // Smart polling: Poll more frequently when user is typing (expecting response)
+  void _onUserTyping() {
+    // If user is typing, poll more frequently for 2 minutes
+    _stopMessagePolling();
+
+    int pollCount = 0;
+    _messagePollingTimer = Timer.periodic(Duration(seconds: 10), (timer) {
+      if (mounted && _isScreenActive) {
+        debugPrint('🔄 Fast polling for new messages (user activity)...');
+        _loadMessages(showLoading: false);
+        pollCount++;
+
+        // After 12 polls (2 minutes), return to normal polling
+        if (pollCount >= 12) {
+          timer.cancel();
+          _startMessagePolling(); // Return to normal 30-second polling
+        }
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _isScreenActive = true;
+        _startMessagePolling();
+        // Immediate refresh when returning to app
+        _loadMessages(showLoading: false);
+        debugPrint('📱 App resumed - restarted message polling');
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        _isScreenActive = false;
+        _stopMessagePolling();
+        debugPrint('📱 App paused - stopped message polling');
+        break;
+      case AppLifecycleState.detached:
+        _stopMessagePolling();
+        break;
+      case AppLifecycleState.hidden:
+        _isScreenActive = false;
+        _stopMessagePolling();
+        break;
     }
   }
 
@@ -90,11 +192,16 @@ class _MessageScreenState extends State<MessageScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // Add lifecycle observer
     _messageController.addListener(() {
       _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
     });
+    _messageController.addListener(
+      _onUserTyping,
+    ); // Trigger smart polling when typing
     _loadMessages();
     _checkIfFirstTimeUser(); // Check if user has DMs
+    _startMessagePolling(); // Start polling for new messages
   }
 
   // Check if user is a first-time user using SharedPreferences
@@ -169,6 +276,8 @@ class _MessageScreenState extends State<MessageScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
+    _stopMessagePolling(); // Stop polling when screen is disposed
     _scrollController.dispose();
     _messageController.dispose();
     _isSendButtonEnabled.dispose();
@@ -616,7 +725,7 @@ class _MessageScreenState extends State<MessageScreen> {
               color: Theme.of(context).colorScheme.onPrimary,
             ),
             onPressed: () {
-              setState(() {});
+              _loadMessages(); // Manual refresh
             },
             tooltip: 'Refresh Messages',
           ),
@@ -637,25 +746,30 @@ class _MessageScreenState extends State<MessageScreen> {
               child:
                   _isLoading
                       ? const Center(child: CircularProgressIndicator())
-                      : Consumer<MessageProvider>(
-                        builder: (context, messageProvider, child) {
-                          return MessageService.buildMessageListView(
-                            context,
-                            messageProvider.messages,
-                            apiService: apiService,
-                            scrollController: _scrollController,
-                            currentUserId: widget.userId.toString(),
-                            onTap: (message) {
-                              if (message.mediaType == 'video') {
-                                setState(() {
-                                  _currentlyPlayingVideoId = message.id;
-                                });
-                              }
-                            },
-                            currentlyPlayingVideoId: _currentlyPlayingVideoId,
-                            isFirstTimeUser: _isFirstTimeUser,
-                          ); // buildMessageListView
+                      : RefreshIndicator(
+                        onRefresh: () async {
+                          await _loadMessages();
                         },
+                        child: Consumer<MessageProvider>(
+                          builder: (context, messageProvider, child) {
+                            return MessageService.buildMessageListView(
+                              context,
+                              messageProvider.messages,
+                              apiService: apiService,
+                              scrollController: _scrollController,
+                              currentUserId: widget.userId.toString(),
+                              onTap: (message) {
+                                if (message.mediaType == 'video') {
+                                  setState(() {
+                                    _currentlyPlayingVideoId = message.id;
+                                  });
+                                }
+                              },
+                              currentlyPlayingVideoId: _currentlyPlayingVideoId,
+                              isFirstTimeUser: _isFirstTimeUser,
+                            ); // buildMessageListView
+                          },
+                        ),
                       ),
             ),
             if (_selectedMediaFile != null)

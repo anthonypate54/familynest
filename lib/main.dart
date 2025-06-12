@@ -1,3 +1,4 @@
+import 'package:familynest/providers/dm_message_provider.dart';
 import 'package:flutter/material.dart';
 import 'services/api_service.dart';
 import 'services/service_provider.dart';
@@ -37,9 +38,8 @@ void main() async {
   // Load environment configuration
   await EnvConfig.initialize();
 
-  // Initialize app configuration with the URL from the environment
+  // Initialize app configuration
   final config = AppConfig();
-  config.setCustomBaseUrl(EnvConfig().apiUrl);
 
   debugPrint('🌐 EnvConfig API URL: ${EnvConfig().apiUrl}');
   debugPrint('🔧 AppConfig baseUrl after setCustom: ${config.baseUrl}');
@@ -51,6 +51,13 @@ void main() async {
     config.setEnvironment(Environment.production);
   } else {
     config.setEnvironment(Environment.development);
+
+    // Use shorter polling interval in development for faster testing
+    // In seconds rather than minutes for testing convenience
+    config.setInvitationPollingInterval(const Duration(seconds: 30));
+    debugPrint(
+      '🧪 DEVELOPMENT MODE: Using shorter invitation polling interval (30s)',
+    );
   }
 
   // Initialize ApiService
@@ -68,6 +75,7 @@ void main() async {
       providers: [
         Provider<ApiService>.value(value: apiService),
         ChangeNotifierProvider(create: (_) => MessageProvider()),
+        ChangeNotifierProvider(create: (_) => DMMessageProvider()),
       ],
       child: MyApp(initialRoute: '/'),
     ),
@@ -100,6 +108,10 @@ class MyAppState extends State<MyApp> {
       final prefs = await SharedPreferences.getInstance();
       final apiService = Provider.of<ApiService>(context, listen: false);
 
+      // Always initialize ServiceProvider
+      _serviceProvider.initialize(apiService);
+      debugPrint('✅ APP: ServiceProvider initialized');
+
       // Simple check using provider
       if (apiService.isLoggedIn) {
         debugPrint('🔐 APP: User is logged in, getting user data');
@@ -112,8 +124,6 @@ class MyAppState extends State<MyApp> {
           debugPrint(
             '✅ APP: Found user data - userId: $userId, role: $userRole',
           );
-          // Initialize services only after confirming user is logged in
-          _serviceProvider.initialize(apiService);
           return {'userId': int.parse(userId), 'role': userRole};
         }
       }
@@ -197,6 +207,7 @@ class MainAppContainerState extends State<MainAppContainer> {
 
   // Add a timer instance variable to allow cancellation
   Timer? _authCheckTimer;
+  Timer? _invitationCheckTimer; // Add timer for invitation polling
 
   // Add loading state for initial screen determination
   bool _isCheckingInitialScreen = true;
@@ -238,6 +249,20 @@ class MainAppContainerState extends State<MainAppContainer> {
 
     // Start an immediate check to ensure we're authenticated
     _checkAuthenticationState();
+
+    // Start checking for pending invitations
+    _checkPendingInvitations();
+
+    // Use the configurable polling interval from AppConfig
+    final pollingInterval = AppConfig().invitationPollingInterval;
+    debugPrint(
+      '📅 Setting invitation polling interval to ${pollingInterval.inSeconds} seconds',
+    );
+
+    _invitationCheckTimer = Timer.periodic(
+      pollingInterval,
+      (_) => _checkPendingInvitations(),
+    );
   }
 
   // Check for existing DM conversations and navigate accordingly
@@ -365,10 +390,42 @@ class MainAppContainerState extends State<MainAppContainer> {
     });
   }
 
+  // Check for pending invitations and update badge count
+  Future<void> _checkPendingInvitations() async {
+    try {
+      debugPrint('🔍 Checking for pending invitations...');
+      final apiService = Provider.of<ApiService>(context, listen: false);
+
+      // Get all invitations
+      final invitations = await apiService.getInvitations();
+
+      // Count only PENDING invitations
+      final pendingCount =
+          invitations
+              .where(
+                (inv) => inv['status'] != null && inv['status'] == 'PENDING',
+              )
+              .length;
+
+      // Update the badge count
+      if (mounted) {
+        setState(() {
+          _pendingInvitationsCount = pendingCount;
+        });
+      }
+
+      debugPrint('✅ Found $pendingCount pending invitations');
+    } catch (e) {
+      debugPrint('❌ Error checking pending invitations: $e');
+      // Don't update the count on error - keep the previous value
+    }
+  }
+
   @override
   void dispose() {
     // Cancel the timer to prevent memory leaks
     _authCheckTimer?.cancel();
+    _invitationCheckTimer?.cancel();
     _pageController.dispose();
     super.dispose();
   }

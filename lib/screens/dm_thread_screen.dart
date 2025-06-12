@@ -4,13 +4,18 @@ import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'dart:io';
+import 'dart:async';
 import '../services/api_service.dart';
 import '../services/share_service.dart';
 import '../utils/video_thumbnail_util.dart';
 import '../config/app_config.dart';
 import '../dialogs/large_video_dialog.dart';
 import '../widgets/gradient_background.dart';
+import '../widgets/video_message_card.dart';
+import '../widgets/external_video_message_card.dart';
 import 'package:provider/provider.dart';
+import '../models/dm_message.dart';
+import '../providers/dm_message_provider.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
@@ -30,12 +35,12 @@ class DMThreadScreen extends StatefulWidget {
   State<DMThreadScreen> createState() => _DMThreadScreenState();
 }
 
-class _DMThreadScreenState extends State<DMThreadScreen> {
+class _DMThreadScreenState extends State<DMThreadScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  // Real messages from API
-  List<Map<String, dynamic>> _messages = [];
+  // Remove local messages state since we'll use provider
   bool _isLoading = true;
   bool _isSending = false;
 
@@ -46,17 +51,33 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   ChewieController? _dmChewieController;
   File? _selectedDMVideoThumbnail;
 
+  // Video playback tracking for DM messages
+  int? _currentlyPlayingVideoId;
+
+  // --- Polling for new messages ---
+  Timer? _messagePollingTimer;
+  bool _isScreenActive = true;
+  DateTime? _lastMessageTime;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // Add lifecycle observer
+    _messageController.addListener(
+      _onUserTyping,
+    ); // Trigger smart polling when typing
     _loadMessages();
+    // _startMessagePolling(); // DISABLED - Start polling for new messages
   }
 
   // Load real messages from the API
-  Future<void> _loadMessages() async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> _loadMessages({bool showLoading = true}) async {
+    debugPrint('🔄 DM: _loadMessages called (showLoading: $showLoading)');
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
@@ -64,35 +85,78 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         conversationId: widget.conversationId,
       );
 
+      debugPrint('DM: Raw response from API: $response');
+
       if (mounted && response != null) {
         // Extract messages from the paginated response
-        final messages =
-            (response['messages'] as List<dynamic>?)
-                ?.cast<Map<String, dynamic>>() ??
-            [];
+        final messagesJson = response['messages'];
+        debugPrint('DM: Raw messages from response: $messagesJson');
 
-        setState(() {
-          _messages = messages;
-          _isLoading = false;
-        });
+        if (messagesJson is List) {
+          debugPrint('DM: Raw messages before parsing:');
+          for (var msg in messagesJson) {
+            debugPrint('  Message: $msg');
+            if (msg is Map) {
+              debugPrint('    id: ${msg['id']}');
+              debugPrint('    conversation_id: ${msg['conversation_id']}');
+              debugPrint('    sender_id: ${msg['sender_id']}');
+            }
+          }
 
-        // Scroll to bottom after loading
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottomIfNeeded();
-        });
+          final messages =
+              messagesJson
+                  .whereType<Map<String, dynamic>>()
+                  .map((json) => DMMessage.fromJson(json))
+                  .toList();
+          debugPrint('DM: Parsed messages: $messages');
+
+          // Update provider only
+          Provider.of<DMMessageProvider>(
+            context,
+            listen: false,
+          ).setMessages(widget.conversationId, messages);
+
+          if (showLoading) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+
+          // Update last message time for polling optimization
+          if (messages.isNotEmpty) {
+            final lastMsg = messages.first;
+            try {
+              _lastMessageTime = lastMsg.createdAt;
+              debugPrint('🔍 DM: Last message time updated: $_lastMessageTime');
+            } catch (e) {
+              debugPrint(
+                '🔍 DM: Error parsing created_at: $e (value: ${lastMsg.createdAt})',
+              );
+            }
+          }
+
+          // Auto-scroll to bottom if there are new messages
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToBottomIfNeeded();
+          });
+        } else {
+          if (mounted) {
+            setState(() {
+              if (showLoading) _isLoading = false;
+            });
+          }
+        }
       } else {
         if (mounted) {
           setState(() {
-            _messages = [];
-            _isLoading = false;
+            if (showLoading) _isLoading = false;
           });
         }
       }
     } catch (e) {
-      print('Error loading DM messages: $e');
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          if (showLoading) _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -102,10 +166,101 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         );
       }
     }
+
+    _lastMessageTime = DateTime.now(); // Update last message time
+  }
+
+  // Check if there are new messages compared to current list
+  bool _hasNewMessages(List<DMMessage> newMessages) {
+    final currentMessages = Provider.of<DMMessageProvider>(
+      context,
+      listen: false,
+    ).getMessages(widget.conversationId);
+
+    if (currentMessages.isEmpty && newMessages.isNotEmpty) return true;
+    if (currentMessages.isEmpty || newMessages.isEmpty) return false;
+
+    // Check if the message count changed or the latest message is different
+    if (currentMessages.length != newMessages.length) {
+      return true;
+    }
+
+    // Check if the latest message is different
+    return currentMessages.first.id != newMessages.first.id;
+  }
+
+  void _startMessagePolling() {
+    _stopMessagePolling(); // Ensure no duplicate timers
+
+    _messagePollingTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted && _isScreenActive) {
+        debugPrint('🔄 Polling for new DM messages...');
+        _loadMessages(showLoading: false); // Silent refresh
+      }
+    });
+
+    debugPrint('✅ DM message polling started (every 30 seconds)');
+  }
+
+  void _stopMessagePolling() {
+    _messagePollingTimer?.cancel();
+    _messagePollingTimer = null;
+    debugPrint('🛑 DM message polling stopped');
+  }
+
+  // Smart polling: Poll more frequently when user is typing (expecting response)
+  void _onUserTyping() {
+    // If user is typing, poll more frequently for 2 minutes
+    _stopMessagePolling();
+
+    int pollCount = 0;
+    _messagePollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (mounted && _isScreenActive) {
+        debugPrint('🔄 Fast polling for new DM messages (user activity)...');
+        _loadMessages(showLoading: false);
+        pollCount++;
+
+        // After 12 polls (2 minutes), return to normal polling
+        if (pollCount >= 12) {
+          timer.cancel();
+          _startMessagePolling(); // Return to normal 30-second polling
+        }
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _isScreenActive = true;
+        _startMessagePolling();
+        // Immediate refresh when returning to app
+        _loadMessages(showLoading: false);
+        debugPrint('📱 App resumed - restarted DM message polling');
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        _isScreenActive = false;
+        _stopMessagePolling();
+        debugPrint('📱 App paused - stopped DM message polling');
+        break;
+      case AppLifecycleState.detached:
+        _stopMessagePolling();
+        break;
+      case AppLifecycleState.hidden:
+        _isScreenActive = false;
+        _stopMessagePolling();
+        break;
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
+    _stopMessagePolling(); // Stop polling when screen is disposed
     _messageController.dispose();
     _scrollController.dispose();
     // Clean up DM media controllers
@@ -123,18 +278,21 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
       _isSending = true;
     });
 
+    // Pause polling while sending to avoid conflicts
+    _stopMessagePolling();
+
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
 
       Map<String, dynamic>? result;
 
       if (_selectedDMMediaFile != null) {
-        // Send message with media
-        // TODO: Upload media file first, then send with media URL
-        // For now, send as text message
+        // Send message with media using DMController's new postMessage endpoint
         result = await apiService.sendDMMessage(
           conversationId: widget.conversationId,
-          content: content.isNotEmpty ? content : 'Shared media',
+          content: content,
+          mediaPath: _selectedDMMediaFile!.path,
+          mediaType: _selectedDMMediaType!,
         );
       } else {
         // Send text message
@@ -157,11 +315,25 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           _selectedDMVideoThumbnail = null;
         });
 
-        // Reload messages to get the latest
-        await _loadMessages();
+        // Add the new message through provider only
+        if (result != null) {
+          final newMessage = DMMessage.fromJson(result);
+          Provider.of<DMMessageProvider>(
+            context,
+            listen: false,
+          ).addMessage(widget.conversationId, newMessage);
+        }
 
-        // Scroll to bottom to show the new message
-        _scrollToBottomIfNeeded();
+        // Scroll to show the new message
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              0.0, // With reverse: true, 0 is the bottom (newest messages)
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -181,7 +353,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         }
       }
     } catch (e) {
-      print('Error sending DM message: $e');
+      debugPrint('Error sending DM message: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -300,6 +472,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
               if (action == VideoSizeAction.chooseDifferent) {
                 _showDMMediaPicker();
               } else if (action == VideoSizeAction.shareAsLink) {
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
@@ -364,6 +537,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         if (ShareService.isValidVideoUrl(userUrl)) {
           try {
             // Send DM message with external video URL
+            if (!mounted) return;
             final apiService = Provider.of<ApiService>(context, listen: false);
             final result = await apiService.sendDMMessage(
               conversationId: widget.conversationId,
@@ -371,14 +545,13 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                   userMessage.isNotEmpty
                       ? userMessage
                       : 'Shared external video',
-              mediaUrl: userUrl,
-              mediaType: 'video',
+              videoUrl: userUrl,
             );
 
             if (result != null && mounted) {
               // Reload messages to get the latest
               await _loadMessages();
-
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('External video shared successfully!'),
@@ -386,6 +559,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                 ),
               );
             } else {
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Failed to share video'),
@@ -405,6 +579,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
             }
           }
         } else {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Please enter a valid HTTPS video URL'),
@@ -459,7 +634,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           playedColor: Colors.blue,
           handleColor: Colors.blueAccent,
           backgroundColor: Colors.grey.shade700,
-          bufferedColor: Colors.lightBlue.withOpacity(0.5),
+          bufferedColor: Colors.lightBlue.withValues(alpha: 0.5),
         ),
         errorBuilder: (context, errorMessage) {
           return Center(
@@ -498,7 +673,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         if (dialogResult != null && dialogResult.trim().isNotEmpty) {
           // Parse the result - format is "message|||url"
           final parts = dialogResult.split('|||');
-          final userMessage = parts.length > 0 ? parts[0].trim() : '';
+          final userMessage = parts.isNotEmpty ? parts[0].trim() : '';
           final userUrl = parts.length > 1 ? parts[1].trim() : '';
 
           if (ShareService.isValidVideoUrl(userUrl)) {
@@ -507,6 +682,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
 
             try {
               // Send DM message with external video URL and thumbnail
+              if (!mounted) return;
               final apiService = Provider.of<ApiService>(
                 context,
                 listen: false,
@@ -517,10 +693,10 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                     userMessage.isNotEmpty
                         ? userMessage
                         : 'Shared external video',
-                mediaUrl: userUrl,
-                mediaType: 'video',
-                // TODO: Upload thumbnail file and pass the URL
-                // mediaThumbnail: thumbnailUrl,
+                videoUrl: userUrl,
+                // For external videos with thumbnails, we need to upload the thumbnail first
+                mediaPath: thumbnailFile.path,
+                mediaType: 'image',
               );
 
               if (result != null && mounted) {
@@ -528,6 +704,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                 await _loadMessages();
 
                 // Show success message
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('External video shared successfully!'),
@@ -539,6 +716,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                 // Scroll to bottom
                 _scrollToBottomIfNeeded();
               } else {
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Failed to share video'),
@@ -548,6 +726,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
               }
             } catch (e) {
               debugPrint('Error sharing external video in DM: $e');
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Error sharing external video: $e'),
@@ -556,6 +735,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
               );
             }
           } else {
+            if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text(
@@ -571,6 +751,8 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         }
       } else {
         debugPrint('🔍 DM: Failed to generate thumbnail');
+
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Could not generate thumbnail for external video'),
@@ -580,6 +762,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
       }
     } catch (e) {
       debugPrint('Error processing external video in DM: $e');
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error processing external video: $e'),
@@ -592,11 +775,21 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   void _scrollToBottomIfNeeded() {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        0.0, // With reverse: true, 0 is the bottom (newest messages)
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     }
+  }
+
+  void _onVideoTap(int messageId) {
+    setState(() {
+      if (_currentlyPlayingVideoId == messageId) {
+        _currentlyPlayingVideoId = null; // Stop playing if already playing
+      } else {
+        _currentlyPlayingVideoId = messageId; // Start playing this video
+      }
+    });
   }
 
   @override
@@ -662,66 +855,230 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
               child:
                   _isLoading
                       ? const Center(child: CircularProgressIndicator())
-                      : _messages.isEmpty
-                      ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.message_outlined,
-                              size: 64,
-                              color: Colors.white.withOpacity(0.7),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No messages yet',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Start the conversation with ${widget.otherUserName}',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.white.withOpacity(0.8),
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      )
-                      : Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(20),
-                            topRight: Radius.circular(20),
-                          ),
-                        ),
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _messages.length,
-                          itemBuilder: (context, index) {
-                            // Reverse the order so newest messages appear at bottom
-                            final message =
-                                _messages[_messages.length - 1 - index];
-                            return _buildMessageBubble(message);
-                          },
-                        ),
+                      : Consumer<DMMessageProvider>(
+                        builder: (context, provider, child) {
+                          final messages = provider.getMessages(
+                            widget.conversationId,
+                          );
+                          return messages.isEmpty
+                              ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.message_outlined,
+                                      size: 64,
+                                      color: Colors.white.withAlpha(179),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      'No messages yet',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Start the conversation with ${widget.otherUserName}',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.white.withAlpha(204),
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              )
+                              : Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withAlpha(26),
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(20),
+                                    topRight: Radius.circular(20),
+                                  ),
+                                ),
+                                child: RefreshIndicator(
+                                  onRefresh: () async {
+                                    await _loadMessages();
+                                  },
+                                  child: ListView.builder(
+                                    controller: _scrollController,
+                                    reverse: true,
+                                    padding: const EdgeInsets.all(16),
+                                    itemCount: messages.length,
+                                    itemBuilder: (context, index) {
+                                      final message = messages[index];
+                                      return _buildMessageBubble(message);
+                                    },
+                                  ),
+                                ),
+                              );
+                        },
                       ),
             ),
+
+            // Media preview (if any)
+            if (_selectedDMMediaFile != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child:
+                    _selectedDMMediaType == 'photo'
+                        ? ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Stack(
+                            children: [
+                              SizedBox(
+                                width: MediaQuery.of(context).size.width * 0.7,
+                                height: 200,
+                                child: Image.file(
+                                  _selectedDMMediaFile!,
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.7,
+                                  height: 200,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.grey.shade400,
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                        blurRadius: 4,
+                                        spreadRadius: 1,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(16),
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedDMMediaFile = null;
+                                          _selectedDMMediaType = null;
+                                        });
+                                      },
+                                      child: const Icon(
+                                        Icons.close,
+                                        color: Colors.red,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                        : _selectedDMMediaType == 'video'
+                        ? ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Stack(
+                            children: [
+                              SizedBox(
+                                width: MediaQuery.of(context).size.width * 0.7,
+                                height: 200,
+                                child:
+                                    _dmChewieController != null
+                                        ? Chewie(
+                                          key: const ValueKey(
+                                            'dm-composition-video',
+                                          ),
+                                          controller: _dmChewieController!,
+                                        )
+                                        : _selectedDMVideoThumbnail != null
+                                        ? Image.file(
+                                          _selectedDMVideoThumbnail!,
+                                          width:
+                                              MediaQuery.of(
+                                                context,
+                                              ).size.width *
+                                              0.7,
+                                          height: 200,
+                                          fit: BoxFit.cover,
+                                        )
+                                        : Container(
+                                          color: Colors.black,
+                                          child: const Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                        ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.grey.shade400,
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                        blurRadius: 4,
+                                        spreadRadius: 1,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(16),
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedDMMediaFile = null;
+                                          _selectedDMMediaType = null;
+                                          _dmVideoController?.dispose();
+                                          _dmChewieController?.dispose();
+                                          _dmVideoController = null;
+                                          _dmChewieController = null;
+                                          _selectedDMVideoThumbnail = null;
+                                        });
+                                      },
+                                      child: const Icon(
+                                        Icons.close,
+                                        color: Colors.red,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                        : const SizedBox.shrink(),
+              ),
 
             // Message input
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
+                color: Colors.white.withValues(alpha: 0.95),
                 border: Border(
-                  top: BorderSide(color: Colors.white.withOpacity(0.3)),
+                  top: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
                 ),
               ),
               child: SafeArea(
@@ -800,35 +1157,48 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     );
   }
 
-  Widget _buildMessageBubble(Map<String, dynamic> message) {
-    final int senderId = message['sender_id'] ?? 0;
+  Widget _buildMessageBubble(DMMessage message) {
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    final int senderId = message.senderId;
     final bool isMe = senderId == widget.currentUserId;
-    final String content = message['content'] ?? '';
+    final String content = message.content;
+    final String? mediaUrl = message.mediaUrl;
+    final String? mediaType = message.mediaType;
+    final String? thumbnailUrl = message.mediaThumbnail;
+
+    // Construct full URLs for media
+    final String? fullMediaUrl =
+        mediaUrl != null
+            ? (mediaUrl.startsWith('http')
+                ? mediaUrl
+                : apiService.mediaBaseUrl + mediaUrl)
+            : null;
+    final String? fullThumbnailUrl =
+        thumbnailUrl != null
+            ? (thumbnailUrl.startsWith('http')
+                ? thumbnailUrl
+                : apiService.mediaBaseUrl + thumbnailUrl)
+            : null;
     final String senderName =
         isMe
             ? 'You'
-            : '${message['sender_first_name'] ?? ''} ${message['sender_last_name'] ?? ''}'
+            : '${message.senderFirstName ?? ''} ${message.senderLastName ?? ''}'
                 .trim();
 
     // Format timestamp
-    final int? createdAt = message['created_at'];
     String timeString = '';
-    if (createdAt != null) {
-      final DateTime messageTime = DateTime.fromMillisecondsSinceEpoch(
-        createdAt,
-      );
-      final DateTime now = DateTime.now();
-      final difference = now.difference(messageTime);
+    final DateTime messageTime = message.createdAt;
+    final DateTime now = DateTime.now();
+    final difference = now.difference(messageTime);
 
-      if (difference.inMinutes < 1) {
-        timeString = 'now';
-      } else if (difference.inMinutes < 60) {
-        timeString = '${difference.inMinutes}m ago';
-      } else if (difference.inHours < 24) {
-        timeString = '${difference.inHours}h ago';
-      } else {
-        timeString = '${difference.inDays}d ago';
-      }
+    if (difference.inMinutes < 1) {
+      timeString = 'now';
+    } else if (difference.inMinutes < 60) {
+      timeString = '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      timeString = '${difference.inHours}h ago';
+    } else {
+      timeString = '${difference.inDays}d ago';
     }
 
     return Padding(
@@ -871,13 +1241,79 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    content,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: isMe ? Colors.white : Colors.black87,
+                  // Display media if present
+                  if (fullMediaUrl != null && mediaType != null) ...[
+                    if (mediaType == 'photo' || mediaType == 'image') ...[
+                      GestureDetector(
+                        onTap: () {
+                          // TODO: Add full-screen image view
+                          debugPrint('Photo tapped: $fullMediaUrl');
+                        },
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            width: double.infinity,
+                            height: 200,
+                            child: Image.network(
+                              fullMediaUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: double.infinity,
+                                  height: 200,
+                                  color: Colors.grey.shade300,
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (content.isNotEmpty) const SizedBox(height: 8),
+                    ] else if (mediaType == 'video' ||
+                        mediaType == 'cloud_video') ...[
+                      // Debug prints for video URLs
+                      Builder(
+                        builder: (context) {
+                          debugPrint('🎥 DM Video URL: $fullMediaUrl');
+                          debugPrint('🖼️ DM Thumbnail URL: $fullThumbnailUrl');
+                          debugPrint('📊 DM Media Type: $mediaType');
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                      mediaType == 'cloud_video'
+                          ? // External video - use ExternalVideoMessageCard
+                          ExternalVideoMessageCard(
+                            externalVideoUrl: fullMediaUrl,
+                            thumbnailUrl: fullThumbnailUrl,
+                            apiService: apiService,
+                          )
+                          : // Local video - use VideoMessageCard
+                          GestureDetector(
+                            onTap: () => _onVideoTap(message.id),
+                            child: VideoMessageCard(
+                              videoUrl: fullMediaUrl,
+                              thumbnailUrl: fullThumbnailUrl,
+                              apiService: apiService,
+                              isCurrentlyPlaying:
+                                  _currentlyPlayingVideoId == (message.id),
+                            ),
+                          ),
+                      if (content.isNotEmpty) const SizedBox(height: 8),
+                    ],
+                  ],
+                  // Display text content if present
+                  if (content.isNotEmpty)
+                    Text(
+                      content,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isMe ? Colors.white : Colors.black87,
+                      ),
                     ),
-                  ),
                   if (timeString.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(

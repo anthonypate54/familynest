@@ -49,7 +49,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
   bool _allowMultipleFamilyMessages = false;
 
   // Services
-  late InvitationService _invitationService;
+  InvitationService? _invitationService;
 
   // Add this to the state class variables
   List<Map<String, dynamic>> _messagePreferences = [];
@@ -69,7 +69,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     _loadUserPreferences();
     _loadMessagePreferences();
 
-    // Add delayed ServiceProvider initialization check
+    // Initialize services immediately without complicated timing mechanisms
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeServiceProvider();
     });
@@ -161,10 +161,19 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
 
   // Respond to an invitation (accept or decline)
   Future<void> _respondToInvitation(int invitationId, bool accept) async {
+    if (_invitationService == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Service not ready yet. Please try again.'),
+        ),
+      );
+      return;
+    }
+
     try {
       setState(() => _isLoading = true);
 
-      final success = await _invitationService.respondToInvitation(
+      final success = await _invitationService!.respondToInvitation(
         invitationId,
         accept,
       );
@@ -528,6 +537,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
   Future<void> _inviteUserToFamily() async {
     final email = _inviteEmailController.text.trim();
     if (email.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter an email address')),
       );
@@ -541,17 +551,27 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
       return;
     }
 
+    if (_invitationService == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Service not ready yet. Please try again in a moment.'),
+        ),
+      );
+      return;
+    }
+
     if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
       // Use invitation service to send invitation
-      final success = await _invitationService.inviteUserToFamily(
+      final success = await _invitationService!.inviteUserToFamily(
         widget.userId,
         email,
       );
 
       if (success) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Invitation sent to $email'),
@@ -581,6 +601,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         errorMessage = 'User has already been invited to this family.';
       }
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
       );
@@ -1607,28 +1628,41 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     return total > 0 ? total : 1;
   }
 
-  // Add this new method
+  // Initialize services directly without retries
   void _initializeServiceProvider() {
+    debugPrint('Initializing services directly without retries');
     try {
+      // Try to use ServiceProvider if available
       if (ServiceProvider().isInitialized) {
-        _invitationService = ServiceProvider().invitationService;
-        _loadInvitations(); // Load invitations only after ServiceProvider is ready
-      } else {
-        // Retry after a short delay
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            _initializeServiceProvider();
-          }
+        setState(() {
+          _invitationService = ServiceProvider().invitationService;
         });
+        _loadInvitations();
+        debugPrint('Successfully initialized via ServiceProvider');
+        return;
       }
     } catch (e) {
-      debugPrint('ServiceProvider not ready yet, will retry: $e');
-      // Retry after a longer delay
-      Future.delayed(const Duration(milliseconds: 1000), () {
-        if (mounted) {
-          _initializeServiceProvider();
-        }
-      });
+      // Just log the error and continue with direct initialization
+      debugPrint('ServiceProvider not available: $e');
+    }
+
+    // Always fall back to direct initialization
+    _initializeServicesDirectly();
+  }
+
+  // Fallback method to initialize services directly if ServiceProvider fails
+  void _initializeServicesDirectly() {
+    if (_invitationService == null && mounted) {
+      try {
+        debugPrint('Initializing InvitationService directly as fallback');
+        final apiService = Provider.of<ApiService>(context, listen: false);
+        setState(() {
+          _invitationService = InvitationService(apiService: apiService);
+        });
+        _loadInvitations();
+      } catch (e) {
+        debugPrint('Error in direct service initialization: $e');
+      }
     }
   }
 }

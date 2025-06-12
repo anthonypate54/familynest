@@ -32,6 +32,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   @override
   void initState() {
     super.initState();
+    _apiService = Provider.of<ApiService>(context, listen: false);
     _loadInvitations();
   }
 
@@ -44,6 +45,19 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
           _invitations = response;
           _isLoading = false;
         });
+
+        // Count pending invitations
+        final pendingCount =
+            response
+                .where(
+                  (inv) => inv['status'] != null && inv['status'] == 'PENDING',
+                )
+                .length;
+
+        // Update the badge count if navigation controller is available
+        if (widget.navigationController != null) {
+          widget.navigationController!.setPendingInvitationsCount(pendingCount);
+        }
       }
     } catch (e) {
       debugPrint('Error loading invitations: $e');
@@ -62,16 +76,19 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
         accept,
       );
 
-      if (response['success'] == true) {
+      // The backend returns status and message fields, not success
+      if (response.containsKey('status')) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              accept ? 'Invitation accepted!' : 'Invitation declined',
+              response['message'] as String? ??
+                  (accept ? 'Invitation accepted!' : 'Invitation declined'),
             ),
           ),
         );
       } else {
-        throw Exception('Failed to process invitation');
+        throw Exception('Invalid response format from server');
       }
 
       // Refresh invitations

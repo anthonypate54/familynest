@@ -129,10 +129,19 @@ class InvitationService {
   // Respond to an invitation (accept or decline)
   Future<bool> respondToInvitation(int invitationId, bool accept) async {
     try {
-      await apiService.respondToFamilyInvitation(invitationId, accept);
+      debugPrint(
+        '🔍 Attempting to ${accept ? 'accept' : 'decline'} invitation ID: $invitationId',
+      );
+      final result = await apiService.respondToFamilyInvitation(
+        invitationId,
+        accept,
+      );
+      debugPrint(
+        '✅ Successfully responded to invitation: ${result.toString()}',
+      );
       return true;
     } catch (e) {
-      debugPrint('Error responding to invitation: $e');
+      debugPrint('❌ Error responding to invitation: $e');
       return false;
     }
   }

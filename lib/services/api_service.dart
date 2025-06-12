@@ -1124,11 +1124,25 @@ Network connection error. Please check:
       'Content-Type': 'application/json',
       if (_token != null) 'Authorization': 'Bearer $_token',
     };
+
+    debugPrint(
+      '🔍 API: Responding to invitation $invitationId with accept=$accept',
+    );
+    debugPrint(
+      '🔍 API: Using endpoint: $baseUrl/api/invitations/$invitationId/respond',
+    );
+    debugPrint('🔍 API: Request body: ${jsonEncode({'accept': accept})}');
+    debugPrint('🔍 API: Headers: ${headers.toString()}');
+
     final response = await client.post(
       Uri.parse('$baseUrl/api/invitations/$invitationId/respond'),
       headers: headers,
       body: jsonEncode({'accept': accept}),
     );
+
+    debugPrint('🔍 API: Response status: ${response.statusCode}');
+    debugPrint('🔍 API: Response body: ${response.body}');
+
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     } else {
@@ -1152,8 +1166,9 @@ Network connection error. Please check:
 
     final familyId = ownedFamily['familyId'];
 
+    // Using the InvitationController endpoint
     final response = await client.post(
-      Uri.parse('$baseUrl/api/families/$familyId/invite'),
+      Uri.parse('$baseUrl/api/invitations/$familyId/invite'),
       headers: headers,
       body: jsonEncode({'email': email}),
     );
@@ -1240,7 +1255,7 @@ Network connection error. Please check:
     try {
       // The endpoint is in UserController at /api/users/invitations (verified with curl)
       final response = await client.get(
-        Uri.parse('$baseUrl/api/users/invitations'),
+        Uri.parse('$baseUrl/api/invitations'),
         headers: headers,
       );
 
@@ -2005,55 +2020,76 @@ Network connection error. Please check:
     }
   }
 
-  /// Send a DM message (text or media)
+  /// Send a DM message (text or media) using the new postMessage endpoint
   /// Returns the sent message details
   Future<Map<String, dynamic>?> sendDMMessage({
     required int conversationId,
     String? content,
-    String? mediaUrl,
+    String? mediaPath,
     String? mediaType,
-    String? mediaThumbnail,
-    String? mediaFilename,
-    int? mediaSize,
-    int? mediaDuration,
+    String? videoUrl,
   }) async {
     try {
-      debugPrint('Sending DM message to conversation: $conversationId');
-
-      final url = Uri.parse('$baseUrl/api/dm/messages');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final body = <String, dynamic>{
-        'conversationId': conversationId,
-        if (content != null) 'content': content,
-        if (mediaUrl != null) 'mediaUrl': mediaUrl,
-        if (mediaType != null) 'mediaType': mediaType,
-        if (mediaThumbnail != null) 'mediaThumbnail': mediaThumbnail,
-        if (mediaFilename != null) 'mediaFilename': mediaFilename,
-        if (mediaSize != null) 'mediaSize': mediaSize,
-        if (mediaDuration != null) 'mediaDuration': mediaDuration,
-      };
-
-      final response = await client.post(
-        url,
-        headers: headers,
-        body: jsonEncode(body),
-      );
       debugPrint(
-        'Send DM message response: status=${response.statusCode}, body=${response.body}',
+        '🚀 sendDMMessage called with: conversationId=$conversationId, content="$content", mediaPath="$mediaPath", mediaType="$mediaType", videoUrl="$videoUrl"',
       );
 
-      if (response.statusCode == 200) {
+      // Use the userId from current auth
+      final currentUser = await getCurrentUser();
+      if (currentUser == null || currentUser['userId'] == null) {
+        debugPrint('❌ No current user ID available');
+        return null;
+      }
+      final userId = currentUser['userId'] as int;
+
+      final url = Uri.parse('$baseUrl/api/dm/$userId/message');
+      debugPrint('🌐 Making request to: $url');
+
+      var request = http.MultipartRequest('POST', url);
+      request.headers['Authorization'] = 'Bearer $_token';
+
+      // Add required fields
+      request.fields['content'] = content ?? '';
+      request.fields['conversationId'] = conversationId.toString();
+      debugPrint('📝 Request fields: ${request.fields}');
+
+      // Add media file if provided
+      if (mediaPath != null && mediaPath.isNotEmpty) {
+        final file = File(mediaPath);
+        if (await file.exists()) {
+          request.files.add(
+            await http.MultipartFile.fromPath('media', mediaPath),
+          );
+          if (mediaType != null) {
+            request.fields['mediaType'] = mediaType;
+          }
+          debugPrint('📎 Added media file: $mediaPath (type: $mediaType)');
+        } else {
+          debugPrint('❌ Media file does not exist: $mediaPath');
+        }
+      }
+
+      // Add video URL if provided (for external videos)
+      if (videoUrl != null && videoUrl.isNotEmpty) {
+        request.fields['videoUrl'] = videoUrl;
+        debugPrint('🎥 Added video URL: $videoUrl');
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint(
+        '📥 Send DM message response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 201) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       } else {
-        debugPrint('Failed to send DM message: ${response.body}');
+        debugPrint('❌ Failed to send DM message: ${response.body}');
         return null;
       }
     } catch (e) {
-      debugPrint('Error sending DM message: $e');
+      debugPrint('💥 Error sending DM message: $e');
       return null;
     }
   }
@@ -2080,9 +2116,28 @@ Network connection error. Please check:
 
       final response = await client.get(url, headers: headers);
       debugPrint('Get DM messages response: status=${response.statusCode}');
+      debugPrint('Get DM messages response body: ${response.body}');
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint('Decoded response data: $data');
+
+        // Debug each message in the response
+        if (data['messages'] is List) {
+          final messages = data['messages'] as List;
+          for (var i = 0; i < messages.length; i++) {
+            debugPrint('Message $i: ${messages[i]}');
+            if (messages[i] is Map) {
+              debugPrint('  id: ${messages[i]['id']}');
+              debugPrint(
+                '  conversation_id: ${messages[i]['conversation_id']}',
+              );
+              debugPrint('  sender_id: ${messages[i]['sender_id']}');
+            }
+          }
+        }
+
+        return data;
       } else {
         debugPrint('Failed to get DM messages: ${response.body}');
         return null;

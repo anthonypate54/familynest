@@ -8,17 +8,35 @@ enum Environment { development, staging, production }
 class AppConfig {
   static final AppConfig _instance = AppConfig._internal();
 
-  factory AppConfig() {
-    return _instance;
-  }
+  factory AppConfig() => _instance;
 
   AppConfig._internal();
 
-  // Current environment - defaults to development
+  // App environment
   Environment _environment = Environment.development;
 
-  // Configurable base URL for the backend API
+  // API URLs for different environments
+  final String _devBaseUrl =
+      'http://10.0.2.2:8080'; // Android emulator loopback
+  final String _localDevBaseUrl = 'http://localhost:8080'; // Desktop/iOS
+  final String _prodBaseUrl = 'https://familynest-api.example.com';
+
+  // Custom URL (set via settings)
   String? _customBaseUrl;
+
+  // Feature flags
+  bool enableVideoMessages = true;
+  bool enableDMs = true;
+
+  // App settings
+  Duration invitationPollingInterval = const Duration(
+    minutes: 5,
+  ); // Default 5 minutes
+
+  // Set a custom polling interval - useful for testing
+  void setInvitationPollingInterval(Duration interval) {
+    invitationPollingInterval = interval;
+  }
 
   /// Set the current environment
   void setEnvironment(Environment env) {
@@ -44,7 +62,7 @@ class AppConfig {
     // Otherwise, choose based on environment and platform
     switch (_environment) {
       case Environment.production:
-        return "http://api.familynest.example.com"; // Replace with actual production URL
+        return _prodBaseUrl;
 
       case Environment.staging:
         return "http://staging-api.familynest.example.com"; // Replace with actual staging URL
