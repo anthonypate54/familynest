@@ -8,6 +8,8 @@ import '../config/app_config.dart';
 import 'dart:math' as Math;
 import 'package:http_parser/http_parser.dart'; // For MediaType
 import '../models/message.dart'; // Add this import
+import '../models/dm_conversation.dart';
+import '../models/dm_message.dart';
 
 class AuthException implements Exception {
   final String message;
@@ -1020,16 +1022,16 @@ Network connection error. Please check:
 
   // Get family members
   Future<List<Map<String, dynamic>>> getFamilyMembers(int userId) async {
-    print('🔍 API DEBUG: getFamilyMembers called for userId: $userId');
+    debugPrint('🔍 API DEBUG: getFamilyMembers called for userId: $userId');
 
     final headers = {'Content-Type': 'application/json'};
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
-      print(
+      debugPrint(
         '🔍 API DEBUG: Token available - ${_token!.substring(0, Math.min(10, _token!.length))}...',
       );
     } else {
-      print('🔍 API DEBUG: No token available!');
+      debugPrint('🔍 API DEBUG: No token available!');
     }
 
     // First try to get the user's active family
@@ -1714,7 +1716,14 @@ Network connection error. Please check:
 
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(response.body);
-        return jsonList.map((json) => Message.fromJson(json)).toList();
+        final messages =
+            jsonList.map((json) {
+              return Message.fromJson(json);
+            }).toList();
+
+        return messages;
+
+        //       return jsonList.map((json) => Message.fromJson(json)).toList();
       } else {
         throw Exception('Failed to load messages: ${response.statusCode}');
       }
@@ -1900,7 +1909,11 @@ Network connection error. Please check:
     }
   }
 
-  Future<void> toggleMessageLike(String messageId, bool isLiked) async {
+  Future<Map<String, dynamic>> toggleMessageLike(
+    String messageId,
+    bool isLiked,
+  ) async {
+    debugPrint('Toggling like for message $messageId: isLiked=$isLiked');
     final response = await client.post(
       Uri.parse('$baseUrl/api/messages/$messageId/like'),
       headers: {
@@ -1910,23 +1923,41 @@ Network connection error. Please check:
       body: jsonEncode({'liked': isLiked}),
     );
 
-    if (response.statusCode != 200) {
-      throw Exception('Failed to toggle like: ${response.body}');
-    }
-  }
-
-  Future<void> toggleMessageLove(String messageId, bool isLoved) async {
-    final response = await client.post(
-      Uri.parse('$baseUrl/api/messages/$messageId/love'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (_token != null) 'Authorization': 'Bearer $_token',
-      },
-      body: jsonEncode({'loved': isLoved}),
+    debugPrint(
+      'Toggle like response: status=${response.statusCode}, body=${response.body}',
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to toggle love: ${response.body}');
+      throw Exception('Failed to toggle like: ${response.body}');
+    }
+
+    // Parse and return the response body
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>?> toggleMessageLove(
+    String messageId,
+    bool isLoved,
+  ) async {
+    try {
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/messages/$messageId/love'),
+        headers: {
+          'Accept': 'application/json',
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
+        body: json.encode({
+          'loved': isLoved,
+        }), // Changed from isLoved to loved to match backend
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error toggling message love: $e');
+      return null;
     }
   }
 
@@ -1945,7 +1976,10 @@ Network connection error. Please check:
     }
   }
 
-  Future<void> toggleCommentLove(String messageId, bool isLoved) async {
+  Future<Map<String, dynamic>?> toggleCommentLove(
+    String messageId,
+    bool isLoved,
+  ) async {
     final response = await client.post(
       Uri.parse('$baseUrl/api/comments/$messageId/love'),
       headers: {
@@ -1958,13 +1992,15 @@ Network connection error. Please check:
     if (response.statusCode != 200) {
       throw Exception('Failed to toggle love: ${response.body}');
     }
+
+    return json.decode(response.body);
   }
 
   // ===== DIRECT MESSAGE (DM) METHODS =====
 
   /// Get or create a conversation with another user
   /// Returns conversation details including the other user info
-  Future<Map<String, dynamic>?> getOrCreateConversation(int otherUserId) async {
+  Future<DMConversation?> getOrCreateConversation(int otherUserId) async {
     try {
       debugPrint('Getting/creating conversation with user: $otherUserId');
 
@@ -1980,7 +2016,39 @@ Network connection error. Please check:
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+        // Extract conversation ID and other user details
+        final conversationId = data['conversation_id'] as int?;
+        final otherUser = data['other_user'] as Map<String, dynamic>?;
+
+        if (conversationId == null || otherUser == null) return null;
+
+        // Get current user ID
+        final currentUser = await getCurrentUser();
+        final currentUserId = currentUser?['userId'] as int?;
+        if (currentUserId == null) return null;
+
+        // Get other user ID from the otherUser map
+        final otherUserId = otherUser['id'] as int;
+
+        // Determine user1Id and user2Id (lower ID is always user1)
+        final user1Id =
+            currentUserId < otherUserId ? currentUserId : otherUserId;
+        final user2Id =
+            currentUserId < otherUserId ? otherUserId : currentUserId;
+
+        // Create DMConversation object using fromJson
+        return DMConversation.fromJson({
+          'id': conversationId,
+          'user1_id': user1Id,
+          'user2_id': user2Id,
+          'created_at': data['created_at'],
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+          'other_user_name': otherUser['username'],
+          'other_user_first_name': otherUser['first_name'],
+          'other_user_last_name': otherUser['last_name'],
+        });
       } else {
         debugPrint('Failed to get/create conversation: ${response.body}');
         return null;
@@ -1993,7 +2061,7 @@ Network connection error. Please check:
 
   /// Get all conversations for the current user
   /// Returns list of conversations with other user details and last message info
-  Future<List<Map<String, dynamic>>> getDMConversations() async {
+  Future<List<DMConversation>> getDMConversations() async {
     try {
       debugPrint('Getting DM conversations');
 
@@ -2009,7 +2077,40 @@ Network connection error. Please check:
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final conversations = data['conversations'] as List<dynamic>;
-        return conversations.cast<Map<String, dynamic>>();
+
+        // Get current user ID
+        final currentUser = await getCurrentUser();
+        final currentUserId = currentUser?['userId'] as int?;
+        if (currentUserId == null) return [];
+
+        return conversations
+            .map((conv) {
+              final conversationId = conv['conversation_id'] as int;
+              final otherUser = conv['other_user'] as Map<String, dynamic>?;
+
+              if (otherUser == null) return null;
+
+              // Determine user1Id and user2Id (lower ID is always user1)
+              final otherUserId = otherUser['id'] as int;
+              final user1Id =
+                  currentUserId < otherUserId ? currentUserId : otherUserId;
+              final user2Id =
+                  currentUserId < otherUserId ? otherUserId : currentUserId;
+
+              // Create DMConversation object using fromJson
+              return DMConversation.fromJson({
+                'id': conversationId,
+                'user1_id': user1Id,
+                'user2_id': user2Id,
+                'created_at': conv['created_at'],
+                'updated_at': DateTime.now().millisecondsSinceEpoch,
+                'other_user_name': otherUser['username'],
+                'other_user_first_name': otherUser['first_name'],
+                'other_user_last_name': otherUser['last_name'],
+              });
+            })
+            .whereType<DMConversation>()
+            .toList();
       } else {
         debugPrint('Failed to get conversations: ${response.body}');
         return [];

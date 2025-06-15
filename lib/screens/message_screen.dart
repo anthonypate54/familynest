@@ -41,17 +41,29 @@ class _MessageScreenState extends State<MessageScreen>
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   File? _selectedVideoThumbnail;
-  List<Message> _messages = [];
+
   bool _isLoading = true;
   bool _isFirstTimeUser = true; // Track if user is truly new
 
   // --- Inline video playback for message feed ---
   String? _currentlyPlayingVideoId;
 
-  // --- Polling for new messages ---
-  Timer? _messagePollingTimer;
-  bool _isScreenActive = true;
-  DateTime? _lastMessageTime;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadMessages(showLoading: false);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this); // Add lifecycle observer
+    _messageController.addListener(() {
+      _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
+    });
+    _loadMessages();
+  }
 
   Future<void> _loadMessages({bool showLoading = true}) async {
     if (showLoading) {
@@ -63,36 +75,23 @@ class _MessageScreenState extends State<MessageScreen>
     try {
       final messages = await apiService.getUserMessages(widget.userId);
       if (mounted) {
-        final hasNewMessages = _hasNewMessages(messages);
-        setState(() {
-          _messages = messages;
-          if (showLoading) _isLoading = false;
-        });
-
-        // Update last message time for polling optimization
-        if (messages.isNotEmpty) {
-          _lastMessageTime = messages.first.createdAt;
-        }
-
-        // Auto-scroll to bottom if there are new messages
-        if (hasNewMessages) {
-          Future.delayed(Duration(milliseconds: 100), () {
-            _scrollToBottom();
-          });
-        }
-
         Provider.of<MessageProvider>(
           context,
           listen: false,
         ).setMessages(messages);
+        if (showLoading) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          if (showLoading) _isLoading = false;
-        });
-
-        // Only show error for manual refreshes, not background polling
+        if (showLoading) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
         if (showLoading) {
           ScaffoldMessenger.of(
             context,
@@ -100,108 +99,6 @@ class _MessageScreenState extends State<MessageScreen>
         }
       }
     }
-  }
-
-  // Check if there are new messages compared to current list
-  bool _hasNewMessages(List<Message> newMessages) {
-    if (_messages.isEmpty && newMessages.isNotEmpty) return true;
-    if (_messages.isEmpty || newMessages.isEmpty) return false;
-
-    // Check if the latest message is different
-    return _messages.first.id != newMessages.first.id;
-  }
-
-  void _startMessagePolling() {
-    _stopMessagePolling(); // Ensure no duplicate timers
-
-    _messagePollingTimer = Timer.periodic(Duration(seconds: 30), (timer) {
-      if (mounted && _isScreenActive) {
-        debugPrint('🔄 Polling for new messages...');
-        _loadMessages(showLoading: false); // Silent refresh
-      }
-    });
-
-    debugPrint('✅ Message polling started (every 30 seconds)');
-  }
-
-  void _stopMessagePolling() {
-    _messagePollingTimer?.cancel();
-    _messagePollingTimer = null;
-    debugPrint('🛑 Message polling stopped');
-  }
-
-  // Smart polling: Poll more frequently when user is typing (expecting response)
-  void _onUserTyping() {
-    // If user is typing, poll more frequently for 2 minutes
-    _stopMessagePolling();
-
-    int pollCount = 0;
-    _messagePollingTimer = Timer.periodic(Duration(seconds: 10), (timer) {
-      if (mounted && _isScreenActive) {
-        debugPrint('🔄 Fast polling for new messages (user activity)...');
-        _loadMessages(showLoading: false);
-        pollCount++;
-
-        // After 12 polls (2 minutes), return to normal polling
-        if (pollCount >= 12) {
-          timer.cancel();
-          _startMessagePolling(); // Return to normal 30-second polling
-        }
-      } else {
-        timer.cancel();
-      }
-    });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.resumed:
-        _isScreenActive = true;
-        _startMessagePolling();
-        // Immediate refresh when returning to app
-        _loadMessages(showLoading: false);
-        debugPrint('📱 App resumed - restarted message polling');
-        break;
-      case AppLifecycleState.paused:
-      case AppLifecycleState.inactive:
-        _isScreenActive = false;
-        _stopMessagePolling();
-        debugPrint('📱 App paused - stopped message polling');
-        break;
-      case AppLifecycleState.detached:
-        _stopMessagePolling();
-        break;
-      case AppLifecycleState.hidden:
-        _isScreenActive = false;
-        _stopMessagePolling();
-        break;
-    }
-  }
-
-  void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this); // Add lifecycle observer
-    _messageController.addListener(() {
-      _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
-    });
-    _messageController.addListener(
-      _onUserTyping,
-    ); // Trigger smart polling when typing
-    _loadMessages();
-    _checkIfFirstTimeUser(); // Check if user has DMs
-    _startMessagePolling(); // Start polling for new messages
   }
 
   // Check if user is a first-time user using SharedPreferences
@@ -225,11 +122,11 @@ class _MessageScreenState extends State<MessageScreen>
 
       // Check for DMs and messages in parallel
       final results = await Future.wait([
-        apiService.getDMConversations(),
+        apiService.getOrCreateConversation(int.parse(widget.userId)),
         apiService.getUserMessages(widget.userId),
       ]);
 
-      final conversations = results[0] as List<Map<String, dynamic>>;
+      final conversations = results[0] as List<dynamic>;
       final messages = results[1] as List<Message>;
 
       final hasActivity = conversations.isNotEmpty || messages.isNotEmpty;
@@ -242,13 +139,13 @@ class _MessageScreenState extends State<MessageScreen>
         // If user has activity, mark them as having seen welcome
         if (hasActivity) {
           await prefs.setBool('hasSeenWelcome', true);
-          print('🔍 User has activity - marked hasSeenWelcome = true');
+          debugPrint('🔍 User has activity - marked hasSeenWelcome = true');
         } else {
-          print('🔍 New user - will show welcome dialog');
+          debugPrint('🔍 New user - will show welcome dialog');
         }
       }
     } catch (e) {
-      print('Error checking first-time user status: $e');
+      debugPrint('Error checking first-time user status: $e');
       // If error, assume first-time user (safer for UX)
       if (mounted) {
         setState(() {
@@ -277,7 +174,6 @@ class _MessageScreenState extends State<MessageScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
-    _stopMessagePolling(); // Stop polling when screen is disposed
     _scrollController.dispose();
     _messageController.dispose();
     _isSendButtonEnabled.dispose();
@@ -598,13 +494,16 @@ class _MessageScreenState extends State<MessageScreen>
                 videoUrl: userUrl, // External video URL
               );
 
-              // Add to local message list and refresh
-              setState(() {
-                _messages.insert(0, newMessage);
-              });
-              await _loadMessages(); // Reload messages to get updated data
+              // Add to Provider and update UI
+              if (!mounted) return;
+              Provider.of<MessageProvider>(
+                context,
+                listen: false,
+              ).addMessage(newMessage);
+              _scrollToBottom();
 
               // Show success message
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('External video posted successfully!'),
@@ -614,9 +513,10 @@ class _MessageScreenState extends State<MessageScreen>
               );
 
               // Scroll to bottom
-              _scrollToBottomIfNeeded();
+              _scrollToBottom();
             } catch (e) {
               debugPrint('Error posting external video message: $e');
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Error posting external video: $e'),
@@ -626,6 +526,7 @@ class _MessageScreenState extends State<MessageScreen>
               );
             }
           } else {
+            if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text(
@@ -641,6 +542,7 @@ class _MessageScreenState extends State<MessageScreen>
         }
       } else {
         debugPrint('🔍 Failed to generate thumbnail');
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Could not generate thumbnail for external video'),
@@ -650,6 +552,7 @@ class _MessageScreenState extends State<MessageScreen>
       }
     } catch (e) {
       debugPrint('Error processing external video: $e');
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error processing external video: $e'),
@@ -659,10 +562,10 @@ class _MessageScreenState extends State<MessageScreen>
     }
   }
 
-  void _scrollToBottomIfNeeded() {
+  void _scrollToBottom() {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
-        0.0, // For reverse: true, this is the bottom
+        0.0,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
@@ -671,14 +574,12 @@ class _MessageScreenState extends State<MessageScreen>
 
   Future<void> _postMessage(ApiService apiService) async {
     final text = _messageController.text.trim();
-
-    // Mark welcome as seen when user posts their first message
     if (_isFirstTimeUser) {
       await _markWelcomeSeen();
     }
-
+    Message? newMessage;
     if (_selectedMediaFile != null) {
-      Message newMessage = await apiService.postMessage(
+      newMessage = await apiService.postMessage(
         int.tryParse(widget.userId) ?? 0,
         text,
         mediaPath: _selectedMediaFile!.path,
@@ -687,28 +588,29 @@ class _MessageScreenState extends State<MessageScreen>
       setState(() {
         _selectedMediaFile = null;
         _selectedMediaType = null;
-        _messages.add(newMessage); // Add new message to the list
       });
+    } else if (text.isNotEmpty) {
+      newMessage = await apiService.postMessage(
+        int.tryParse(widget.userId) ?? 0,
+        text,
+      );
+    }
+    if (newMessage != null) {
+      Provider.of<MessageProvider>(
+        context,
+        listen: false,
+      ).addMessage(newMessage);
+      _messageController.clear();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
-            0.0, // Always scroll to the bottom in reverse mode
+            0.0,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOut,
           );
         }
       });
-    } else if (text.isNotEmpty) {
-      Message newMessage = await apiService.postMessage(
-        int.tryParse(widget.userId) ?? 0,
-        text,
-      );
-      setState(() {
-        _messages.insert(0, newMessage); // Add new message to the list
-      });
     }
-    _messageController.clear();
-    await _loadMessages(); // Reload messages after posting
   }
 
   @override
@@ -767,7 +669,7 @@ class _MessageScreenState extends State<MessageScreen>
                               },
                               currentlyPlayingVideoId: _currentlyPlayingVideoId,
                               isFirstTimeUser: _isFirstTimeUser,
-                            ); // buildMessageListView
+                            );
                           },
                         ),
                       ),

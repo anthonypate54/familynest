@@ -1,3 +1,4 @@
+import 'package:familynest/providers/comment_provider.dart';
 import 'package:familynest/providers/dm_message_provider.dart';
 import 'package:flutter/material.dart';
 import 'services/api_service.dart';
@@ -7,7 +8,7 @@ import 'screens/profile_screen.dart';
 import 'screens/family_management_screen.dart';
 import 'screens/invitations_screen.dart';
 import 'screens/message_screen.dart';
-import 'screens/dm_list_screen.dart';
+import 'screens/messages_home_screen.dart';
 import 'theme/app_theme.dart';
 import 'utils/page_transitions.dart';
 import 'config/app_config.dart';
@@ -76,6 +77,7 @@ void main() async {
         Provider<ApiService>.value(value: apiService),
         ChangeNotifierProvider(create: (_) => MessageProvider()),
         ChangeNotifierProvider(create: (_) => DMMessageProvider()),
+        ChangeNotifierProvider(create: (_) => CommentProvider()),
       ],
       child: MyApp(initialRoute: '/'),
     ),
@@ -217,7 +219,7 @@ class MainAppContainerState extends State<MainAppContainer> {
     super.initState();
     _screens = [
       MessageScreen(userId: widget.userId.toString()),
-      DMListScreen(userId: widget.userId),
+      MessagesHomeScreen(userId: widget.userId),
       ProfileScreen(
         userId: widget.userId,
         userRole: widget.userRole,
@@ -275,17 +277,18 @@ class MainAppContainerState extends State<MainAppContainer> {
 
       if (hasSeenWelcome) {
         // User has seen welcome before - check if they have DMs to go to DM screen
-        print('🔍 STARTUP: User has seen welcome - checking for DMs');
+        debugPrint('🔍 STARTUP: User has seen welcome - checking for DMs');
+        if (!mounted) return;
         final apiService = Provider.of<ApiService>(context, listen: false);
         final conversations = await apiService.getDMConversations();
 
         if (mounted) {
           setState(() {
             if (conversations.isNotEmpty) {
-              print('🔍 STARTUP: Has DMs - navigating to DM screen');
+              debugPrint('🔍 STARTUP: Has DMs - navigating to DM screen');
               _currentIndex = 1; // DM screen index
             } else {
-              print(
+              debugPrint(
                 '🔍 STARTUP: No DMs - staying on MessageScreen (no welcome dialog)',
               );
               _currentIndex = 0; // MessageScreen index
@@ -295,7 +298,8 @@ class MainAppContainerState extends State<MainAppContainer> {
         }
       } else {
         // New user - check for any activity
-        print('🔍 STARTUP: New user - checking for any activity');
+        debugPrint('🔍 STARTUP: New user - checking for any activity');
+        if (!mounted) return;
         final apiService = Provider.of<ApiService>(context, listen: false);
 
         final results = await Future.wait([
@@ -303,7 +307,7 @@ class MainAppContainerState extends State<MainAppContainer> {
           apiService.getUserMessages(widget.userId.toString()),
         ]);
 
-        final conversations = results[0] as List<Map<String, dynamic>>;
+        final conversations = results[0] as List<dynamic>;
         final messages = results[1] as List<Message>;
         final hasActivity = conversations.isNotEmpty || messages.isNotEmpty;
 
@@ -311,14 +315,14 @@ class MainAppContainerState extends State<MainAppContainer> {
           setState(() {
             if (hasActivity) {
               // User has activity - mark welcome seen and go to appropriate screen
-              print('🔍 STARTUP: Found activity - marking welcome seen');
+              debugPrint('🔍 STARTUP: Found activity - marking welcome seen');
               prefs.setBool('hasSeenWelcome', true);
               _currentIndex =
                   conversations.isNotEmpty
                       ? 1
                       : 0; // DM screen if has DMs, otherwise Messages
             } else {
-              print(
+              debugPrint(
                 '🔍 STARTUP: No activity - staying on MessageScreen (will show welcome)',
               );
               _currentIndex = 0; // MessageScreen with welcome dialog

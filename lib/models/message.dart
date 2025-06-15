@@ -38,6 +38,8 @@ class Message {
   final int? commentCount;
   final int? parentMessageId;
   final String? userName;
+  final bool isLiked;
+  final bool isFavorite;
   Message({
     required this.id,
     required this.content,
@@ -55,6 +57,8 @@ class Message {
     this.commentCount,
     this.parentMessageId,
     this.userName,
+    this.isLiked = false,
+    this.isFavorite = false,
   });
 
   // Factory constructor for creating a Message from JSON
@@ -98,6 +102,9 @@ class Message {
           json['commentCount'] as int? ?? json['comment_count'] as int?,
       parentMessageId:
           json['parentMessageId'] as int? ?? json['parent_message_id'] as int?,
+      isLiked: json['isLiked'] as bool? ?? json['is_liked'] as bool? ?? false,
+      isFavorite:
+          json['isFavorite'] as bool? ?? json['is_favorite'] as bool? ?? false,
     );
   }
   // Convert Message to JSON
@@ -119,6 +126,8 @@ class Message {
       'commentCount': commentCount,
       'parentMessageId': parentMessageId,
       'userName': userName,
+      'isLiked': isLiked,
+      'isFavorite': isFavorite,
     };
   }
 
@@ -141,6 +150,8 @@ class Message {
     int? commentCount,
     int? parentMessageId,
     String? userName,
+    bool? isLiked,
+    bool? isFavorite,
   }) {
     return Message(
       id: id ?? this.id,
@@ -159,6 +170,8 @@ class Message {
       commentCount: commentCount ?? this.commentCount,
       parentMessageId: parentMessageId ?? this.parentMessageId,
       userName: userName ?? this.userName,
+      isLiked: isLiked ?? this.isLiked,
+      isFavorite: isFavorite ?? this.isFavorite,
     );
   }
 

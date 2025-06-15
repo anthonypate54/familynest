@@ -11,6 +11,7 @@ import '../utils/page_transitions.dart';
 import 'package:provider/provider.dart';
 import '../providers/message_provider.dart';
 import '../services/share_service.dart';
+import '../providers/comment_provider.dart';
 
 class MessageService {
   static Widget buildMessageListView(
@@ -33,7 +34,7 @@ class MessageService {
 
     return ListView.builder(
       controller: scrollController,
-      reverse: true,
+      reverse: !isThreadView,
       itemCount: messages.length,
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       itemBuilder: (context, index) {
@@ -130,6 +131,7 @@ class MessageService {
               currentlyPlayingVideoId: currentlyPlayingVideoId,
               showCommentIcon: !isThreadView,
               suppressDateSeparator: suppressDateSeparator,
+              isThreadView: isThreadView,
             ),
           ],
         );
@@ -558,6 +560,7 @@ class MessageCard extends StatefulWidget {
   final bool suppressDateSeparator;
   final bool showCommentIcon;
   final String? parentId;
+  final bool isThreadView;
 
   const MessageCard({
     Key? key,
@@ -574,6 +577,7 @@ class MessageCard extends StatefulWidget {
     this.suppressDateSeparator = false,
     this.showCommentIcon = true,
     this.parentId,
+    this.isThreadView = false,
   }) : super(key: key);
 
   @override
@@ -581,115 +585,126 @@ class MessageCard extends StatefulWidget {
 }
 
 class _MessageCardState extends State<MessageCard> {
-  late bool isFavorite;
-  late bool isLiked;
-
-  late int userId;
+  bool isLiked = false;
+  bool isFavorite = false;
 
   @override
   void initState() {
     super.initState();
-    isFavorite = false;
-    isLiked = false;
-    // Initialize metrics from message
-    userId = int.tryParse(widget.message.senderId ?? '0') ?? 0;
-  }
-
-  Future<void> _toggleFavorite() async {
-    try {
-      setState(() {
-        isFavorite = !isFavorite;
-      });
-
-      if (!widget.showCommentIcon) {
-        // This is a comment
-        // parentId: the id of the parent message
-        // widget.message.id: the id of the comment
-        final provider = Provider.of<MessageProvider>(context, listen: false);
-        final parentMessage = provider.messages.firstWhere(
-          (m) => m.id == widget.parentId,
-        );
-
-        final commentIndex = parentMessage.replies.indexWhere(
-          (c) => c.id == widget.message.id,
-        );
-        if (commentIndex != -1) {
-          final newLoveCount =
-              (parentMessage.replies[commentIndex].loveCount ?? 0) +
-              (isFavorite ? 1 : -1);
-          final updatedComment = parentMessage.replies[commentIndex].copyWith(
-            loveCount: newLoveCount,
-          );
-          final updatedReplies = List<Message>.from(parentMessage.replies)
-            ..[commentIndex] = updatedComment;
-          final updatedParentMessage = parentMessage.copyWith(
-            replies: updatedReplies,
-          );
-
-          provider.updateMessage(updatedParentMessage);
-        }
-
-        // Call your API for comment love
-        await widget.apiService.toggleCommentLove(
-          widget.message.id,
-          isFavorite,
-        );
-      } else {
-        // This is a main message
-        final newLoveCount =
-            (widget.message.loveCount ?? 0) + (isFavorite ? 1 : -1);
-        final updatedMessage = widget.message.copyWith(loveCount: newLoveCount);
-
-        Provider.of<MessageProvider>(
-          context,
-          listen: false,
-        ).updateMessage(updatedMessage);
-
-        // Call your API for message love
-        await widget.apiService.toggleMessageLove(
-          widget.message.id,
-          isFavorite,
-        );
-      }
-    } catch (e) {
-      setState(() {
-        isFavorite = !isFavorite;
-      });
-      debugPrint('Failed to update favorite: $e');
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to update favorite: $e')));
-    }
+    // Initialize like state from the message
+    isLiked = widget.message.isLiked;
+    isFavorite = widget.message.isFavorite;
   }
 
   Future<void> _toggleLike() async {
     try {
-      setState(() {
-        isLiked = !isLiked;
-      });
-      final newLikeCount = (widget.message.likeCount ?? 0) + (isLiked ? 1 : -1);
-      final updatedMessage = widget.message.copyWith(likeCount: newLikeCount);
+      // First make the API call
+      if (!widget.isThreadView) {
+        // This is a main message (not in thread view)
+        final messageProvider = Provider.of<MessageProvider>(
+          context,
+          listen: false,
+        );
+        final response = await widget.apiService.toggleMessageLike(
+          widget.message.id,
+          !isLiked, // Send the opposite of current state
+        );
 
-      Provider.of<MessageProvider>(
-        context,
-        listen: false,
-      ).updateMessage(updatedMessage);
-
-      if (isLiked) {
-        await widget.apiService.toggleMessageLike(widget.message.id, true);
+        // Only update UI if API call was successful
+        if (response != null && response['like_count'] != null) {
+          setState(() {
+            isLiked = !isLiked; // Toggle the state
+          });
+          messageProvider.updateMessageLikeCount(
+            widget.message.id,
+            response['like_count'],
+          );
+        }
       } else {
-        await widget.apiService.toggleMessageLike(widget.message.id, false);
+        // This is a comment (in thread view)
+        final commentProvider = Provider.of<CommentProvider>(
+          context,
+          listen: false,
+        );
+        await widget.apiService.toggleCommentLike(widget.message.id, !isLiked);
+
+        setState(() {
+          isLiked = !isLiked;
+        });
+        if (isLiked) {
+          commentProvider.incrementLikeCount(widget.message.id);
+        } else {
+          commentProvider.decrementLikeCount(widget.message.id);
+        }
       }
     } catch (e) {
-      setState(() {
-        isLiked = !isLiked;
-      });
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to update like: $e')));
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    try {
+      if (!widget.isThreadView) {
+        // This is a main message (not in thread view)
+        final messageProvider = Provider.of<MessageProvider>(
+          context,
+          listen: false,
+        );
+        debugPrint(
+          'Toggling love for message ${widget.message.id}, current state: $isFavorite',
+        );
+        final response = await widget.apiService.toggleMessageLove(
+          widget.message.id,
+          !isFavorite, // Send the opposite of current state
+        );
+        debugPrint('Love toggle response: $response');
+
+        // Only update UI if API call was successful
+        if (response != null && response['love_count'] != null) {
+          debugPrint('Updating love count to: ${response['love_count']}');
+          messageProvider.updateMessageLoveCount(
+            widget.message.id,
+            response['love_count'],
+          );
+          // Only toggle the state after successful server response
+          setState(() {
+            isFavorite = !isFavorite;
+          });
+          debugPrint('Updated isFavorite to: $isFavorite');
+        } else {
+          debugPrint(
+            'Failed to update love: response is null or missing love_count',
+          );
+        }
+      } else {
+        // This is a comment (in thread view)
+        final commentProvider = Provider.of<CommentProvider>(
+          context,
+          listen: false,
+        );
+        if (isFavorite) {
+          commentProvider.decrementLoveCount(widget.message.id);
+        } else {
+          commentProvider.incrementLoveCount(widget.message.id);
+        }
+        await widget.apiService.toggleCommentLove(
+          widget.message.id,
+          !isFavorite,
+        );
+
+        setState(() {
+          isFavorite = !isFavorite;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      debugPrint('Error in _toggleFavorite: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update love: $e')));
     }
   }
 
@@ -1017,7 +1032,7 @@ class _MessageCardState extends State<MessageCard> {
             ),
             const SizedBox(width: 2),
             Text(
-              likeCount.toString(),
+              widget.message.likeCount.toString(),
               style: Theme.of(
                 context,
               ).textTheme.labelSmall?.copyWith(fontSize: 12),
@@ -1038,7 +1053,7 @@ class _MessageCardState extends State<MessageCard> {
             ),
             const SizedBox(width: 2),
             Text(
-              loveCount.toString(),
+              widget.message.loveCount.toString(),
               style: Theme.of(
                 context,
               ).textTheme.labelSmall?.copyWith(fontSize: 12),
