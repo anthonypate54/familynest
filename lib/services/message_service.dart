@@ -586,19 +586,37 @@ class MessageCard extends StatefulWidget {
 
 class _MessageCardState extends State<MessageCard> {
   bool isLiked = false;
-  bool isFavorite = false;
+  bool isLoved = false;
 
   @override
   void initState() {
     super.initState();
     // Initialize like state from the message
     isLiked = widget.message.isLiked;
-    isFavorite = widget.message.isFavorite;
+    isLoved = widget.message.isLoved;
+    debugPrint('Message ${widget.message.id} initial state:');
+    debugPrint('- isLiked: $isLiked');
+    debugPrint('- isLoved: $isLoved');
+    debugPrint('- likeCount: ${widget.message.likeCount}');
+    debugPrint('- loveCount: ${widget.message.loveCount}');
+  }
+
+  @override
+  void didUpdateWidget(MessageCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Update states when message changes
+    if (oldWidget.message.id != widget.message.id ||
+        oldWidget.message.isLiked != widget.message.isLiked ||
+        oldWidget.message.isLoved != widget.message.isLoved) {
+      setState(() {
+        isLiked = widget.message.isLiked;
+        isLoved = widget.message.isLoved;
+      });
+    }
   }
 
   Future<void> _toggleLike() async {
     try {
-      // First make the API call
       if (!widget.isThreadView) {
         // This is a main message (not in thread view)
         final messageProvider = Provider.of<MessageProvider>(
@@ -607,13 +625,12 @@ class _MessageCardState extends State<MessageCard> {
         );
         final response = await widget.apiService.toggleMessageLike(
           widget.message.id,
-          !isLiked, // Send the opposite of current state
+          !isLiked,
         );
 
-        // Only update UI if API call was successful
         if (response != null && response['like_count'] != null) {
           setState(() {
-            isLiked = !isLiked; // Toggle the state
+            isLiked = !isLiked;
           });
           messageProvider.updateMessageLikeCount(
             widget.message.id,
@@ -621,20 +638,42 @@ class _MessageCardState extends State<MessageCard> {
           );
         }
       } else {
-        // This is a comment (in thread view)
+        // This is in thread view
         final commentProvider = Provider.of<CommentProvider>(
           context,
           listen: false,
         );
-        await widget.apiService.toggleCommentLike(widget.message.id, !isLiked);
 
-        setState(() {
-          isLiked = !isLiked;
-        });
-        if (isLiked) {
-          commentProvider.incrementLikeCount(widget.message.id);
+        if (widget.message.parentMessageId == null) {
+          // This is the parent message
+          final response = await widget.apiService.toggleMessageLike(
+            widget.message.id,
+            !isLiked,
+          );
+          if (response != null && response['like_count'] != null) {
+            setState(() {
+              isLiked = !isLiked;
+            });
+            if (isLiked) {
+              commentProvider.incrementLikeCount(widget.message.id);
+            } else {
+              commentProvider.decrementLikeCount(widget.message.id);
+            }
+          }
         } else {
-          commentProvider.decrementLikeCount(widget.message.id);
+          // This is a comment
+          await widget.apiService.toggleCommentLike(
+            widget.message.id,
+            !isLiked,
+          );
+          setState(() {
+            isLiked = !isLiked;
+          });
+          if (isLiked) {
+            commentProvider.incrementLikeCount(widget.message.id);
+          } else {
+            commentProvider.decrementLikeCount(widget.message.id);
+          }
         }
       }
     } catch (e) {
@@ -645,7 +684,7 @@ class _MessageCardState extends State<MessageCard> {
     }
   }
 
-  Future<void> _toggleFavorite() async {
+  Future<void> _toggleLove() async {
     try {
       if (!widget.isThreadView) {
         // This is a main message (not in thread view)
@@ -653,12 +692,13 @@ class _MessageCardState extends State<MessageCard> {
           context,
           listen: false,
         );
-        debugPrint(
-          'Toggling love for message ${widget.message.id}, current state: $isFavorite',
-        );
+        debugPrint('Message ${widget.message.id} before toggle:');
+        debugPrint('- Current isLoved: $isLoved');
+        debugPrint('- Current loveCount: ${widget.message.loveCount}');
+
         final response = await widget.apiService.toggleMessageLove(
           widget.message.id,
-          !isFavorite, // Send the opposite of current state
+          !isLoved,
         );
         debugPrint('Love toggle response: $response');
 
@@ -671,37 +711,58 @@ class _MessageCardState extends State<MessageCard> {
           );
           // Only toggle the state after successful server response
           setState(() {
-            isFavorite = !isFavorite;
+            isLoved = !isLoved;
           });
-          debugPrint('Updated isFavorite to: $isFavorite');
+          debugPrint('After toggle:');
+          debugPrint('- New isLoved: $isLoved');
+          debugPrint('- New loveCount: ${response['love_count']}');
         } else {
           debugPrint(
             'Failed to update love: response is null or missing love_count',
           );
         }
       } else {
-        // This is a comment (in thread view)
+        // This is in thread view
         final commentProvider = Provider.of<CommentProvider>(
           context,
           listen: false,
         );
-        if (isFavorite) {
-          commentProvider.decrementLoveCount(widget.message.id);
-        } else {
-          commentProvider.incrementLoveCount(widget.message.id);
-        }
-        await widget.apiService.toggleCommentLove(
-          widget.message.id,
-          !isFavorite,
-        );
 
-        setState(() {
-          isFavorite = !isFavorite;
-        });
+        if (widget.message.parentMessageId == null) {
+          // This is the parent message
+          final response = await widget.apiService.toggleMessageLove(
+            widget.message.id,
+            !isLoved,
+          );
+          if (response != null && response['love_count'] != null) {
+            setState(() {
+              isLoved = !isLoved;
+            });
+            if (isLoved) {
+              commentProvider.incrementLoveCount(widget.message.id);
+            } else {
+              commentProvider.decrementLoveCount(widget.message.id);
+            }
+          }
+        } else {
+          // This is a comment
+          await widget.apiService.toggleCommentLove(
+            widget.message.id,
+            !isLoved,
+          );
+          setState(() {
+            isLoved = !isLoved;
+          });
+          if (isLoved) {
+            commentProvider.incrementLoveCount(widget.message.id);
+          } else {
+            commentProvider.decrementLoveCount(widget.message.id);
+          }
+        }
       }
     } catch (e) {
       if (!mounted) return;
-      debugPrint('Error in _toggleFavorite: $e');
+      debugPrint('Error in _toggleLove: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to update love: $e')));
@@ -1044,9 +1105,9 @@ class _MessageCardState extends State<MessageCard> {
         Row(
           children: [
             GestureDetector(
-              onTap: _toggleFavorite,
+              onTap: _toggleLove,
               child: Icon(
-                isFavorite ? Icons.favorite : Icons.favorite_outline,
+                isLoved ? Icons.favorite : Icons.favorite_outline,
                 size: 16,
                 color: customColors.redColor,
               ),

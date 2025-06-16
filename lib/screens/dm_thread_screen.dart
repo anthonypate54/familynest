@@ -192,7 +192,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   void _startMessagePolling() {
     _stopMessagePolling(); // Ensure no duplicate timers
 
-    _messagePollingTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    _messagePollingTimer = Timer.periodic(const Duration(minutes: 10), (timer) {
       if (mounted && _isScreenActive) {
         debugPrint('🔄 Polling for new DM messages...');
         _loadMessages(showLoading: false); // Silent refresh

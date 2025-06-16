@@ -1915,7 +1915,7 @@ Network connection error. Please check:
   ) async {
     debugPrint('Toggling like for message $messageId: isLiked=$isLiked');
     final response = await client.post(
-      Uri.parse('$baseUrl/api/messages/$messageId/like'),
+      Uri.parse('$baseUrl/api/messages/$messageId/message_like'),
       headers: {
         'Content-Type': 'application/json',
         if (_token != null) 'Authorization': 'Bearer $_token',
@@ -1941,7 +1941,7 @@ Network connection error. Please check:
   ) async {
     try {
       final response = await client.post(
-        Uri.parse('$baseUrl/api/messages/$messageId/love'),
+        Uri.parse('$baseUrl/api/messages/$messageId/message_love'),
         headers: {
           'Accept': 'application/json',
           if (_token != null) 'Authorization': 'Bearer $_token',
@@ -1963,7 +1963,7 @@ Network connection error. Please check:
 
   Future<void> toggleCommentLike(String messageId, bool isLiked) async {
     final response = await client.post(
-      Uri.parse('$baseUrl/api/comments/$messageId/like'),
+      Uri.parse('$baseUrl/api/messages/$messageId/comment_like'),
       headers: {
         'Content-Type': 'application/json',
         if (_token != null) 'Authorization': 'Bearer $_token',
@@ -1981,7 +1981,7 @@ Network connection error. Please check:
     bool isLoved,
   ) async {
     final response = await client.post(
-      Uri.parse('$baseUrl/api/comments/$messageId/love'),
+      Uri.parse('$baseUrl/api/messages/$messageId/comment_love'),
       headers: {
         'Content-Type': 'application/json',
         if (_token != null) 'Authorization': 'Bearer $_token',

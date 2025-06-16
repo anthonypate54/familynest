@@ -22,6 +22,7 @@ import 'package:device_info_plus/device_info_plus.dart'; // For device infoimpor
 import 'package:provider/provider.dart';
 import 'providers/message_provider.dart';
 import 'models/message.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // Function to get device model name
 Future<String?> getDeviceModel() async {
@@ -36,26 +37,41 @@ Future<String?> getDeviceModel() async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load environment configuration
-  await EnvConfig.initialize();
+  // Initialize dotenv first
+  try {
+    await dotenv.load(fileName: '.env.development');
+    debugPrint('✅ Loaded environment configuration from .env.development');
+    debugPrint('📡 API URL from env: ${dotenv.env['API_URL']}');
+  } catch (e) {
+    debugPrint('⚠️ Failed to load .env.development: $e');
+    // Try loading the default .env file as fallback
+    try {
+      await dotenv.load();
+      debugPrint('✅ Loaded environment configuration from .env');
+      debugPrint('📡 API URL from env: ${dotenv.env['API_URL']}');
+    } catch (e) {
+      debugPrint('⚠️ Failed to load .env: $e');
+      // Continue with default values
+    }
+  }
 
   // Initialize app configuration
   final config = AppConfig();
+  await config.initialize();
 
-  debugPrint('🌐 EnvConfig API URL: ${EnvConfig().apiUrl}');
-  debugPrint('🔧 AppConfig baseUrl after setCustom: ${config.baseUrl}');
-  debugPrint('🌍 Environment: ${EnvConfig().environment}');
+  debugPrint('🌐 API URL: ${config.baseUrl}');
+  debugPrint(
+    '🌍 Environment: ${config.isDevelopment
+        ? "development"
+        : config.isProduction
+        ? "production"
+        : "staging"}',
+  );
   debugPrint('📱 Platform: ${Platform.operatingSystem}');
 
-  // Set environment based on environment variable
-  if (EnvConfig().isProduction) {
-    config.setEnvironment(Environment.production);
-  } else {
-    config.setEnvironment(Environment.development);
-
-    // Use shorter polling interval in development for faster testing
-    // In seconds rather than minutes for testing convenience
-    config.setInvitationPollingInterval(const Duration(seconds: 30));
+  // Use shorter polling interval in development for faster testing
+  if (config.isDevelopment) {
+    config.invitationPollingInterval = const Duration(seconds: 30);
     debugPrint(
       '🧪 DEVELOPMENT MODE: Using shorter invitation polling interval (30s)',
     );

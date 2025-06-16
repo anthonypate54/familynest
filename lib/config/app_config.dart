@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Environment types
 enum Environment { development, staging, production }
@@ -16,8 +17,24 @@ class AppConfig {
   Environment _environment = Environment.development;
 
   // API URLs for different environments
-  final String _devBaseUrl =
-      'http://10.0.2.2:8080'; // Android emulator loopback
+  String get _devBaseUrl {
+    try {
+      if (!dotenv.isInitialized) {
+        print('⚠️ dotenv not initialized, using default URL');
+        return 'http://10.0.0.10:8080';
+      }
+      final url = dotenv.env['API_URL'];
+      if (url == null || url.isEmpty) {
+        print('⚠️ API_URL not found in environment variables, using default');
+        return 'http://10.0.0.10:8080';
+      }
+      return url;
+    } catch (e) {
+      print('⚠️ Error reading API_URL from environment, using default: $e');
+      return 'http://10.0.0.10:8080';
+    }
+  }
+
   final String _localDevBaseUrl = 'http://localhost:8080'; // Desktop/iOS
   final String _prodBaseUrl = 'https://familynest-api.example.com';
 
@@ -33,14 +50,24 @@ class AppConfig {
     minutes: 5,
   ); // Default 5 minutes
 
-  // Set a custom polling interval - useful for testing
-  void setInvitationPollingInterval(Duration interval) {
-    invitationPollingInterval = interval;
+  /// Initialize the configuration
+  Future<void> initialize() async {
+    // Environment is already set, just print the current configuration
+    print('✅ AppConfig initialized');
+    print('📡 API URL: ${baseUrl}');
+    print(
+      '🌍 Environment: ${isDevelopment
+          ? "development"
+          : isProduction
+          ? "production"
+          : "staging"}',
+    );
   }
 
   /// Set the current environment
-  void setEnvironment(Environment env) {
+  Future<void> setEnvironment(Environment env) async {
     _environment = env;
+    await initialize(); // Reload environment variables
   }
 
   /// Set a custom base URL (overrides the default for the current environment)
@@ -49,10 +76,6 @@ class AppConfig {
   }
 
   /// Get the base URL for API requests based on platform and environment
-  /// ngrok http 8080 --domain=familynest.ngrok.io
-  String get ngrokUrl => "https://familynest.ngrok.io";
-
-  ///
   String get baseUrl {
     // If a custom URL was provided, use it
     if (_customBaseUrl != null) {
@@ -65,12 +88,16 @@ class AppConfig {
         return _prodBaseUrl;
 
       case Environment.staging:
-        return "http://staging-api.familynest.example.com"; // Replace with actual staging URL
+        return dotenv.env['API_URL'] ??
+            'http://staging-api.familynest.example.com';
 
       case Environment.development:
       default:
-        // For development, use ngrok for consistent HTTPS access across all platforms
-        return ngrokUrl;
+        if (Platform.isAndroid) {
+          return _devBaseUrl;
+        } else {
+          return _localDevBaseUrl;
+        }
     }
   }
 
@@ -78,19 +105,21 @@ class AppConfig {
   String get mediaBaseUrl {
     switch (_environment) {
       case Environment.production:
-        // In production, media is likely served from a CDN or S3 bucket
-        return "https://media.familynest.example.com"; // Replace with actual CDN/S3 URL
+        return dotenv.env['MEDIA_URL'] ??
+            'https://media.familynest.example.com';
 
       case Environment.staging:
-        // In staging, media might be served from a staging S3 bucket
-        return "https://staging-media.familynest.example.com"; // Replace with actual staging S3 URL
+        return dotenv.env['MEDIA_URL'] ??
+            'https://staging-media.familynest.example.com';
 
       case Environment.development:
       default:
-        // In development, media is served from the same server as the API
-        return ngrokUrl;
+        return dotenv.env['MEDIA_URL'] ?? ngrokUrl;
     }
   }
+
+  /// Get the ngrok URL for development
+  String get ngrokUrl => "https://familynest.ngrok.io";
 
   /// Helper method to determine if we're in a production environment
   bool get isProduction => _environment == Environment.production;

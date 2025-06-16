@@ -104,4 +104,8 @@ if [ "$PLATFORM" = "web" ]; then
 else
   echo "Running Flutter on device: $DEVICE_ID"
   flutter run -d "$DEVICE_ID"
-fi 
+fi
+
+# Clean up .env file after run
+echo "Cleaning up .env file..."
+rm -f .env 

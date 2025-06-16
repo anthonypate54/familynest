@@ -39,7 +39,7 @@ class Message {
   final int? parentMessageId;
   final String? userName;
   final bool isLiked;
-  final bool isFavorite;
+  final bool isLoved;
   Message({
     required this.id,
     required this.content,
@@ -58,7 +58,7 @@ class Message {
     this.parentMessageId,
     this.userName,
     this.isLiked = false,
-    this.isFavorite = false,
+    this.isLoved = false,
   });
 
   // Factory constructor for creating a Message from JSON
@@ -103,8 +103,7 @@ class Message {
       parentMessageId:
           json['parentMessageId'] as int? ?? json['parent_message_id'] as int?,
       isLiked: json['isLiked'] as bool? ?? json['is_liked'] as bool? ?? false,
-      isFavorite:
-          json['isFavorite'] as bool? ?? json['is_favorite'] as bool? ?? false,
+      isLoved: json['isLoved'] as bool? ?? json['is_loved'] as bool? ?? false,
     );
   }
   // Convert Message to JSON
@@ -127,7 +126,7 @@ class Message {
       'parentMessageId': parentMessageId,
       'userName': userName,
       'isLiked': isLiked,
-      'isFavorite': isFavorite,
+      'isLoved': isLoved,
     };
   }
 
@@ -151,7 +150,7 @@ class Message {
     int? parentMessageId,
     String? userName,
     bool? isLiked,
-    bool? isFavorite,
+    bool? isLoved,
   }) {
     return Message(
       id: id ?? this.id,
@@ -171,7 +170,7 @@ class Message {
       parentMessageId: parentMessageId ?? this.parentMessageId,
       userName: userName ?? this.userName,
       isLiked: isLiked ?? this.isLiked,
-      isFavorite: isFavorite ?? this.isFavorite,
+      isLoved: isLoved ?? this.isLoved,
     );
   }
 
