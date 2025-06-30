@@ -9,7 +9,7 @@ cd /path/to/spring-boot-project
 ./mvnw spring-boot:run
 
 # Terminal 2: Start ngrok with static domain
-ngrok http 8080 --domain=familynest.ngrok.io
+ http 8080 --domain=familynesngrokt.ngrok.io
 ```
 
 ### 2. **Verify ngrok Connection**

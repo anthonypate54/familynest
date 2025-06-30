@@ -186,4 +186,29 @@ class DMMessage {
     }
     return '?';
   }
+
+  @override
+  String toString() {
+    return '''
+    DMMessage(
+      id: $id,
+      conversationId: $conversationId,
+      senderId: $senderId,
+      content: $content,
+      mediaUrl: $mediaUrl,
+      mediaType: $mediaType,
+      mediaThumbnail: $mediaThumbnail,
+      mediaFilename: $mediaFilename,
+      mediaSize: $mediaSize,
+      mediaDuration: $mediaDuration,
+      isRead: $isRead,
+      deliveredAt: $deliveredAt,
+      createdAt: $createdAt,
+      updatedAt: $updatedAt,
+      senderUsername: $senderUsername,
+      senderPhoto: $senderPhoto,
+      senderFirstName: $senderFirstName,
+      senderLastName: $senderLastName
+    )''';
+  }
 }

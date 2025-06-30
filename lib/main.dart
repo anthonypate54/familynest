@@ -23,6 +23,7 @@ import 'package:provider/provider.dart';
 import 'providers/message_provider.dart';
 import 'models/message.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'screens/websocket_test_screen.dart';
 
 // Function to get device model name
 Future<String?> getDeviceModel() async {
@@ -38,10 +39,12 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize dotenv first
+  bool envLoaded = false;
   try {
     await dotenv.load(fileName: '.env.development');
     debugPrint('✅ Loaded environment configuration from .env.development');
     debugPrint('📡 API URL from env: ${dotenv.env['API_URL']}');
+    envLoaded = true;
   } catch (e) {
     debugPrint('⚠️ Failed to load .env.development: $e');
     // Try loading the default .env file as fallback
@@ -49,10 +52,15 @@ void main() async {
       await dotenv.load();
       debugPrint('✅ Loaded environment configuration from .env');
       debugPrint('📡 API URL from env: ${dotenv.env['API_URL']}');
+      envLoaded = true;
     } catch (e) {
       debugPrint('⚠️ Failed to load .env: $e');
-      // Continue with default values
+      // Continue with default values - dotenv will use fallbacks
     }
+  }
+
+  if (!envLoaded) {
+    debugPrint('⚠️ No environment file loaded, using default configuration');
   }
 
   // Initialize app configuration
@@ -483,6 +491,19 @@ class MainAppContainerState extends State<MainAppContainer> {
           });
         },
       ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'ws_test_button',
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const WebSocketTestScreen(),
+            ),
+          );
+        },
+        child: const Text('WS Test'),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       // Bottom navigation
       bottomNavigationBar: BottomNavigation(
         currentIndex: _currentIndex,

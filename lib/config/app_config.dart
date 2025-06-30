@@ -114,12 +114,50 @@ class AppConfig {
 
       case Environment.development:
       default:
-        return dotenv.env['MEDIA_URL'] ?? ngrokUrl;
+        try {
+          if (!dotenv.isInitialized) {
+            print('⚠️ dotenv not initialized for media URL, using default');
+            return _devBaseUrl; // Use the same base URL as API
+          }
+          final mediaUrl = dotenv.env['MEDIA_URL'];
+          if (mediaUrl == null || mediaUrl.isEmpty) {
+            print(
+              '⚠️ MEDIA_URL not found in environment variables, using API base URL',
+            );
+            return _devBaseUrl; // Use the same base URL as API
+          }
+          return mediaUrl;
+        } catch (e) {
+          print(
+            '⚠️ Error reading MEDIA_URL from environment, using API base URL: $e',
+          );
+          return _devBaseUrl; // Use the same base URL as API
+        }
     }
   }
 
   /// Get the ngrok URL for development
-  String get ngrokUrl => "https://familynest.ngrok.io";
+  String get ngrokUrl {
+    try {
+      if (!dotenv.isInitialized) {
+        print('⚠️ dotenv not initialized for ngrok URL, using default');
+        return _devBaseUrl; // Use the same base URL as API
+      }
+      final url = dotenv.env['MEDIA_URL'];
+      if (url == null || url.isEmpty) {
+        print(
+          '⚠️ MEDIA_URL not found in environment variables, using API base URL',
+        );
+        return _devBaseUrl; // Use the same base URL as API
+      }
+      return url;
+    } catch (e) {
+      print(
+        '⚠️ Error reading MEDIA_URL from environment, using API base URL: $e',
+      );
+      return _devBaseUrl; // Use the same base URL as API
+    }
+  }
 
   /// Helper method to determine if we're in a production environment
   bool get isProduction => _environment == Environment.production;

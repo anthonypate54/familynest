@@ -4,7 +4,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'dart:io';
-import 'dart:async';
 import '../services/api_service.dart';
 import '../services/share_service.dart';
 import '../utils/video_thumbnail_util.dart';
@@ -35,8 +34,7 @@ class DMThreadScreen extends StatefulWidget {
   State<DMThreadScreen> createState() => _DMThreadScreenState();
 }
 
-class _DMThreadScreenState extends State<DMThreadScreen>
-    with WidgetsBindingObserver {
+class _DMThreadScreenState extends State<DMThreadScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -54,20 +52,10 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   // Video playback tracking for DM messages
   int? _currentlyPlayingVideoId;
 
-  // --- Polling for new messages ---
-  Timer? _messagePollingTimer;
-  bool _isScreenActive = true;
-  DateTime? _lastMessageTime;
-
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this); // Add lifecycle observer
-    _messageController.addListener(
-      _onUserTyping,
-    ); // Trigger smart polling when typing
     _loadMessages();
-    // _startMessagePolling(); // DISABLED - Start polling for new messages
   }
 
   // Load real messages from the API
@@ -122,19 +110,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
             });
           }
 
-          // Update last message time for polling optimization
-          if (messages.isNotEmpty) {
-            final lastMsg = messages.first;
-            try {
-              _lastMessageTime = lastMsg.createdAt;
-              debugPrint('🔍 DM: Last message time updated: $_lastMessageTime');
-            } catch (e) {
-              debugPrint(
-                '🔍 DM: Error parsing created_at: $e (value: ${lastMsg.createdAt})',
-              );
-            }
-          }
-
           // Auto-scroll to bottom if there are new messages
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _scrollToBottomIfNeeded();
@@ -166,101 +141,10 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         );
       }
     }
-
-    _lastMessageTime = DateTime.now(); // Update last message time
-  }
-
-  // Check if there are new messages compared to current list
-  bool _hasNewMessages(List<DMMessage> newMessages) {
-    final currentMessages = Provider.of<DMMessageProvider>(
-      context,
-      listen: false,
-    ).getMessages(widget.conversationId);
-
-    if (currentMessages.isEmpty && newMessages.isNotEmpty) return true;
-    if (currentMessages.isEmpty || newMessages.isEmpty) return false;
-
-    // Check if the message count changed or the latest message is different
-    if (currentMessages.length != newMessages.length) {
-      return true;
-    }
-
-    // Check if the latest message is different
-    return currentMessages.first.id != newMessages.first.id;
-  }
-
-  void _startMessagePolling() {
-    _stopMessagePolling(); // Ensure no duplicate timers
-
-    _messagePollingTimer = Timer.periodic(const Duration(minutes: 10), (timer) {
-      if (mounted && _isScreenActive) {
-        debugPrint('🔄 Polling for new DM messages...');
-        _loadMessages(showLoading: false); // Silent refresh
-      }
-    });
-
-    debugPrint('✅ DM message polling started (every 30 seconds)');
-  }
-
-  void _stopMessagePolling() {
-    _messagePollingTimer?.cancel();
-    _messagePollingTimer = null;
-    debugPrint('🛑 DM message polling stopped');
-  }
-
-  // Smart polling: Poll more frequently when user is typing (expecting response)
-  void _onUserTyping() {
-    // If user is typing, poll more frequently for 2 minutes
-    _stopMessagePolling();
-
-    int pollCount = 0;
-    _messagePollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      if (mounted && _isScreenActive) {
-        debugPrint('🔄 Fast polling for new DM messages (user activity)...');
-        _loadMessages(showLoading: false);
-        pollCount++;
-
-        // After 12 polls (2 minutes), return to normal polling
-        if (pollCount >= 12) {
-          timer.cancel();
-          _startMessagePolling(); // Return to normal 30-second polling
-        }
-      } else {
-        timer.cancel();
-      }
-    });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.resumed:
-        _isScreenActive = true;
-        _startMessagePolling();
-        // Immediate refresh when returning to app
-        _loadMessages(showLoading: false);
-        debugPrint('📱 App resumed - restarted DM message polling');
-        break;
-      case AppLifecycleState.paused:
-      case AppLifecycleState.inactive:
-        _isScreenActive = false;
-        _stopMessagePolling();
-        debugPrint('📱 App paused - stopped DM message polling');
-        break;
-      case AppLifecycleState.detached:
-        _stopMessagePolling();
-        break;
-      case AppLifecycleState.hidden:
-        _isScreenActive = false;
-        _stopMessagePolling();
-        break;
-    }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
-    _stopMessagePolling(); // Stop polling when screen is disposed
     _messageController.dispose();
     _scrollController.dispose();
     // Clean up DM media controllers
@@ -277,9 +161,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     setState(() {
       _isSending = true;
     });
-
-    // Pause polling while sending to avoid conflicts
-    _stopMessagePolling();
 
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);

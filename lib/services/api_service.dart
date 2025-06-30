@@ -2216,28 +2216,9 @@ Network connection error. Please check:
       };
 
       final response = await client.get(url, headers: headers);
-      debugPrint('Get DM messages response: status=${response.statusCode}');
-      debugPrint('Get DM messages response body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        debugPrint('Decoded response data: $data');
-
-        // Debug each message in the response
-        if (data['messages'] is List) {
-          final messages = data['messages'] as List;
-          for (var i = 0; i < messages.length; i++) {
-            debugPrint('Message $i: ${messages[i]}');
-            if (messages[i] is Map) {
-              debugPrint('  id: ${messages[i]['id']}');
-              debugPrint(
-                '  conversation_id: ${messages[i]['conversation_id']}',
-              );
-              debugPrint('  sender_id: ${messages[i]['sender_id']}');
-            }
-          }
-        }
-
         return data;
       } else {
         debugPrint('Failed to get DM messages: ${response.body}');

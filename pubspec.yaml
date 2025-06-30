@@ -58,7 +58,9 @@ dependencies:
   flutter_cache_manager: ^3.3.1
   video_compress: ^3.1.4
   crypto: ^3.0.6
-
+  web_socket_channel: ^2.4.0
+  stomp_dart_client: ^0.4.4
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -86,6 +88,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - .env
+    - .env.development
     - assets/1747416846910_scaled_35.jpg
     - assets/mytest.jpg
     - assets/sounds/like.mp3
