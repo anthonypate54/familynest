@@ -6,6 +6,7 @@ import 'dm_thread_screen.dart';
 import 'choose_dm_recipient_screen.dart';
 import '../utils/page_transitions.dart';
 import '../models/dm_conversation.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class MessagesHomeScreen extends StatefulWidget {
   final int userId;
@@ -50,6 +51,17 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
       final apiService = Provider.of<ApiService>(context, listen: false);
       final conversations = await apiService.getDMConversations();
 
+      // Debug logging to see what we're getting
+      debugPrint(
+        '📱 MessagesHomeScreen: Loaded ${conversations.length} conversations',
+      );
+      for (int i = 0; i < conversations.length; i++) {
+        final conv = conversations[i];
+        debugPrint(
+          '📱 Conversation $i: ${conv.otherUserName} - "${conv.lastMessageContent}" - ${conv.lastMessageTime}',
+        );
+      }
+
       if (mounted) {
         setState(() {
           _conversations = conversations;
@@ -58,6 +70,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
         });
       }
     } catch (e) {
+      debugPrint('❌ MessagesHomeScreen: Error loading conversations: $e');
       if (mounted) {
         setState(() {
           _errorMessage = e.toString();
@@ -122,36 +135,30 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
       final DateTime now = DateTime.now();
       final Duration difference = now.difference(dateTime);
 
+      // Handle future dates (shouldn't happen but just in case)
+      if (difference.isNegative) {
+        return 'Now';
+      }
+
       if (difference.inDays > 7) {
         // Show date for messages older than a week
         return '${dateTime.month}/${dateTime.day}/${dateTime.year}';
       } else if (difference.inDays > 0) {
         // Show day of week for messages within a week
-        return [
-          'Sun',
-          'Mon',
-          'Tue',
-          'Wed',
-          'Thu',
-          'Fri',
-          'Sat',
-        ][dateTime.weekday - 1];
+        final days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        return days[dateTime.weekday - 1];
       } else if (difference.inHours > 0) {
-        // Show time for messages from today
-        String hour =
-            (dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour)
-                .toString();
-        if (hour == '0') hour = '12';
-        String minute = dateTime.minute.toString().padLeft(2, '0');
-        String period = dateTime.hour >= 12 ? 'PM' : 'AM';
-        return '$hour:$minute $period';
+        // Show hours for messages within a day
+        return '${difference.inHours}h';
       } else if (difference.inMinutes > 0) {
-        // Show minutes ago for recent messages
+        // Show minutes for messages within an hour
         return '${difference.inMinutes}m';
       } else {
+        // Show "Now" for messages within a minute
         return 'Now';
       }
     } catch (e) {
+      debugPrint('Error formatting timestamp: $e');
       return '';
     }
   }
@@ -206,6 +213,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
                           currentUserId: widget.userId,
                           otherUserId: otherUserId,
                           otherUserName: displayName,
+                          otherUserPhoto: conversation.otherUserPhoto,
                           conversationId: conversationId,
                         ),
                       );
@@ -348,11 +356,25 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
     final lastMessageTime = conversation.lastMessageTime;
     final unreadCount = conversation.unreadCount ?? 0;
     final conversationId = conversation.id;
+    final otherUserPhoto = conversation.otherUserPhoto; // Get the photo URL
+
+    // Debug logging for avatar
+    debugPrint(
+      '🖼️ Avatar debug for ${conversation.otherUserName}: photo="$otherUserPhoto"',
+    );
 
     final displayName = conversation.getOtherUserDisplayName();
     final bool hasUnread = conversation.hasUnreadMessages ?? false;
     final String initials = conversation.getOtherUserInitials();
     final String timestamp = _formatTimestamp(lastMessageTime);
+
+    // Determine what to show as the last message
+    String messagePreview;
+    if (lastMessageContent != null && lastMessageContent.isNotEmpty) {
+      messagePreview = lastMessageContent;
+    } else {
+      messagePreview = 'No messages yet';
+    }
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -362,18 +384,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-          radius: 24,
-          backgroundColor: Colors.white,
-          child: Text(
-            initials,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-        ),
+        leading: _buildAvatar(otherUserPhoto, initials, hasUnread),
         title: Row(
           children: [
             Expanded(
@@ -402,7 +413,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
           children: [
             Expanded(
               child: Text(
-                lastMessageContent ?? 'No messages yet',
+                messagePreview,
                 style: TextStyle(
                   fontSize: 14,
                   color:
@@ -411,7 +422,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
                           : Colors.white.withOpacity(0.7),
                   fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
                   fontStyle:
-                      lastMessageContent == null
+                      lastMessageContent == null || lastMessageContent.isEmpty
                           ? FontStyle.italic
                           : FontStyle.normal,
                 ),
@@ -445,10 +456,62 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
               currentUserId: widget.userId,
               otherUserId: otherUserId,
               otherUserName: displayName,
+              otherUserPhoto: otherUserPhoto,
               conversationId: conversationId,
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildAvatar(String? photoUrl, String initials, bool hasUnread) {
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: hasUnread ? Colors.white : Colors.white.withOpacity(0.3),
+          width: hasUnread ? 2.0 : 1.0,
+        ),
+      ),
+      child: CircleAvatar(
+        radius: 24,
+        backgroundColor: Color(initials.hashCode | 0xFF000000),
+        child:
+            photoUrl != null && photoUrl.isNotEmpty
+                ? ClipOval(
+                  child: CachedNetworkImage(
+                    imageUrl:
+                        photoUrl.startsWith('http')
+                            ? photoUrl
+                            : apiService.mediaBaseUrl + photoUrl,
+                    fit: BoxFit.cover,
+                    width: 48,
+                    height: 48,
+                    placeholder:
+                        (context, url) => const CircularProgressIndicator(),
+                    errorWidget: (context, url, error) {
+                      return Text(
+                        initials.isNotEmpty ? initials[0].toUpperCase() : '?',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      );
+                    },
+                  ),
+                )
+                : Text(
+                  initials.isNotEmpty ? initials[0].toUpperCase() : '?',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
       ),
     );
   }

@@ -2063,7 +2063,7 @@ Network connection error. Please check:
   /// Returns list of conversations with other user details and last message info
   Future<List<DMConversation>> getDMConversations() async {
     try {
-      debugPrint('Getting DM conversations');
+      debugPrint('🚀 Getting DM conversations');
 
       final url = Uri.parse('$baseUrl/api/dm/conversations');
       final headers = {
@@ -2072,51 +2072,82 @@ Network connection error. Please check:
       };
 
       final response = await client.get(url, headers: headers);
-      debugPrint('Get conversations response: status=${response.statusCode}');
+      debugPrint(
+        '📥 Get conversations response: status=${response.statusCode}',
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final conversations = data['conversations'] as List<dynamic>;
 
-        // Get current user ID
+        debugPrint('📊 Raw conversations data: $conversations');
+
+        // Get current user ID from provider
         final currentUser = await getCurrentUser();
         final currentUserId = currentUser?['userId'] as int?;
-        if (currentUserId == null) return [];
 
-        return conversations
-            .map((conv) {
-              final conversationId = conv['conversation_id'] as int;
-              final otherUser = conv['other_user'] as Map<String, dynamic>?;
+        if (currentUserId == null) {
+          debugPrint('❌ No current user ID available from provider');
+          return [];
+        }
 
-              if (otherUser == null) return null;
+        debugPrint('👤 Current user ID from provider: $currentUserId');
 
-              // Determine user1Id and user2Id (lower ID is always user1)
-              final otherUserId = otherUser['id'] as int;
-              final user1Id =
-                  currentUserId < otherUserId ? currentUserId : otherUserId;
-              final user2Id =
-                  currentUserId < otherUserId ? otherUserId : currentUserId;
+        final result =
+            conversations
+                .map((conv) {
+                  final conversationId = conv['conversation_id'] as int;
+                  final otherUser = conv['other_user'] as Map<String, dynamic>?;
 
-              // Create DMConversation object using fromJson
-              return DMConversation.fromJson({
-                'id': conversationId,
-                'user1_id': user1Id,
-                'user2_id': user2Id,
-                'created_at': conv['created_at'],
-                'updated_at': DateTime.now().millisecondsSinceEpoch,
-                'other_user_name': otherUser['username'],
-                'other_user_first_name': otherUser['first_name'],
-                'other_user_last_name': otherUser['last_name'],
-              });
-            })
-            .whereType<DMConversation>()
-            .toList();
+                  if (otherUser == null) {
+                    debugPrint(
+                      '❌ No other user data for conversation $conversationId',
+                    );
+                    return null;
+                  }
+
+                  // Determine user1Id and user2Id (lower ID is always user1)
+                  final otherUserId = otherUser['id'] as int;
+                  final user1Id =
+                      currentUserId < otherUserId ? currentUserId : otherUserId;
+                  final user2Id =
+                      currentUserId < otherUserId ? otherUserId : currentUserId;
+
+                  // Create DMConversation object using fromJson with correct field mapping
+                  final dmConversation = DMConversation.fromJson({
+                    'id': conversationId,
+                    'user1_id': user1Id,
+                    'user2_id': user2Id,
+                    'created_at': conv['created_at'],
+                    'updated_at': DateTime.now().millisecondsSinceEpoch,
+                    'other_user_name': otherUser['username'],
+                    'other_user_first_name': otherUser['first_name'],
+                    'other_user_last_name': otherUser['last_name'],
+                    'other_user_photo': otherUser['photo'],
+                    'last_message_content': otherUser['last_message_content'],
+                    'last_message_time': otherUser['last_message_created_at'],
+                    'last_message_sender_id':
+                        null, // Not provided by backend yet
+                    'has_unread_messages': false, // Not provided by backend yet
+                    'unread_count': 0, // Not provided by backend yet
+                  });
+
+                  debugPrint(
+                    '✅ Created DMConversation: ${dmConversation.otherUserName} - "${dmConversation.lastMessageContent}" - ${dmConversation.lastMessageTime}',
+                  );
+                  return dmConversation;
+                })
+                .whereType<DMConversation>()
+                .toList();
+
+        debugPrint('🎉 Returning ${result.length} DM conversations');
+        return result;
       } else {
-        debugPrint('Failed to get conversations: ${response.body}');
+        debugPrint('❌ Failed to get conversations: ${response.body}');
         return [];
       }
     } catch (e) {
-      debugPrint('Error getting conversations: $e');
+      debugPrint('💥 Error getting conversations: $e');
       return [];
     }
   }

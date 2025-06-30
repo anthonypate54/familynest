@@ -196,7 +196,7 @@ class MessageService {
               ),
               const SizedBox(height: 16),
               const Text(
-                'No messages yet',
+                'No messages yet message_service',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,

@@ -15,11 +15,14 @@ import '../widgets/external_video_message_card.dart';
 import 'package:provider/provider.dart';
 import '../models/dm_message.dart';
 import '../providers/dm_message_provider.dart';
+import '../services/websocket_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
   final int otherUserId;
   final String otherUserName;
+  final String? otherUserPhoto;
   final int conversationId;
 
   const DMThreadScreen({
@@ -27,6 +30,7 @@ class DMThreadScreen extends StatefulWidget {
     required this.currentUserId,
     required this.otherUserId,
     required this.otherUserName,
+    this.otherUserPhoto,
     required this.conversationId,
   });
 
@@ -52,10 +56,25 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   // Video playback tracking for DM messages
   int? _currentlyPlayingVideoId;
 
+  // WebSocket state variables
+  WebSocketMessageHandler? _dmMessageHandler;
+  bool _isWebSocketConnected = false;
+  ConnectionStatusHandler? _connectionListener;
+  WebSocketService? _webSocketService;
+  DMMessageProvider? _dmMessageProvider;
+
   @override
   void initState() {
     super.initState();
+    // Store WebSocket service reference early
+    _webSocketService = Provider.of<WebSocketService>(context, listen: false);
+    // Store DMMessageProvider reference early
+    _dmMessageProvider = Provider.of<DMMessageProvider>(context, listen: false);
     _loadMessages();
+    // Delay WebSocket initialization until after first build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initWebSocket();
+    });
   }
 
   // Load real messages from the API
@@ -73,30 +92,20 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         conversationId: widget.conversationId,
       );
 
-      debugPrint('DM: Raw response from API: $response');
+      //    debugPrint('DM: Raw response from API: $response');
 
       if (mounted && response != null) {
         // Extract messages from the paginated response
         final messagesJson = response['messages'];
-        debugPrint('DM: Raw messages from response: $messagesJson');
+        //      debugPrint('DM: Raw messages from response: $messagesJson');
 
         if (messagesJson is List) {
-          debugPrint('DM: Raw messages before parsing:');
-          for (var msg in messagesJson) {
-            debugPrint('  Message: $msg');
-            if (msg is Map) {
-              debugPrint('    id: ${msg['id']}');
-              debugPrint('    conversation_id: ${msg['conversation_id']}');
-              debugPrint('    sender_id: ${msg['sender_id']}');
-            }
-          }
-
           final messages =
               messagesJson
                   .whereType<Map<String, dynamic>>()
                   .map((json) => DMMessage.fromJson(json))
                   .toList();
-          debugPrint('DM: Parsed messages: $messages');
+          //         debugPrint('DM: Parsed messages: $messages');
 
           // Update provider only
           Provider.of<DMMessageProvider>(
@@ -145,6 +154,19 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
 
   @override
   void dispose() {
+    // Clean up WebSocket subscription
+    if (_dmMessageHandler != null && _webSocketService != null) {
+      _webSocketService!.unsubscribe(
+        '/topic/dm/${widget.currentUserId}',
+        _dmMessageHandler!,
+      );
+    }
+
+    // Clean up connection listener
+    if (_connectionListener != null && _webSocketService != null) {
+      _webSocketService!.removeConnectionListener(_connectionListener!);
+    }
+
     _messageController.dispose();
     _scrollController.dispose();
     // Clean up DM media controllers
@@ -673,6 +695,104 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     });
   }
 
+  // Initialize WebSocket for DM messages
+  void _initWebSocket() {
+    if (_webSocketService == null) return;
+
+    // Create message handler for DM messages
+    _dmMessageHandler = (Map<String, dynamic> data) {
+      _handleIncomingDMMessage(data);
+    };
+
+    // Create connection status listener
+    _connectionListener = (isConnected) {
+      if (mounted) {
+        // Use post-frame callback to avoid setState during build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isWebSocketConnected = isConnected;
+            });
+          }
+        });
+      }
+    };
+
+    // Subscribe to DM messages for this user
+    _webSocketService!.subscribe(
+      '/topic/dm/${widget.currentUserId}',
+      _dmMessageHandler!,
+    );
+
+    // Listen for connection status changes
+    _webSocketService!.addConnectionListener(_connectionListener!);
+
+    // Initialize WebSocket connection if not already connected
+    _webSocketService!.initialize();
+  }
+
+  // Handle incoming DM messages from WebSocket
+  void _handleIncomingDMMessage(Map<String, dynamic> data) {
+    try {
+      debugPrint('📨 DM: Received WebSocket message: $data');
+
+      final message = DMMessage.fromJson(data);
+      debugPrint('📨 DM: Parsed message: $message');
+
+      // Only add message if it belongs to this conversation
+      if (message.conversationId == widget.conversationId) {
+        // Use stored provider reference instead of Provider.of
+        _dmMessageProvider?.addMessage(widget.conversationId, message);
+
+        debugPrint(
+          '✅ DM: Added new message to conversation ${widget.conversationId}',
+        );
+
+        // Auto-scroll to show new message
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToBottomIfNeeded();
+        });
+      } else {
+        debugPrint(
+          '⚠️ DM: Message for different conversation: ${message.conversationId} vs ${widget.conversationId}',
+        );
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ DM: Error handling WebSocket message: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
+  // Show WebSocket connection status
+  Widget _buildConnectionStatus() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _isWebSocketConnected ? Colors.green : Colors.red,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _isWebSocketConnected ? Icons.wifi : Icons.wifi_off,
+            color: Colors.white,
+            size: 16,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            _isWebSocketConnected ? 'Live' : 'Offline',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -685,18 +805,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         ),
         title: Row(
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.blue.shade100,
-              child: Text(
-                widget.otherUserName[0],
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue.shade700,
-                ),
-              ),
-            ),
+            _buildAvatarForSender(widget.otherUserPhoto, widget.otherUserName),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -717,6 +826,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                 ],
               ),
             ),
+            _buildConnectionStatus(),
           ],
         ),
         actions: [
@@ -753,7 +863,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                                     ),
                                     const SizedBox(height: 16),
                                     const Text(
-                                      'No messages yet',
+                                      'No messages yet dm_thread_screen',
                                       style: TextStyle(
                                         fontSize: 18,
                                         color: Colors.white,
@@ -1038,6 +1148,66 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     );
   }
 
+  Widget _buildAvatarForSender(String? senderPhoto, String displayName) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 4,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: CircleAvatar(
+        radius: 16,
+        backgroundColor: Color(displayName.hashCode | 0xFF000000),
+        child:
+            senderPhoto != null && senderPhoto.isNotEmpty
+                ? ClipOval(
+                  child: CachedNetworkImage(
+                    imageUrl:
+                        senderPhoto.startsWith('http')
+                            ? senderPhoto
+                            : Provider.of<ApiService>(
+                                  context,
+                                  listen: false,
+                                ).mediaBaseUrl +
+                                senderPhoto,
+                    fit: BoxFit.cover,
+                    width: 32,
+                    height: 32,
+                    placeholder:
+                        (context, url) => const CircularProgressIndicator(),
+                    errorWidget: (context, url, error) {
+                      return Text(
+                        displayName.isNotEmpty
+                            ? displayName[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      );
+                    },
+                  ),
+                )
+                : Text(
+                  displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+      ),
+    );
+  }
+
   Widget _buildMessageBubble(DMMessage message) {
     final apiService = Provider.of<ApiService>(context, listen: false);
     final int senderId = message.senderId;
@@ -1089,18 +1259,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           if (isMe)
             const Spacer(flex: 1), // Subtle push right (reduced from flex: 2)
           if (!isMe) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.blue.shade100,
-              child: Text(
-                senderName.isNotEmpty ? senderName[0].toUpperCase() : '?',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue.shade700,
-                ),
-              ),
-            ),
+            _buildAvatarForSender(message.senderPhoto, senderName),
             const SizedBox(width: 8),
           ],
           Flexible(
@@ -1211,18 +1370,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           ),
           if (isMe) ...[
             const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.green.shade100,
-              child: Text(
-                'Y',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green.shade700,
-                ),
-              ),
-            ),
+            _buildAvatarForSender(null, 'You'), // Current user avatar
           ],
         ],
       ),

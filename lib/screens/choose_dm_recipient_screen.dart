@@ -149,6 +149,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
               currentUserId: widget.userId,
               otherUserId: memberId,
               otherUserName: displayName,
+              otherUserPhoto: member['photo'] as String?,
               conversationId: conversationId,
             ),
           );

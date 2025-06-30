@@ -24,6 +24,7 @@ import 'providers/message_provider.dart';
 import 'models/message.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'screens/websocket_test_screen.dart';
+import 'services/websocket_service.dart';
 
 // Function to get device model name
 Future<String?> getDeviceModel() async {
@@ -102,6 +103,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => MessageProvider()),
         ChangeNotifierProvider(create: (_) => DMMessageProvider()),
         ChangeNotifierProvider(create: (_) => CommentProvider()),
+        ChangeNotifierProvider(create: (_) => WebSocketService()),
       ],
       child: MyApp(initialRoute: '/'),
     ),
@@ -491,18 +493,21 @@ class MainAppContainerState extends State<MainAppContainer> {
           });
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'ws_test_button',
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const WebSocketTestScreen(),
-            ),
-          );
-        },
-        child: const Text('WS Test'),
-      ),
+      floatingActionButton:
+          false
+              ? FloatingActionButton(
+                heroTag: 'ws_test_button',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const WebSocketTestScreen(),
+                    ),
+                  );
+                },
+                child: const Text('WS Test'),
+              )
+              : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       // Bottom navigation
       bottomNavigationBar: BottomNavigation(
