@@ -863,7 +863,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                                     ),
                                     const SizedBox(height: 16),
                                     const Text(
-                                      'No messages yet dm_thread_screen',
+                                      'No messages yet',
                                       style: TextStyle(
                                         fontSize: 18,
                                         color: Colors.white,
@@ -1077,9 +1077,9 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                   children: [
                     // Attachment button (dummy)
                     IconButton(
-                      icon: Icon(
-                        Icons.attach_file,
-                        color: Colors.grey.shade600,
+                      icon: const Icon(
+                        Icons.add_circle_outline,
+                        color: Colors.grey,
                       ),
                       onPressed: () {
                         // Use the new DM media picker

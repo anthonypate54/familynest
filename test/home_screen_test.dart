@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:familynest/services/api_service.dart';
-import 'package:familynest/screens/home_screen.dart';
+import 'package:familynest/screens/message_screen.dart';
 import 'package:familynest/screens/login_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
@@ -15,7 +15,7 @@ import 'home_screen_test.mocks.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('HomeScreen Tests', () {
+  group('MessageScreen Tests', () {
     late MockClient mockClient;
     late ApiService apiService;
     late String baseUrl;
@@ -38,7 +38,7 @@ void main() {
       await apiService.initialize();
     });
 
-    testWidgets('HomeScreen displays message if user has no family', (
+    testWidgets('MessageScreen displays message if user has no family', (
       WidgetTester tester,
     ) async {
       // Mock test endpoint
@@ -77,7 +77,7 @@ void main() {
         ),
       ).thenAnswer((_) async => http.Response('[]', 200));
 
-      await tester.pumpWidget(MaterialApp(home: HomeScreen(userId: 2)));
+      await tester.pumpWidget(MaterialApp(home: MessageScreen(userId: "2")));
 
       // Wait for async operations to complete
       await tester.pump(Duration(seconds: 1));
@@ -88,7 +88,7 @@ void main() {
     });
 
     testWidgets(
-      'HomeScreen displays "No messages yet" if user has a family with no messages',
+      'MessageScreen displays "No messages yet" if user has a family with no messages',
       (WidgetTester tester) async {
         // Mock test endpoint
         when(
@@ -125,7 +125,7 @@ void main() {
           ),
         ).thenAnswer((_) async => http.Response('[]', 200));
 
-        await tester.pumpWidget(MaterialApp(home: HomeScreen(userId: 2)));
+        await tester.pumpWidget(MaterialApp(home: MessageScreen(userId: "2")));
 
         // Wait for async operations to complete
         await tester.pump(Duration(seconds: 1));
@@ -136,7 +136,7 @@ void main() {
       },
     );
 
-    testWidgets('HomeScreen allows posting messages if user has a family', (
+    testWidgets('MessageScreen allows posting messages if user has a family', (
       WidgetTester tester,
     ) async {
       // Mock test endpoint
@@ -195,7 +195,7 @@ void main() {
         ),
       ).thenAnswer((_) async => http.Response('[]', 200));
 
-      await tester.pumpWidget(MaterialApp(home: HomeScreen(userId: 2)));
+      await tester.pumpWidget(MaterialApp(home: MessageScreen(userId: "2")));
 
       // Wait for async operations to complete
       await tester.pump(Duration(seconds: 1));
@@ -228,7 +228,7 @@ void main() {
       expect(find.text('testuser'), findsOneWidget);
     });
 
-    testWidgets('HomeScreen logout navigates to LoginScreen', (
+    testWidgets('MessageScreen logout navigates to LoginScreen', (
       WidgetTester tester,
     ) async {
       // Mock test endpoint
@@ -291,15 +291,15 @@ void main() {
       await apiService.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: HomeScreen(userId: 2))),
+        MaterialApp(home: Scaffold(body: MessageScreen(userId: "2"))),
       );
 
       // Wait for async operations to complete
       await tester.pump(Duration(seconds: 1));
       await tester.pumpAndSettle();
 
-      // Since we're mocking, we can verify that the HomeScreen loaded
-      expect(find.byType(HomeScreen), findsOneWidget);
+      // Since we're mocking, we can verify that the MessageScreen loaded
+      expect(find.byType(MessageScreen), findsOneWidget);
 
       // We can't test full navigation due to ServiceProvider issues,
       // but we can verify the profile button is present

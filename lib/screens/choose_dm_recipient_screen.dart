@@ -46,15 +46,11 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
       });
 
       final apiService = Provider.of<ApiService>(context, listen: false);
-      final members = await apiService.getFamilyMembers(widget.userId);
+      // Use the new method that gets members from ALL families
+      final members = await apiService.getAllFamilyMembers();
 
-      // Filter out the current user
-      final filteredMembers =
-          members.where((member) {
-            final memberId = member['userId'] as int?;
-            final shouldInclude = memberId != null && memberId != widget.userId;
-            return shouldInclude;
-          }).toList();
+      // Note: The new endpoint already excludes the current user, so no need to filter
+      final filteredMembers = members;
 
       if (mounted) {
         setState(() {
@@ -177,9 +173,12 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
 
   void _closeSearch() {
     setState(() {
+      _searchController.clear(); // Clear the search text
       _filteredMembers.clear();
       _familyMembers.clear();
     });
+    // Reload the family members to restore the list
+    _loadFamilyMembers();
   }
 
   String _formatTimestamp(int? timestamp) {

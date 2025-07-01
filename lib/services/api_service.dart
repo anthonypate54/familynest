@@ -1020,7 +1020,44 @@ Network connection error. Please check:
     }
   }
 
-  // Get family members
+  // Get all family members across all families (for DM recipient selection)
+  Future<List<Map<String, dynamic>>> getAllFamilyMembers() async {
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+      debugPrint(
+        '🔍 API DEBUG: Token available - ${_token!.substring(0, Math.min(10, _token!.length))}...',
+      );
+    } else {
+      debugPrint('🔍 API DEBUG: No token available!');
+    }
+
+    try {
+      // Use the new endpoint for getting all family members
+      final url = '$baseUrl/api/families/all-members';
+
+      final response = await client.get(Uri.parse(url), headers: headers);
+
+      if (response.statusCode == 200) {
+        final result =
+            (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+        return result;
+      } else if (response.statusCode == 400) {
+        print('🔍 API DEBUG: New endpoint returned 400 - returning empty list');
+        return [];
+      } else {
+        print(
+          '🔍 API DEBUG: New endpoint failed with status ${response.statusCode}',
+        );
+        throw Exception('Failed to get all family members: ${response.body}');
+      }
+    } catch (e) {
+      print('🔍 API DEBUG: Error fetching all family members: $e');
+      return [];
+    }
+  }
+
+  // Get family members (original method - for single family)
   Future<List<Map<String, dynamic>>> getFamilyMembers(int userId) async {
     debugPrint('🔍 API DEBUG: getFamilyMembers called for userId: $userId');
 
@@ -2290,6 +2327,205 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('Error marking DM conversation as read: $e');
       return 0;
+    }
+  }
+
+  // ===== SEARCH METHODS =====
+
+  /// Get a fresh test token (for development/testing)
+  Future<Map<String, dynamic>?> getTestToken() async {
+    try {
+      debugPrint('🔑 Getting fresh test token');
+
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/users/test-token'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint('✅ Got fresh test token for user: ${data['username']}');
+
+        // Save the new token
+        if (data['token'] != null) {
+          await _saveToken(data['token']);
+        }
+
+        return data;
+      } else {
+        debugPrint('❌ Failed to get test token: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('💥 Error getting test token: $e');
+      return null;
+    }
+  }
+
+  /// Search messages within user's families
+  /// Returns list of messages matching the search query
+  Future<List<Map<String, dynamic>>> searchMessages({
+    required String query,
+    int? familyId,
+    int page = 0,
+    int size = 20,
+  }) async {
+    try {
+      debugPrint(
+        '🔍 Searching messages: "$query", familyId: $familyId, page: $page',
+      );
+
+      final queryParams = <String, String>{
+        'q': query,
+        'page': page.toString(),
+        'size': size.toString(),
+      };
+
+      if (familyId != null) {
+        queryParams['familyId'] = familyId.toString();
+      }
+
+      final uri = Uri.parse(
+        '$baseUrl/api/search/messages',
+      ).replace(queryParameters: queryParams);
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.get(uri, headers: headers);
+      debugPrint('🔍 Search response: status=${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final results =
+            (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+        debugPrint('🔍 Found ${results.length} search results');
+        return results;
+      } else if (response.statusCode == 403) {
+        // Token might be expired, try to get a fresh one
+        debugPrint('🔑 Token expired, trying to get fresh test token');
+        final freshToken = await getTestToken();
+        if (freshToken != null) {
+          // Retry the search with the fresh token
+          debugPrint('🔍 Retrying search with fresh token');
+          final retryResponse = await client.get(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_token',
+            },
+          );
+
+          if (retryResponse.statusCode == 200) {
+            final results =
+                (jsonDecode(retryResponse.body) as List)
+                    .cast<Map<String, dynamic>>();
+            debugPrint(
+              '🔍 Found ${results.length} search results after token refresh',
+            );
+            return results;
+          }
+        }
+        debugPrint(
+          '❌ Search failed even after token refresh: ${response.body}',
+        );
+        return [];
+      } else {
+        debugPrint('❌ Search failed: ${response.body}');
+        return [];
+      }
+    } catch (e) {
+      debugPrint('💥 Error searching messages: $e');
+      return [];
+    }
+  }
+
+  /// Get user's families for search filter
+  Future<List<Map<String, dynamic>>> getSearchFamilies() async {
+    try {
+      debugPrint('🔍 Getting user families for search filter');
+
+      final url = Uri.parse('$baseUrl/api/search/families');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.get(url, headers: headers);
+      debugPrint('🔍 Get families response: status=${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final families =
+            (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+        debugPrint('🔍 Found ${families.length} families for search');
+        return families;
+      } else if (response.statusCode == 403) {
+        // Token might be expired, try to get a fresh one
+        debugPrint('🔑 Token expired, trying to get fresh test token');
+        final freshToken = await getTestToken();
+        if (freshToken != null) {
+          // Retry the request with the fresh token
+          debugPrint('🔍 Retrying get families with fresh token');
+          final retryResponse = await client.get(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_token',
+            },
+          );
+
+          if (retryResponse.statusCode == 200) {
+            final families =
+                (jsonDecode(retryResponse.body) as List)
+                    .cast<Map<String, dynamic>>();
+            debugPrint(
+              '🔍 Found ${families.length} families after token refresh',
+            );
+            return families;
+          }
+        }
+        debugPrint(
+          '❌ Failed to get search families even after token refresh: ${response.body}',
+        );
+        return [];
+      } else {
+        debugPrint('❌ Failed to get search families: ${response.body}');
+        return [];
+      }
+    } catch (e) {
+      debugPrint('💥 Error getting search families: $e');
+      return [];
+    }
+  }
+
+  /// Test the search controller endpoint
+  Future<Map<String, dynamic>?> testSearchController() async {
+    try {
+      debugPrint('🔍 Testing search controller endpoint');
+
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/search/test'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+      );
+
+      debugPrint(
+        '🔍 Search test response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint('✅ Search controller test successful: ${data['message']}');
+        return data;
+      } else {
+        debugPrint('❌ Search controller test failed: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('💥 Error testing search controller: $e');
+      return null;
     }
   }
 }

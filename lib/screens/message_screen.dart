@@ -24,7 +24,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class MessageScreen extends StatefulWidget {
   final String userId;
-  const MessageScreen({Key? key, required this.userId}) : super(key: key);
+  final int? scrollToMessageId;
+
+  const MessageScreen({Key? key, required this.userId, this.scrollToMessageId})
+    : super(key: key);
 
   @override
   State<MessageScreen> createState() => _MessageScreenState();
@@ -84,6 +87,11 @@ class _MessageScreenState extends State<MessageScreen>
             _isLoading = false;
           });
         }
+
+        // Scroll to specific message if requested
+        if (widget.scrollToMessageId != null) {
+          _scrollToMessage(widget.scrollToMessageId!);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -99,6 +107,45 @@ class _MessageScreenState extends State<MessageScreen>
         }
       }
     }
+  }
+
+  // Method to scroll to a specific message
+  void _scrollToMessage(int messageId) {
+    // Wait for the next frame to ensure the list is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final messageProvider = Provider.of<MessageProvider>(
+        context,
+        listen: false,
+      );
+      final messages = messageProvider.messages;
+
+      // Find the index of the message
+      final messageIndex = messages.indexWhere(
+        (message) => message.id == messageId,
+      );
+
+      if (messageIndex != -1 && _scrollController.hasClients) {
+        // Calculate the scroll position
+        // Each message item has some height, so we need to estimate
+        final estimatedItemHeight = 100.0; // Approximate height per message
+        final scrollPosition =
+            (messages.length - 1 - messageIndex) * estimatedItemHeight;
+
+        _scrollController.animateTo(
+          scrollPosition,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+
+        debugPrint('Scrolled to message $messageId at index $messageIndex');
+      } else {
+        debugPrint(
+          'Message $messageId not found or scroll controller not ready',
+        );
+      }
+    });
   }
 
   // Check if user is a first-time user using SharedPreferences

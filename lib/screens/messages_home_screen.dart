@@ -7,6 +7,7 @@ import 'choose_dm_recipient_screen.dart';
 import '../utils/page_transitions.dart';
 import '../models/dm_conversation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'message_search_screen.dart';
 
 class MessagesHomeScreen extends StatefulWidget {
   final int userId;
@@ -194,32 +195,8 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
             IconButton(
               icon: const Icon(Icons.search, color: Colors.white),
               onPressed: () {
-                // Show search functionality
-                showSearch(
-                  context: context,
-                  delegate: ConversationSearchDelegate(
-                    conversations: _conversations,
-                    onSelect: (conversation) {
-                      final otherUserId = conversation.getOtherUserId(
-                        widget.userId,
-                      );
-                      final conversationId = conversation.id;
-                      final displayName =
-                          conversation.getOtherUserDisplayName();
-
-                      slidePush(
-                        context,
-                        DMThreadScreen(
-                          currentUserId: widget.userId,
-                          otherUserId: otherUserId,
-                          otherUserName: displayName,
-                          otherUserPhoto: conversation.otherUserPhoto,
-                          conversationId: conversationId,
-                        ),
-                      );
-                    },
-                  ),
-                );
+                // Navigate to comprehensive search screen
+                slidePush(context, MessageSearchScreen(userId: widget.userId));
               },
             ),
             // User avatar
@@ -513,107 +490,6 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
                   ),
                 ),
       ),
-    );
-  }
-}
-
-class ConversationSearchDelegate extends SearchDelegate<DMConversation> {
-  final List<DMConversation> conversations;
-  final Function(DMConversation) onSelect;
-
-  ConversationSearchDelegate({
-    required this.conversations,
-    required this.onSelect,
-  });
-
-  @override
-  List<Widget> buildActions(BuildContext context) {
-    return [
-      IconButton(
-        icon: const Icon(Icons.clear),
-        onPressed: () {
-          query = '';
-        },
-      ),
-    ];
-  }
-
-  @override
-  Widget buildLeading(BuildContext context) {
-    return IconButton(
-      icon: const Icon(Icons.arrow_back),
-      onPressed: () {
-        close(
-          context,
-          DMConversation(
-            id: 0,
-            user1Id: 0,
-            user2Id: 0,
-            createdAt: DateTime.now(),
-            updatedAt: DateTime.now(),
-          ),
-        );
-      },
-    );
-  }
-
-  @override
-  Widget buildResults(BuildContext context) {
-    return buildSuggestions(context);
-  }
-
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    if (query.isEmpty) {
-      return ListView.builder(
-        itemCount: conversations.length,
-        itemBuilder: (context, index) {
-          return _buildConversationItem(context, conversations[index]);
-        },
-      );
-    }
-
-    final lowercaseQuery = query.toLowerCase();
-    final results =
-        conversations.where((conversation) {
-          final otherFirstName =
-              (conversation.otherUserFirstName ?? '').toLowerCase();
-          final otherLastName =
-              (conversation.otherUserLastName ?? '').toLowerCase();
-          final otherUsername =
-              (conversation.otherUserName ?? '').toLowerCase();
-          final lastMessage =
-              (conversation.lastMessageContent ?? '').toLowerCase();
-
-          return otherFirstName.contains(lowercaseQuery) ||
-              otherLastName.contains(lowercaseQuery) ||
-              otherUsername.contains(lowercaseQuery) ||
-              '$otherFirstName $otherLastName'.contains(lowercaseQuery) ||
-              lastMessage.contains(lowercaseQuery);
-        }).toList();
-
-    return ListView.builder(
-      itemCount: results.length,
-      itemBuilder: (context, index) {
-        return _buildConversationItem(context, results[index]);
-      },
-    );
-  }
-
-  Widget _buildConversationItem(
-    BuildContext context,
-    DMConversation conversation,
-  ) {
-    final displayName = conversation.getOtherUserDisplayName();
-    final lastMessageContent = conversation.lastMessageContent;
-
-    return ListTile(
-      title: Text(displayName),
-      subtitle: lastMessageContent != null ? Text(lastMessageContent) : null,
-      onTap: () {
-        close(context, conversation);
-        onSelect(conversation);
-      },
     );
   }
 }
