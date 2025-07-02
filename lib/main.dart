@@ -291,6 +291,24 @@ class MainAppContainerState extends State<MainAppContainer> {
       pollingInterval,
       (_) => _checkPendingInvitations(),
     );
+
+    // Initialize WebSocket service
+    _initializeWebSocket();
+  }
+
+  // Initialize WebSocket service once for the entire app
+  Future<void> _initializeWebSocket() async {
+    try {
+      debugPrint('🔌 MAIN: Initializing WebSocket service');
+      final webSocketService = Provider.of<WebSocketService>(
+        context,
+        listen: false,
+      );
+      await webSocketService.initialize();
+      debugPrint('✅ MAIN: WebSocket service initialized');
+    } catch (e) {
+      debugPrint('❌ MAIN: Error initializing WebSocket service: $e');
+    }
   }
 
   // Check for existing DM conversations and navigate accordingly
@@ -494,7 +512,7 @@ class MainAppContainerState extends State<MainAppContainer> {
         },
       ),
       floatingActionButton:
-          false
+          true
               ? FloatingActionButton(
                 heroTag: 'ws_test_button',
                 onPressed: () {

@@ -355,6 +355,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                 mediaPath: thumbnailFile.path,
                 mediaType: 'image',
                 videoUrl: userUrl,
+                familyId: widget.message['familyId'] as int?,
               );
 
               // Add to Provider
@@ -461,6 +462,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
               int.parse(widget.message['id']),
               userMessage.isNotEmpty ? userMessage : 'Shared external video',
               videoUrl: userUrl,
+              familyId: widget.message['familyId'] as int?,
             );
 
             // Add to Provider
@@ -556,6 +558,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
             userMessage.isNotEmpty ? userMessage : 'Shared a photo',
             mediaPath: _selectedMediaFile!.path,
             mediaType: 'image',
+            familyId: widget.message['familyId'] as int?,
           );
         } else if (_selectedMediaType == 'video') {
           newComment = await apiService.postComment(
@@ -564,6 +567,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
             userMessage.isNotEmpty ? userMessage : 'Shared a video',
             mediaPath: _selectedMediaFile!.path,
             mediaType: 'video',
+            familyId: widget.message['familyId'] as int?,
           );
         }
       } else {
@@ -571,6 +575,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
           widget.userId,
           int.parse(widget.message['id'].toString()),
           userMessage,
+          familyId: widget.message['familyId'] as int?,
         );
       }
 

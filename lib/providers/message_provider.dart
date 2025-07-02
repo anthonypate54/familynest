@@ -12,8 +12,33 @@ class MessageProvider extends ChangeNotifier {
   }
 
   void addMessage(Message message) {
-    _messages.insert(0, message);
-    notifyListeners();
+    debugPrint(
+      '📝 MessageProvider.addMessage: Attempting to add message ${message.id}',
+    );
+    debugPrint(
+      '📝 MessageProvider.addMessage: Current message count: ${_messages.length}',
+    );
+
+    // Check if message already exists to prevent duplicates
+    final existingIndex = _messages.indexWhere((m) => m.id == message.id);
+    if (existingIndex == -1) {
+      // Message doesn't exist, add it
+      _messages.insert(0, message);
+      debugPrint(
+        '✅ MessageProvider.addMessage: Added new message ${message.id} at position 0',
+      );
+      debugPrint(
+        '📝 MessageProvider.addMessage: New message count: ${_messages.length}',
+      );
+      notifyListeners();
+    } else {
+      // Message already exists, update it instead
+      _messages[existingIndex] = message;
+      debugPrint(
+        '🔄 MessageProvider.addMessage: Updated existing message ${message.id} at position $existingIndex',
+      );
+      notifyListeners();
+    }
   }
 
   void updateMessage(Message updated) {

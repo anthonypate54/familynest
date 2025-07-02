@@ -3,12 +3,15 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i5;
+import 'dart:async' as _i6;
+import 'dart:io' as _i7;
 
-import 'package:familynest/services/api_service.dart' as _i3;
+import 'package:familynest/models/dm_conversation.dart' as _i8;
+import 'package:familynest/models/message.dart' as _i3;
+import 'package:familynest/services/api_service.dart' as _i4;
 import 'package:http/http.dart' as _i2;
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:mockito/src/dummies.dart' as _i4;
+import 'package:mockito/src/dummies.dart' as _i5;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -29,10 +32,15 @@ class _FakeClient_0 extends _i1.SmartFake implements _i2.Client {
     : super(parent, parentInvocation);
 }
 
+class _FakeMessage_1 extends _i1.SmartFake implements _i3.Message {
+  _FakeMessage_1(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [ApiService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockApiService extends _i1.Mock implements _i3.ApiService {
+class MockApiService extends _i1.Mock implements _i4.ApiService {
   MockApiService() {
     _i1.throwOnMissingStub(this);
   }
@@ -49,7 +57,7 @@ class MockApiService extends _i1.Mock implements _i3.ApiService {
   String get baseUrl =>
       (super.noSuchMethod(
             Invocation.getter(#baseUrl),
-            returnValue: _i4.dummyValue<String>(
+            returnValue: _i5.dummyValue<String>(
               this,
               Invocation.getter(#baseUrl),
             ),
@@ -57,43 +65,75 @@ class MockApiService extends _i1.Mock implements _i3.ApiService {
           as String);
 
   @override
-  _i5.Future<void> initialize() =>
-      (super.noSuchMethod(
-            Invocation.method(#initialize, []),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
+  bool get isLoggedIn =>
+      (super.noSuchMethod(Invocation.getter(#isLoggedIn), returnValue: false)
+          as bool);
 
   @override
-  _i5.Future<void> testConnection() =>
+  String get mediaBaseUrl =>
       (super.noSuchMethod(
-            Invocation.method(#testConnection, []),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> loginUser(String? email, String? password) =>
-      (super.noSuchMethod(
-            Invocation.method(#loginUser, [email, password]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
+            Invocation.getter(#mediaBaseUrl),
+            returnValue: _i5.dummyValue<String>(
+              this,
+              Invocation.getter(#mediaBaseUrl),
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as String);
 
   @override
-  _i5.Future<Map<String, dynamic>?> getCurrentUser() =>
+  _i6.Future<void> initialize() =>
+      (super.noSuchMethod(
+            Invocation.method(#initialize, []),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<void> testConnection() =>
+      (super.noSuchMethod(
+            Invocation.method(#testConnection, []),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<void> logout() =>
+      (super.noSuchMethod(
+            Invocation.method(#logout, []),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<void> debugPrintSharedPrefs(String? location) =>
+      (super.noSuchMethod(
+            Invocation.method(#debugPrintSharedPrefs, [location]),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<Map<String, dynamic>?> login(String? email, String? password) =>
+      (super.noSuchMethod(
+            Invocation.method(#login, [email, password]),
+            returnValue: _i6.Future<Map<String, dynamic>?>.value(),
+          )
+          as _i6.Future<Map<String, dynamic>?>);
+
+  @override
+  _i6.Future<Map<String, dynamic>?> getCurrentUser() =>
       (super.noSuchMethod(
             Invocation.method(#getCurrentUser, []),
-            returnValue: _i5.Future<Map<String, dynamic>?>.value(),
+            returnValue: _i6.Future<Map<String, dynamic>?>.value(),
           )
-          as _i5.Future<Map<String, dynamic>?>);
+          as _i6.Future<Map<String, dynamic>?>);
 
   @override
-  _i5.Future<Map<String, dynamic>> registerUser({
+  _i6.Future<Map<String, dynamic>> registerUser({
     required String? username,
     required String? email,
     required String? password,
@@ -114,68 +154,41 @@ class MockApiService extends _i1.Mock implements _i3.ApiService {
               #photoPath: photoPath,
               #demographics: demographics,
             }),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<Map<String, dynamic>>);
 
   @override
-  _i5.Future<void> logout() =>
-      (super.noSuchMethod(
-            Invocation.method(#logout, []),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> updateDemographics(
-    int? userId,
-    Map<String, dynamic>? demographicsData,
-  ) =>
-      (super.noSuchMethod(
-            Invocation.method(#updateDemographics, [userId, demographicsData]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
-            ),
-          )
-          as _i5.Future<Map<String, dynamic>>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> getUserById(int? id) =>
+  _i6.Future<Map<String, dynamic>> getUserById(int? id) =>
       (super.noSuchMethod(
             Invocation.method(#getUserById, [id]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<Map<String, dynamic>>);
 
   @override
-  _i5.Future<int> createFamily(int? userId, String? familyName) =>
+  _i6.Future<List<Map<String, dynamic>>> getMessages(int? userId) =>
       (super.noSuchMethod(
-            Invocation.method(#createFamily, [userId, familyName]),
-            returnValue: _i5.Future<int>.value(0),
+            Invocation.method(#getMessages, [userId]),
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
+              <Map<String, dynamic>>[],
+            ),
           )
-          as _i5.Future<int>);
+          as _i6.Future<List<Map<String, dynamic>>>);
 
   @override
-  _i5.Future<void> joinFamily(int? userId, int? familyId) =>
-      (super.noSuchMethod(
-            Invocation.method(#joinFamily, [userId, familyId]),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
-
-  @override
-  _i5.Future<bool> postMessage(
+  _i6.Future<_i3.Message> postMessage(
     int? userId,
     String? content, {
     String? mediaPath,
     String? mediaType,
     int? familyId,
+    String? videoUrl,
+    String? thumbnailUrl,
   }) =>
       (super.noSuchMethod(
             Invocation.method(
@@ -185,171 +198,172 @@ class MockApiService extends _i1.Mock implements _i3.ApiService {
                 #mediaPath: mediaPath,
                 #mediaType: mediaType,
                 #familyId: familyId,
+                #videoUrl: videoUrl,
+                #thumbnailUrl: thumbnailUrl,
               },
             ),
-            returnValue: _i5.Future<bool>.value(false),
-          )
-          as _i5.Future<bool>);
-
-  @override
-  _i5.Future<List<Map<String, dynamic>>> getMessages(int? userId) =>
-      (super.noSuchMethod(
-            Invocation.method(#getMessages, [userId]),
-            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
-              <Map<String, dynamic>>[],
+            returnValue: _i6.Future<_i3.Message>.value(
+              _FakeMessage_1(
+                this,
+                Invocation.method(
+                  #postMessage,
+                  [userId, content],
+                  {
+                    #mediaPath: mediaPath,
+                    #mediaType: mediaType,
+                    #familyId: familyId,
+                    #videoUrl: videoUrl,
+                    #thumbnailUrl: thumbnailUrl,
+                  },
+                ),
+              ),
             ),
           )
-          as _i5.Future<List<Map<String, dynamic>>>);
+          as _i6.Future<_i3.Message>);
 
   @override
-  _i5.Future<void> updatePhoto(int? userId, String? photoPath) =>
+  _i6.Future<_i3.Message> postComment(
+    int? userId,
+    int? parentMessageId,
+    String? content, {
+    String? mediaPath,
+    String? mediaType,
+    int? familyId,
+    String? videoUrl,
+    String? thumbnailUrl,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #postComment,
+              [userId, parentMessageId, content],
+              {
+                #mediaPath: mediaPath,
+                #mediaType: mediaType,
+                #familyId: familyId,
+                #videoUrl: videoUrl,
+                #thumbnailUrl: thumbnailUrl,
+              },
+            ),
+            returnValue: _i6.Future<_i3.Message>.value(
+              _FakeMessage_1(
+                this,
+                Invocation.method(
+                  #postComment,
+                  [userId, parentMessageId, content],
+                  {
+                    #mediaPath: mediaPath,
+                    #mediaType: mediaType,
+                    #familyId: familyId,
+                    #videoUrl: videoUrl,
+                    #thumbnailUrl: thumbnailUrl,
+                  },
+                ),
+              ),
+            ),
+          )
+          as _i6.Future<_i3.Message>);
+
+  @override
+  _i6.Future<_i3.Message> postMessageWithVideoProcessing(
+    int? userId,
+    String? content, {
+    String? mediaPath,
+    String? mediaType,
+    int? familyId,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #postMessageWithVideoProcessing,
+              [userId, content],
+              {
+                #mediaPath: mediaPath,
+                #mediaType: mediaType,
+                #familyId: familyId,
+              },
+            ),
+            returnValue: _i6.Future<_i3.Message>.value(
+              _FakeMessage_1(
+                this,
+                Invocation.method(
+                  #postMessageWithVideoProcessing,
+                  [userId, content],
+                  {
+                    #mediaPath: mediaPath,
+                    #mediaType: mediaType,
+                    #familyId: familyId,
+                  },
+                ),
+              ),
+            ),
+          )
+          as _i6.Future<_i3.Message>);
+
+  @override
+  _i6.Future<void> updatePhoto(int? userId, String? photoPath) =>
       (super.noSuchMethod(
             Invocation.method(#updatePhoto, [userId, photoPath]),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
           )
-          as _i5.Future<void>);
+          as _i6.Future<void>);
 
   @override
-  _i5.Future<List<Map<String, dynamic>>> getFamilyMembers(int? userId) =>
-      (super.noSuchMethod(
-            Invocation.method(#getFamilyMembers, [userId]),
-            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
-              <Map<String, dynamic>>[],
-            ),
-          )
-          as _i5.Future<List<Map<String, dynamic>>>);
-
-  @override
-  _i5.Future<List<Map<String, dynamic>>> getFamilyMembersByFamilyId(
+  _i6.Future<void> updatePhotoWeb(
     int? userId,
-    int? familyId,
+    List<int>? bytes,
+    String? fileName,
   ) =>
       (super.noSuchMethod(
-            Invocation.method(#getFamilyMembersByFamilyId, [userId, familyId]),
-            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
+            Invocation.method(#updatePhotoWeb, [userId, bytes, fileName]),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<List<Map<String, dynamic>>> getAllFamilyMembers() =>
+      (super.noSuchMethod(
+            Invocation.method(#getAllFamilyMembers, []),
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
               <Map<String, dynamic>>[],
             ),
           )
-          as _i5.Future<List<Map<String, dynamic>>>);
+          as _i6.Future<List<Map<String, dynamic>>>);
 
   @override
-  _i5.Future<Map<String, dynamic>> getFamily(int? familyId) =>
+  _i6.Future<List<Map<String, dynamic>>> getFamilyMembers(int? userId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getFamilyMembers, [userId]),
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
+              <Map<String, dynamic>>[],
+            ),
+          )
+          as _i6.Future<List<Map<String, dynamic>>>);
+
+  @override
+  _i6.Future<Map<String, dynamic>> getFamily(int? familyId) =>
       (super.noSuchMethod(
             Invocation.method(#getFamily, [familyId]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<Map<String, dynamic>>);
 
   @override
-  _i5.Future<void> leaveFamily(int? userId) =>
-      (super.noSuchMethod(
-            Invocation.method(#leaveFamily, [userId]),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
-
-  @override
-  _i5.Future<void> inviteUser(int? userId, String? email) =>
-      (super.noSuchMethod(
-            Invocation.method(#inviteUser, [userId, email]),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
-
-  @override
-  _i5.Future<List<Map<String, dynamic>>> getInvitations() =>
-      (super.noSuchMethod(
-            Invocation.method(#getInvitations, []),
-            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
-              <Map<String, dynamic>>[],
-            ),
-          )
-          as _i5.Future<List<Map<String, dynamic>>>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> acceptInvitation(int? invitationId) =>
-      (super.noSuchMethod(
-            Invocation.method(#acceptInvitation, [invitationId]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
-            ),
-          )
-          as _i5.Future<Map<String, dynamic>>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> rejectInvitation(int? invitationId) =>
-      (super.noSuchMethod(
-            Invocation.method(#rejectInvitation, [invitationId]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
-            ),
-          )
-          as _i5.Future<Map<String, dynamic>>);
-
-  @override
-  _i5.Future<List<Map<String, dynamic>>> getUserFamilies(int? userId) =>
-      (super.noSuchMethod(
-            Invocation.method(#getUserFamilies, [userId]),
-            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
-              <Map<String, dynamic>>[],
-            ),
-          )
-          as _i5.Future<List<Map<String, dynamic>>>);
-
-  @override
-  _i5.Future<Map<String, dynamic>?> getOwnedFamily(int? userId) =>
-      (super.noSuchMethod(
-            Invocation.method(#getOwnedFamily, [userId]),
-            returnValue: _i5.Future<Map<String, dynamic>?>.value(),
-          )
-          as _i5.Future<Map<String, dynamic>?>);
-
-  @override
-  _i5.Future<List<Map<String, dynamic>>> getJoinedFamilies(int? userId) =>
-      (super.noSuchMethod(
-            Invocation.method(#getJoinedFamilies, [userId]),
-            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
-              <Map<String, dynamic>>[],
-            ),
-          )
-          as _i5.Future<List<Map<String, dynamic>>>);
-
-  @override
-  _i5.Future<void> setActiveFamily(int? userId, int? familyId) =>
-      (super.noSuchMethod(
-            Invocation.method(#setActiveFamily, [userId, familyId]),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
-
-  @override
-  _i5.Future<Map<String, dynamic>?> getActiveFamily(int? userId) =>
-      (super.noSuchMethod(
-            Invocation.method(#getActiveFamily, [userId]),
-            returnValue: _i5.Future<Map<String, dynamic>?>.value(),
-          )
-          as _i5.Future<Map<String, dynamic>?>);
-
-  @override
-  _i5.Future<List<Map<String, dynamic>>> getFamilyInvitationsForUser(
+  _i6.Future<List<Map<String, dynamic>>> getFamilyInvitationsForUser(
     int? userId,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#getFamilyInvitationsForUser, [userId]),
-            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
               <Map<String, dynamic>>[],
             ),
           )
-          as _i5.Future<List<Map<String, dynamic>>>);
+          as _i6.Future<List<Map<String, dynamic>>>);
 
   @override
-  _i5.Future<Map<String, dynamic>> respondToFamilyInvitation(
+  _i6.Future<Map<String, dynamic>> respondToFamilyInvitation(
     int? invitationId,
     bool? accept,
   ) =>
@@ -358,67 +372,144 @@ class MockApiService extends _i1.Mock implements _i3.ApiService {
               invitationId,
               accept,
             ]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<Map<String, dynamic>>);
 
   @override
-  _i5.Future<void> inviteUserToFamily(int? userId, String? email) =>
+  _i6.Future<Map<String, dynamic>> inviteUser(int? userId, String? email) =>
       (super.noSuchMethod(
-            Invocation.method(#inviteUserToFamily, [userId, email]),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
+            Invocation.method(#inviteUser, [userId, email]),
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
+              <String, dynamic>{},
+            ),
           )
-          as _i5.Future<void>);
+          as _i6.Future<Map<String, dynamic>>);
 
   @override
-  _i5.Future<String?> getToken() =>
+  _i6.Future<Map<String, dynamic>?> getOwnedFamily(int? userId) =>
       (super.noSuchMethod(
-            Invocation.method(#getToken, []),
-            returnValue: _i5.Future<String?>.value(),
+            Invocation.method(#getOwnedFamily, [userId]),
+            returnValue: _i6.Future<Map<String, dynamic>?>.value(),
           )
-          as _i5.Future<String?>);
+          as _i6.Future<Map<String, dynamic>?>);
 
   @override
-  _i5.Future<void> updatePhotoWeb(
+  _i6.Future<Map<String, dynamic>> updateDemographics(
     int? userId,
-    List<int>? bytes,
-    String? fileName,
+    Map<String, dynamic>? data,
   ) =>
       (super.noSuchMethod(
-            Invocation.method(#updatePhotoWeb, [userId, bytes, fileName]),
-            returnValue: _i5.Future<void>.value(),
-            returnValueForMissingStub: _i5.Future<void>.value(),
-          )
-          as _i5.Future<void>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> updateFamilyDetails(
-    int? familyId,
-    String? familyName,
-  ) =>
-      (super.noSuchMethod(
-            Invocation.method(#updateFamilyDetails, [familyId, familyName]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
+            Invocation.method(#updateDemographics, [userId, data]),
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<Map<String, dynamic>>);
 
   @override
-  _i5.Future<List<Map<String, dynamic>>> getMessagePreferences(int? userId) =>
+  _i6.Future<Map<String, String>> uploadVideoWithThumbnail(
+    _i7.File? videoFile,
+  ) =>
       (super.noSuchMethod(
-            Invocation.method(#getMessagePreferences, [userId]),
-            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
+            Invocation.method(#uploadVideoWithThumbnail, [videoFile]),
+            returnValue: _i6.Future<Map<String, String>>.value(
+              <String, String>{},
+            ),
+          )
+          as _i6.Future<Map<String, String>>);
+
+  @override
+  _i6.Future<List<Map<String, dynamic>>> getInvitations() =>
+      (super.noSuchMethod(
+            Invocation.method(#getInvitations, []),
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
               <Map<String, dynamic>>[],
             ),
           )
-          as _i5.Future<List<Map<String, dynamic>>>);
+          as _i6.Future<List<Map<String, dynamic>>>);
 
   @override
-  _i5.Future<Map<String, dynamic>> updateMessagePreference(
+  _i6.Future<Map<String, dynamic>> createFamily(
+    int? userId,
+    String? familyName,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#createFamily, [userId, familyName]),
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
+              <String, dynamic>{},
+            ),
+          )
+          as _i6.Future<Map<String, dynamic>>);
+
+  @override
+  _i6.Future<Map<String, dynamic>> leaveFamily(int? userId) =>
+      (super.noSuchMethod(
+            Invocation.method(#leaveFamily, [userId]),
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
+              <String, dynamic>{},
+            ),
+          )
+          as _i6.Future<Map<String, dynamic>>);
+
+  @override
+  _i6.Future<void> joinFamily(int? userId, int? familyId) =>
+      (super.noSuchMethod(
+            Invocation.method(#joinFamily, [userId, familyId]),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<List<Map<String, dynamic>>> getJoinedFamilies(int? userId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getJoinedFamilies, [userId]),
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
+              <Map<String, dynamic>>[],
+            ),
+          )
+          as _i6.Future<List<Map<String, dynamic>>>);
+
+  @override
+  _i6.Future<Map<String, dynamic>> updateFamilyDetails(
+    int? familyId,
+    String? name,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateFamilyDetails, [familyId, name]),
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
+              <String, dynamic>{},
+            ),
+          )
+          as _i6.Future<Map<String, dynamic>>);
+
+  @override
+  _i6.Future<List<Map<String, dynamic>>> getMessagePreferences(int? userId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getMessagePreferences, [userId]),
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
+              <Map<String, dynamic>>[],
+            ),
+          )
+          as _i6.Future<List<Map<String, dynamic>>>);
+
+  @override
+  _i6.Future<List<Map<String, dynamic>>> getMemberMessagePreferences(
+    int? userId,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getMemberMessagePreferences, [userId]),
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
+              <Map<String, dynamic>>[],
+            ),
+          )
+          as _i6.Future<List<Map<String, dynamic>>>);
+
+  @override
+  _i6.Future<Map<String, dynamic>> updateMessagePreference(
     int? userId,
     int? familyId,
     bool? receiveMessages,
@@ -429,26 +520,14 @@ class MockApiService extends _i1.Mock implements _i3.ApiService {
               familyId,
               receiveMessages,
             ]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<Map<String, dynamic>>);
 
   @override
-  _i5.Future<List<Map<String, dynamic>>> getMemberMessagePreferences(
-    int? userId,
-  ) =>
-      (super.noSuchMethod(
-            Invocation.method(#getMemberMessagePreferences, [userId]),
-            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
-              <Map<String, dynamic>>[],
-            ),
-          )
-          as _i5.Future<List<Map<String, dynamic>>>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> updateMemberMessagePreference(
+  _i6.Future<Map<String, dynamic>> updateMemberMessagePreference(
     int? userId,
     int? familyId,
     int? memberUserId,
@@ -461,159 +540,280 @@ class MockApiService extends _i1.Mock implements _i3.ApiService {
               memberUserId,
               receiveMessages,
             ]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<Map<String, dynamic>>);
 
   @override
-  _i5.Future<Map<String, dynamic>> getMessageReactions(int? messageId) =>
+  _i6.Future<List<Map<String, dynamic>>> getFamilyMembersByFamilyId(
+    int? userId,
+    int? familyId,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#getFamilyMembersByFamilyId, [userId, familyId]),
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
+              <Map<String, dynamic>>[],
+            ),
+          )
+          as _i6.Future<List<Map<String, dynamic>>>);
+
+  @override
+  _i6.Future<bool> testThumbnailAccess(String? url) =>
+      (super.noSuchMethod(
+            Invocation.method(#testThumbnailAccess, [url]),
+            returnValue: _i6.Future<bool>.value(false),
+          )
+          as _i6.Future<bool>);
+
+  @override
+  _i6.Future<String?> findWorkingThumbnailUrl(String? baseUrl) =>
+      (super.noSuchMethod(
+            Invocation.method(#findWorkingThumbnailUrl, [baseUrl]),
+            returnValue: _i6.Future<String?>.value(),
+          )
+          as _i6.Future<String?>);
+
+  @override
+  _i6.Future<Map<String, dynamic>> getMessageReactions(int? messageId) =>
       (super.noSuchMethod(
             Invocation.method(#getMessageReactions, [messageId]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<Map<String, dynamic>>);
 
   @override
-  _i5.Future<Map<String, dynamic>> addReaction(
+  _i6.Future<List<_i3.Message>> getUserMessages(String? userId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getUserMessages, [userId]),
+            returnValue: _i6.Future<List<_i3.Message>>.value(<_i3.Message>[]),
+          )
+          as _i6.Future<List<_i3.Message>>);
+
+  @override
+  _i6.Future<List<_i3.Message>> getComments(String? messageId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getComments, [messageId]),
+            returnValue: _i6.Future<List<_i3.Message>>.value(<_i3.Message>[]),
+          )
+          as _i6.Future<List<_i3.Message>>);
+
+  @override
+  _i6.Future<Map<String, dynamic>> markMessageAsViewed(int? messageId) =>
+      (super.noSuchMethod(
+            Invocation.method(#markMessageAsViewed, [messageId]),
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
+              <String, dynamic>{},
+            ),
+          )
+          as _i6.Future<Map<String, dynamic>>);
+
+  @override
+  _i6.Future<bool> removeReaction(int? messageId, String? reactionType) =>
+      (super.noSuchMethod(
+            Invocation.method(#removeReaction, [messageId, reactionType]),
+            returnValue: _i6.Future<bool>.value(false),
+          )
+          as _i6.Future<bool>);
+
+  @override
+  _i6.Future<Map<String, dynamic>> addReaction(
     int? messageId,
     String? reactionType,
   ) =>
       (super.noSuchMethod(
             Invocation.method(#addReaction, [messageId, reactionType]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<Map<String, dynamic>>);
 
   @override
-  _i5.Future<bool> removeReaction(int? messageId, String? reactionType) =>
+  _i6.Future<List<_i3.Message>> getMessageReplies(String? messageId) =>
       (super.noSuchMethod(
-            Invocation.method(#removeReaction, [messageId, reactionType]),
-            returnValue: _i5.Future<bool>.value(false),
+            Invocation.method(#getMessageReplies, [messageId]),
+            returnValue: _i6.Future<List<_i3.Message>>.value(<_i3.Message>[]),
           )
-          as _i5.Future<bool>);
+          as _i6.Future<List<_i3.Message>>);
 
   @override
-  _i5.Future<Map<String, dynamic>> getMessageComments(
-    int? messageId, {
+  _i6.Future<_i3.Message> createMessage(
+    String? userId,
+    String? text, {
+    String? mediaUrl,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #createMessage,
+              [userId, text],
+              {#mediaUrl: mediaUrl},
+            ),
+            returnValue: _i6.Future<_i3.Message>.value(
+              _FakeMessage_1(
+                this,
+                Invocation.method(
+                  #createMessage,
+                  [userId, text],
+                  {#mediaUrl: mediaUrl},
+                ),
+              ),
+            ),
+          )
+          as _i6.Future<_i3.Message>);
+
+  @override
+  _i6.Future<Map<String, dynamic>> toggleMessageLike(
+    String? messageId,
+    bool? isLiked,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#toggleMessageLike, [messageId, isLiked]),
+            returnValue: _i6.Future<Map<String, dynamic>>.value(
+              <String, dynamic>{},
+            ),
+          )
+          as _i6.Future<Map<String, dynamic>>);
+
+  @override
+  _i6.Future<Map<String, dynamic>?> toggleMessageLove(
+    String? messageId,
+    bool? isLoved,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#toggleMessageLove, [messageId, isLoved]),
+            returnValue: _i6.Future<Map<String, dynamic>?>.value(),
+          )
+          as _i6.Future<Map<String, dynamic>?>);
+
+  @override
+  _i6.Future<void> toggleCommentLike(String? messageId, bool? isLiked) =>
+      (super.noSuchMethod(
+            Invocation.method(#toggleCommentLike, [messageId, isLiked]),
+            returnValue: _i6.Future<void>.value(),
+            returnValueForMissingStub: _i6.Future<void>.value(),
+          )
+          as _i6.Future<void>);
+
+  @override
+  _i6.Future<Map<String, dynamic>?> toggleCommentLove(
+    String? messageId,
+    bool? isLoved,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#toggleCommentLove, [messageId, isLoved]),
+            returnValue: _i6.Future<Map<String, dynamic>?>.value(),
+          )
+          as _i6.Future<Map<String, dynamic>?>);
+
+  @override
+  _i6.Future<_i8.DMConversation?> getOrCreateConversation(int? otherUserId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getOrCreateConversation, [otherUserId]),
+            returnValue: _i6.Future<_i8.DMConversation?>.value(),
+          )
+          as _i6.Future<_i8.DMConversation?>);
+
+  @override
+  _i6.Future<List<_i8.DMConversation>> getDMConversations() =>
+      (super.noSuchMethod(
+            Invocation.method(#getDMConversations, []),
+            returnValue: _i6.Future<List<_i8.DMConversation>>.value(
+              <_i8.DMConversation>[],
+            ),
+          )
+          as _i6.Future<List<_i8.DMConversation>>);
+
+  @override
+  _i6.Future<Map<String, dynamic>?> sendDMMessage({
+    required int? conversationId,
+    String? content,
+    String? mediaPath,
+    String? mediaType,
+    String? videoUrl,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#sendDMMessage, [], {
+              #conversationId: conversationId,
+              #content: content,
+              #mediaPath: mediaPath,
+              #mediaType: mediaType,
+              #videoUrl: videoUrl,
+            }),
+            returnValue: _i6.Future<Map<String, dynamic>?>.value(),
+          )
+          as _i6.Future<Map<String, dynamic>?>);
+
+  @override
+  _i6.Future<Map<String, dynamic>?> getDMMessages({
+    required int? conversationId,
+    int? page = 0,
+    int? size = 50,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#getDMMessages, [], {
+              #conversationId: conversationId,
+              #page: page,
+              #size: size,
+            }),
+            returnValue: _i6.Future<Map<String, dynamic>?>.value(),
+          )
+          as _i6.Future<Map<String, dynamic>?>);
+
+  @override
+  _i6.Future<int> markDMConversationAsRead(int? conversationId) =>
+      (super.noSuchMethod(
+            Invocation.method(#markDMConversationAsRead, [conversationId]),
+            returnValue: _i6.Future<int>.value(0),
+          )
+          as _i6.Future<int>);
+
+  @override
+  _i6.Future<Map<String, dynamic>?> getTestToken() =>
+      (super.noSuchMethod(
+            Invocation.method(#getTestToken, []),
+            returnValue: _i6.Future<Map<String, dynamic>?>.value(),
+          )
+          as _i6.Future<Map<String, dynamic>?>);
+
+  @override
+  _i6.Future<List<Map<String, dynamic>>> searchMessages({
+    required String? query,
+    int? familyId,
     int? page = 0,
     int? size = 20,
-    String? sortBy = 'createdAt',
-    String? sortDir = 'desc',
   }) =>
       (super.noSuchMethod(
-            Invocation.method(
-              #getMessageComments,
-              [messageId],
-              {#page: page, #size: size, #sortBy: sortBy, #sortDir: sortDir},
-            ),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
+            Invocation.method(#searchMessages, [], {
+              #query: query,
+              #familyId: familyId,
+              #page: page,
+              #size: size,
+            }),
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
+              <Map<String, dynamic>>[],
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<List<Map<String, dynamic>>>);
 
   @override
-  _i5.Future<Map<String, dynamic>> getCommentReplies(int? commentId) =>
+  _i6.Future<List<Map<String, dynamic>>> getSearchFamilies() =>
       (super.noSuchMethod(
-            Invocation.method(#getCommentReplies, [commentId]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
+            Invocation.method(#getSearchFamilies, []),
+            returnValue: _i6.Future<List<Map<String, dynamic>>>.value(
+              <Map<String, dynamic>>[],
             ),
           )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<List<Map<String, dynamic>>>);
 
   @override
-  _i5.Future<Map<String, dynamic>> addComment(
-    int? messageId,
-    String? content, {
-    int? parentCommentId,
-  }) =>
+  _i6.Future<Map<String, dynamic>?> testSearchController() =>
       (super.noSuchMethod(
-            Invocation.method(
-              #addComment,
-              [messageId, content],
-              {#parentCommentId: parentCommentId},
-            ),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
-            ),
+            Invocation.method(#testSearchController, []),
+            returnValue: _i6.Future<Map<String, dynamic>?>.value(),
           )
-          as _i5.Future<Map<String, dynamic>>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> updateComment(
-    int? commentId,
-    String? content,
-  ) =>
-      (super.noSuchMethod(
-            Invocation.method(#updateComment, [commentId, content]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
-            ),
-          )
-          as _i5.Future<Map<String, dynamic>>);
-
-  @override
-  _i5.Future<bool> deleteComment(int? commentId) =>
-      (super.noSuchMethod(
-            Invocation.method(#deleteComment, [commentId]),
-            returnValue: _i5.Future<bool>.value(false),
-          )
-          as _i5.Future<bool>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> markMessageAsViewed(int? messageId) =>
-      (super.noSuchMethod(
-            Invocation.method(#markMessageAsViewed, [messageId]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
-            ),
-          )
-          as _i5.Future<Map<String, dynamic>>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> getMessageViews(int? messageId) =>
-      (super.noSuchMethod(
-            Invocation.method(#getMessageViews, [messageId]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
-            ),
-          )
-          as _i5.Future<Map<String, dynamic>>);
-
-  @override
-  _i5.Future<bool> isMessageViewed(int? messageId) =>
-      (super.noSuchMethod(
-            Invocation.method(#isMessageViewed, [messageId]),
-            returnValue: _i5.Future<bool>.value(false),
-          )
-          as _i5.Future<bool>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> getMessageEngagementData(int? messageId) =>
-      (super.noSuchMethod(
-            Invocation.method(#getMessageEngagementData, [messageId]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
-            ),
-          )
-          as _i5.Future<Map<String, dynamic>>);
-
-  @override
-  _i5.Future<Map<String, dynamic>> getBatchMessageEngagementData(
-    List<int>? messageIds,
-  ) =>
-      (super.noSuchMethod(
-            Invocation.method(#getBatchMessageEngagementData, [messageIds]),
-            returnValue: _i5.Future<Map<String, dynamic>>.value(
-              <String, dynamic>{},
-            ),
-          )
-          as _i5.Future<Map<String, dynamic>>);
+          as _i6.Future<Map<String, dynamic>?>);
 }

@@ -6,6 +6,7 @@ import './compose_message_screen.dart';
 import '../config/ui_config.dart';
 import '../services/api_service.dart';
 import '../services/message_service.dart';
+import '../services/websocket_service.dart';
 import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'dart:async';
@@ -51,6 +52,15 @@ class _MessageScreenState extends State<MessageScreen>
   // --- Inline video playback for message feed ---
   String? _currentlyPlayingVideoId;
 
+  // WebSocket state variables
+  WebSocketMessageHandler? _familyMessageHandler;
+  bool _isWebSocketConnected = false;
+  ConnectionStatusHandler? _connectionListener;
+  WebSocketService? _webSocketService;
+  MessageProvider? _messageProvider;
+  int? _currentUserId;
+  int? _currentFamilyId;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -65,7 +75,42 @@ class _MessageScreenState extends State<MessageScreen>
     _messageController.addListener(() {
       _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
     });
+
+    // Store provider references early
+    _webSocketService = Provider.of<WebSocketService>(context, listen: false);
+    _messageProvider = Provider.of<MessageProvider>(context, listen: false);
+
     _loadMessages();
+    _initializeUserAndWebSocket();
+  }
+
+  Future<void> _initializeUserAndWebSocket() async {
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final currentUser = await apiService.getCurrentUser();
+
+      if (currentUser != null && mounted) {
+        final userId = currentUser['userId'] as int;
+
+        // Get user details to find family ID
+        final userDetails = await apiService.getUserById(userId);
+        final familyId = userDetails['familyId'] as int?;
+
+        setState(() {
+          _currentUserId = userId;
+          _currentFamilyId = familyId;
+        });
+
+        debugPrint('🔍 MessageScreen: User ID: $userId, Family ID: $familyId');
+
+        // Initialize WebSocket after getting user info
+        _initWebSocket();
+      }
+    } catch (e) {
+      debugPrint('❌ Error getting current user for WebSocket: $e');
+      // Still try to initialize WebSocket even if user fetch fails
+      _initWebSocket();
+    }
   }
 
   Future<void> _loadMessages({bool showLoading = true}) async {
@@ -218,8 +263,117 @@ class _MessageScreenState extends State<MessageScreen>
     }
   }
 
+  // Initialize WebSocket for family messages
+  void _initWebSocket() {
+    if (_webSocketService == null) return;
+
+    // Create message handler for family messages
+    _familyMessageHandler = (Map<String, dynamic> data) {
+      _handleIncomingFamilyMessage(data);
+    };
+
+    // Create connection status listener
+    _connectionListener = (isConnected) {
+      if (mounted) {
+        // Use post-frame callback to avoid setState during build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isWebSocketConnected = isConnected;
+            });
+          }
+        });
+      }
+    };
+
+    // Use the new simplified WebSocket subscription that handles all family memberships
+    if (_currentUserId != null) {
+      // Subscribe to user-specific family messages (new improved architecture)
+      _webSocketService!.subscribe(
+        '/user/$_currentUserId/family',
+        _familyMessageHandler!,
+      );
+      debugPrint(
+        '🔌 MessageScreen: Subscribed to /user/$_currentUserId/family',
+      );
+    }
+
+    // Listen for connection status changes
+    _webSocketService!.addConnectionListener(_connectionListener!);
+
+    // Initialize WebSocket connection if not already connected
+    _webSocketService!.initialize();
+  }
+
+  // Handle incoming family messages from WebSocket
+  void _handleIncomingFamilyMessage(Map<String, dynamic> data) {
+    try {
+      debugPrint('📨 FAMILY: Received WebSocket message: $data');
+      debugPrint('📨 FAMILY: Message ID type: ${data['id'].runtimeType}');
+      debugPrint('📨 FAMILY: Message ID value: ${data['id']}');
+
+      final message = Message.fromJson(data);
+      debugPrint('📨 FAMILY: Parsed message: ${message.id}');
+      debugPrint(
+        '📨 FAMILY: Parsed message ID type: ${message.id.runtimeType}',
+      );
+
+      // Check if provider is available
+      if (_messageProvider == null) {
+        debugPrint('❌ FAMILY: MessageProvider is null!');
+        return;
+      }
+
+      // Check current messages in provider
+      final currentMessages = _messageProvider!.messages;
+      debugPrint(
+        '📨 FAMILY: Current message count in provider: ${currentMessages.length}',
+      );
+
+      if (currentMessages.isNotEmpty) {
+        debugPrint(
+          '📨 FAMILY: First message ID in provider: ${currentMessages.first.id} (${currentMessages.first.id.runtimeType})',
+        );
+      }
+
+      // Add message to provider
+      _messageProvider!.addMessage(message);
+
+      debugPrint('✅ FAMILY: Added new message to provider');
+
+      // Auto-scroll to show new message
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0.0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    } catch (e, stackTrace) {
+      debugPrint('❌ FAMILY: Error handling WebSocket message: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
   @override
   void dispose() {
+    // Clean up WebSocket subscription
+    if (_familyMessageHandler != null &&
+        _webSocketService != null &&
+        _currentUserId != null) {
+      _webSocketService!.unsubscribe(
+        '/user/$_currentUserId/family',
+        _familyMessageHandler!,
+      );
+    }
+
+    // Clean up connection listener
+    if (_connectionListener != null && _webSocketService != null) {
+      _webSocketService!.removeConnectionListener(_connectionListener!);
+    }
+
     WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
     _scrollController.dispose();
     _messageController.dispose();
@@ -541,12 +695,9 @@ class _MessageScreenState extends State<MessageScreen>
                 videoUrl: userUrl, // External video URL
               );
 
-              // Add to Provider and update UI
+              // DO NOT manually add the message here - let WebSocket handle it
+              // This prevents duplication since WebSocket will broadcast to all clients
               if (!mounted) return;
-              Provider.of<MessageProvider>(
-                context,
-                listen: false,
-              ).addMessage(newMessage);
               _scrollToBottom();
 
               // Show success message
@@ -624,8 +775,12 @@ class _MessageScreenState extends State<MessageScreen>
     if (_isFirstTimeUser) {
       await _markWelcomeSeen();
     }
+
+    debugPrint('🚀 _postMessage: Starting to post message: "$text"');
+
     Message? newMessage;
     if (_selectedMediaFile != null) {
+      debugPrint('🚀 _postMessage: Posting message with media');
       newMessage = await apiService.postMessage(
         int.tryParse(widget.userId) ?? 0,
         text,
@@ -637,16 +792,34 @@ class _MessageScreenState extends State<MessageScreen>
         _selectedMediaType = null;
       });
     } else if (text.isNotEmpty) {
+      debugPrint('🚀 _postMessage: Posting text-only message');
       newMessage = await apiService.postMessage(
         int.tryParse(widget.userId) ?? 0,
         text,
       );
     }
+
     if (newMessage != null) {
-      Provider.of<MessageProvider>(
-        context,
-        listen: false,
-      ).addMessage(newMessage);
+      debugPrint(
+        '🚀 _postMessage: Got new message back from API: ${newMessage.id}',
+      );
+      debugPrint('🚀 _postMessage: Message content: "${newMessage.content}"');
+
+      // Add the message to provider immediately as fallback
+      // Access provider directly instead of using stored reference
+      try {
+        if (mounted) {
+          final messageProvider = Provider.of<MessageProvider>(
+            context,
+            listen: false,
+          );
+          messageProvider.addMessage(newMessage);
+          debugPrint('✅ _postMessage: Successfully added message to provider');
+        }
+      } catch (e) {
+        debugPrint('❌ _postMessage: Error adding message to provider: $e');
+      }
+
       _messageController.clear();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
@@ -657,6 +830,8 @@ class _MessageScreenState extends State<MessageScreen>
           );
         }
       });
+    } else {
+      debugPrint('❌ _postMessage: newMessage is null - API call failed');
     }
   }
 

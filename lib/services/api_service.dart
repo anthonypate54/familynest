@@ -656,30 +656,17 @@ Network connection error. Please check:
       debugPrint('Video URL: $videoUrl, thumbnail URL: $thumbnailUrl');
       debugPrint('Explicit family ID provided: $familyId');
 
-      // First get the user's active family if no explicit family ID is provided
-      int? effectiveFamilyId = familyId;
-      if (effectiveFamilyId == null) {
+      // Only use familyId if explicitly provided - don't fetch from getUserById
+      // This allows the backend to post to ALL families the user belongs to
+      if (familyId == null) {
         debugPrint(
-          'No explicit family ID provided, fetching user data to get active family',
+          'No explicit family ID provided - backend will post to all user families',
         );
-        final userData = await getUserById(userId);
-        debugPrint('User data received: $userData');
-
-        // Get the active family ID for the user
-        effectiveFamilyId = userData['familyId'];
-        debugPrint('Using family ID from user data: $effectiveFamilyId');
-
-        if (effectiveFamilyId == null) {
-          debugPrint('Error: User has no family ID');
-          throw Exception(
-            'You need to be part of a family to post messages. Please create or join a family first.',
-          );
-        }
+      } else {
+        debugPrint(
+          'Explicit family ID provided: $familyId - posting to specific family only',
+        );
       }
-
-      debugPrint(
-        'User belongs to family: $effectiveFamilyId, proceeding with message',
-      );
 
       // Use the new endpoint format
       final url = '$baseUrl/api/users/$userId/messages';
@@ -698,9 +685,16 @@ Network connection error. Please check:
       if (content.isNotEmpty) {
         debugPrint('Adding content field: $content');
         request.fields['content'] = content;
-        // Add the family ID to the request explicitly
-        request.fields['familyId'] = effectiveFamilyId.toString();
-        debugPrint('Adding familyId field: $effectiveFamilyId');
+
+        // Only add familyId if explicitly provided
+        if (familyId != null) {
+          request.fields['familyId'] = familyId.toString();
+          debugPrint('Adding explicit familyId field: $familyId');
+        } else {
+          debugPrint(
+            'No familyId field added - backend will post to all families',
+          );
+        }
       } else {
         debugPrint('No content provided for message');
       }
@@ -782,30 +776,17 @@ Network connection error. Please check:
       debugPrint('Video URL: $videoUrl, thumbnail URL: $thumbnailUrl');
       debugPrint('Explicit family ID provided: $familyId');
 
-      // First get the user's active family if no explicit family ID is provided
-      int? effectiveFamilyId = familyId;
-      if (effectiveFamilyId == null) {
+      // Only use familyId if explicitly provided - don't fetch from getUserById
+      // This allows the backend to post to ALL families the user belongs to
+      if (familyId == null) {
         debugPrint(
-          'No explicit family ID provided, fetching user data to get active family',
+          'No explicit family ID provided - backend will post to all user families',
         );
-        final userData = await getUserById(userId);
-        debugPrint('User data received: $userData');
-
-        // Get the active family ID for the user
-        effectiveFamilyId = userData['familyId'];
-        debugPrint('Using family ID from user data: $effectiveFamilyId');
-
-        if (effectiveFamilyId == null) {
-          debugPrint('Error: User has no family ID');
-          throw Exception(
-            'You need to be part of a family to post messages. Please create or join a family first.',
-          );
-        }
+      } else {
+        debugPrint(
+          'Explicit family ID provided: $familyId - posting to specific family only',
+        );
       }
-
-      debugPrint(
-        'User belongs to family: $effectiveFamilyId, proceeding with message',
-      );
 
       // Use the new endpoint format
       final url = '$baseUrl/api/messages/$parentMessageId/comments';
@@ -824,9 +805,16 @@ Network connection error. Please check:
       if (content.isNotEmpty) {
         debugPrint('Adding content field: $content');
         request.fields['content'] = content;
-        // Add the family ID to the request explicitly
-        request.fields['familyId'] = effectiveFamilyId.toString();
-        debugPrint('Adding familyId field: $effectiveFamilyId');
+
+        // Only add familyId if explicitly provided
+        if (familyId != null) {
+          request.fields['familyId'] = familyId.toString();
+          debugPrint('Adding explicit familyId field: $familyId');
+        } else {
+          debugPrint(
+            'No familyId field added - backend will post to all families',
+          );
+        }
       } else {
         debugPrint('No content provided for message');
       }

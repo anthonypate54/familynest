@@ -218,16 +218,11 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           _selectedDMVideoThumbnail = null;
         });
 
-        // Add the new message through provider only
-        if (result != null) {
-          final newMessage = DMMessage.fromJson(result);
-          Provider.of<DMMessageProvider>(
-            context,
-            listen: false,
-          ).addMessage(widget.conversationId, newMessage);
-        }
+        // DO NOT manually add the message here - let WebSocket handle it
+        // This prevents duplication since WebSocket will broadcast to all clients
+        // including the sender
 
-        // Scroll to show the new message
+        // Scroll to show the new message (will happen when WebSocket message arrives)
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
             _scrollController.animateTo(
