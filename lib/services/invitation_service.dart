@@ -147,13 +147,45 @@ class InvitationService {
   }
 
   // Send an invitation to join family
-  Future<bool> inviteUserToFamily(int userId, String email) async {
+  Future<Map<String, dynamic>> inviteUserToFamily(
+    int userId,
+    String email,
+  ) async {
     try {
-      await apiService.inviteUser(userId, email);
-      return true;
+      final response = await apiService.inviteUser(userId, email);
+
+      // The enhanced response includes:
+      // - userExists: boolean
+      // - suggestedEmails: List<String> (if userExists is false)
+      // - message: enhanced message
+      // - recipientName: String (if userExists is true)
+
+      return {
+        'success': true,
+        'userExists': response['userExists'] ?? false,
+        'message': response['message'] ?? 'Invitation sent successfully',
+        'recipientName': response['recipientName'],
+        'suggestedEmails':
+            response['suggestedEmails'] != null
+                ? (response['suggestedEmails'] as List<dynamic>).cast<String>()
+                : null,
+        'suggestionMessage': response['suggestionMessage'],
+      };
     } catch (e) {
       debugPrint('Error sending invitation: $e');
-      return false;
+
+      // Check if it's our custom InvitationException with suggestions
+      if (e is InvitationException) {
+        return {
+          'success': false,
+          'error': e.message,
+          'userExists': e.userExists,
+          'suggestedEmails': e.suggestedEmails,
+        };
+      }
+
+      // For other exceptions, return simple error
+      return {'success': false, 'error': e.toString()};
     }
   }
 }

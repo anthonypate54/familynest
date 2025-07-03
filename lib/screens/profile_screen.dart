@@ -462,6 +462,16 @@ class ProfileScreenState extends State<ProfileScreen>
               ),
               TextButton(
                 onPressed: () async {
+                  final email = emailController.text.trim();
+                  if (email.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter an email address'),
+                      ),
+                    );
+                    return;
+                  }
+
                   Navigator.pop(context); // Close the dialog immediately
 
                   // Show a loading indicator
@@ -476,77 +486,59 @@ class ProfileScreenState extends State<ProfileScreen>
                     // Use invitation service to send invitation
                     final invitationService =
                         ServiceProvider().invitationService;
-                    final success = await invitationService.inviteUserToFamily(
+                    final result = await invitationService.inviteUserToFamily(
                       widget.userId,
-                      emailController.text,
+                      email,
                     );
 
                     if (!mounted) return;
 
-                    if (success) {
+                    if (result['success'] == true) {
+                      // Success - show enhanced feedback
+                      final userExists = result['userExists'] ?? false;
+                      final message =
+                          result['message'] ?? 'Invitation sent successfully';
+                      final recipientName = result['recipientName'];
+
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Invitation sent successfully!'),
+                        SnackBar(
+                          content: Text(message),
                           backgroundColor: Colors.green,
                         ),
                       );
+
+                      // Show additional info if user exists
+                      if (userExists && recipientName != null) {
+                        _showUserExistsDialog(email, recipientName);
+                      } else if (!userExists) {
+                        _showUnregisteredUserDialog(
+                          email,
+                          result['suggestedEmails'],
+                        );
+                      }
                     } else {
-                      throw Exception('Failed to send invitation');
+                      // Handle error with potential suggestions
+                      final error =
+                          result['error'] ?? 'Failed to send invitation';
+                      final suggestedEmails = result['suggestedEmails'];
+
+                      if (suggestedEmails != null &&
+                          suggestedEmails.isNotEmpty) {
+                        _showEmailSuggestionsDialog(
+                          email,
+                          error,
+                          suggestedEmails,
+                        );
+                      } else {
+                        _showErrorSnackBar(error);
+                      }
                     }
                   } catch (e) {
-                    if (!mounted) return;
                     debugPrint('Error sending invitation: $e');
-
-                    String errorMessage = e.toString();
-
-                    // Check if it's the database error we fixed
-                    if (errorMessage.contains('invitee_email') ||
-                        errorMessage.contains('constraint') ||
-                        errorMessage.contains('null value in column')) {
-                      // Show a specific message that's more helpful
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Error sending invitation: ${emailController.text}. Please try a different email.',
-                          ),
-                          backgroundColor: Colors.red,
-                          duration: Duration(seconds: 5),
-                        ),
-                      );
-                    } else if (errorMessage.contains(
-                      'already in your family',
-                    )) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'This person is already in your family!',
-                          ),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
-                    } else if (errorMessage.contains('already pending')) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'There is already a pending invitation for this email.',
-                          ),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
-                    } else if (errorMessage.contains('Server error') ||
-                        errorMessage.contains('500')) {
-                      // Only show the backend error dialog for server errors
-                      _showInvitationBackendError();
-                    } else {
-                      // For other errors, show a snackbar with the message
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error: $errorMessage'),
-                          backgroundColor: Colors.red,
-                          duration: Duration(seconds: 5),
-                        ),
-                      );
-                    }
+                    if (!mounted) return;
+                    _showErrorSnackBar(
+                      'Failed to send invitation: ${e.toString()}',
+                    );
                   }
                 },
                 child: const Text('Send'),
@@ -556,11 +548,172 @@ class ProfileScreenState extends State<ProfileScreen>
         },
       );
     } catch (e) {
-      debugPrint('Error checking user family status: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      debugPrint('Error in _sendInvitation: $e');
+      if (!mounted) return;
+      _showErrorSnackBar('Error: ${e.toString()}');
     }
+  }
+
+  // Show dialog when user exists
+  void _showUserExistsDialog(String email, String recipientName) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('✅ User Found'),
+            content: Text(
+              'Invitation sent to $recipientName ($email).\n\nThey will receive a real-time notification if they\'re currently online.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Show dialog when user doesn't exist
+  void _showUnregisteredUserDialog(
+    String email,
+    List<String>? suggestedEmails,
+  ) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('📧 Invitation Sent'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Invitation sent to $email'),
+                const SizedBox(height: 8),
+                const Text(
+                  'This email address isn\'t registered yet. The person can accept your invitation when they sign up for FamilyNest.',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                if (suggestedEmails != null && suggestedEmails.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Did you mean one of these registered users?',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  ...suggestedEmails.map(
+                    (suggestedEmail) => TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        // Trigger another invitation with the suggested email
+                        _sendInvitationWithEmail(suggestedEmail);
+                      },
+                      child: Text(suggestedEmail),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Show dialog with email suggestions
+  void _showEmailSuggestionsDialog(
+    String originalEmail,
+    String error,
+    List<String> suggestedEmails,
+  ) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('⚠️ Email Not Found'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(error),
+                const SizedBox(height: 16),
+                const Text(
+                  'Did you mean one of these registered emails?',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ...suggestedEmails.map(
+                  (suggestedEmail) => ListTile(
+                    leading: const Icon(Icons.person),
+                    title: Text(suggestedEmail),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _sendInvitationWithEmail(suggestedEmail);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _sendInvitationWithEmail(originalEmail);
+                },
+                child: const Text('Keep Original'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Helper method to send invitation with a specific email
+  Future<void> _sendInvitationWithEmail(String email) async {
+    try {
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sending invitation...'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+
+      final invitationService = ServiceProvider().invitationService;
+      final result = await invitationService.inviteUserToFamily(
+        widget.userId,
+        email,
+      );
+
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        final message = result['message'] ?? 'Invitation sent successfully';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.green),
+        );
+      } else {
+        _showErrorSnackBar(result['error'] ?? 'Failed to send invitation');
+      }
+    } catch (e) {
+      debugPrint('Error sending invitation: $e');
+      if (!mounted) return;
+      _showErrorSnackBar('Failed to send invitation: ${e.toString()}');
+    }
+  }
+
+  // Show error snackbar
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
   }
 
   // Update demographics information

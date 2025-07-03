@@ -218,11 +218,12 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           _selectedDMVideoThumbnail = null;
         });
 
-        // DO NOT manually add the message here - let WebSocket handle it
-        // This prevents duplication since WebSocket will broadcast to all clients
-        // including the sender
+        // Add the message to sender's provider immediately (optimistic update)
+        // WebSocket will only broadcast to the recipient, not the sender
+        final sentMessage = DMMessage.fromJson(result);
+        _dmMessageProvider?.addMessage(widget.conversationId, sentMessage);
 
-        // Scroll to show the new message (will happen when WebSocket message arrives)
+        // Scroll to show the new message
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
             _scrollController.animateTo(
@@ -730,6 +731,13 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   void _handleIncomingDMMessage(Map<String, dynamic> data) {
     try {
       debugPrint('📨 DM: Received WebSocket message: $data');
+
+      // Check if this is a DM message type
+      final messageType = data['type'] as String?;
+      if (messageType != null && messageType != 'DM_MESSAGE') {
+        debugPrint('⚠️ DM: Not a DM message, ignoring');
+        return;
+      }
 
       final message = DMMessage.fromJson(data);
       debugPrint('📨 DM: Parsed message: $message');

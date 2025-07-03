@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../models/message.dart';
 
 class CommentProvider extends ChangeNotifier {
@@ -17,6 +18,20 @@ class CommentProvider extends ChangeNotifier {
   }
 
   void addComment(Message comment, {bool insertAtBeggining = false}) {
+    // Check if comment already exists to prevent duplicates
+    final alreadyExists = _comments.any(
+      (existing) => existing.id == comment.id,
+    );
+
+    if (alreadyExists) {
+      debugPrint(
+        '⚠️ CommentProvider: Comment ${comment.id} already exists, skipping',
+      );
+      return;
+    }
+
+    debugPrint('✅ CommentProvider: Adding comment ${comment.id}');
+
     if (insertAtBeggining) {
       _comments.insert(0, comment);
     } else {
@@ -90,6 +105,26 @@ class CommentProvider extends ChangeNotifier {
     if (index != -1) {
       final msg = _comments[index];
       _comments[index] = msg.copyWith(loveCount: loveCount);
+      notifyListeners();
+    }
+  }
+
+  void updateMessageReactions(
+    String messageId, {
+    int? likeCount,
+    int? loveCount,
+    bool? isLiked,
+    bool? isLoved,
+  }) {
+    final index = _comments.indexWhere((m) => m.id == messageId);
+    if (index != -1) {
+      final msg = _comments[index];
+      _comments[index] = msg.copyWith(
+        likeCount: likeCount ?? msg.likeCount,
+        loveCount: loveCount ?? msg.loveCount,
+        isLiked: isLiked ?? msg.isLiked,
+        isLoved: isLoved ?? msg.isLoved,
+      );
       notifyListeners();
     }
   }

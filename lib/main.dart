@@ -235,7 +235,11 @@ class MainAppContainerState extends State<MainAppContainer> {
 
   // Add a timer instance variable to allow cancellation
   Timer? _authCheckTimer;
-  Timer? _invitationCheckTimer; // Add timer for invitation polling
+  // Note: _invitationCheckTimer removed - now using WebSocket for real-time updates
+
+  // WebSocket handler for invitations
+  WebSocketMessageHandler? _invitationHandler;
+  WebSocketService? _webSocketService;
 
   // Add loading state for initial screen determination
   bool _isCheckingInitialScreen = true;
@@ -278,19 +282,8 @@ class MainAppContainerState extends State<MainAppContainer> {
     // Start an immediate check to ensure we're authenticated
     _checkAuthenticationState();
 
-    // Start checking for pending invitations
+    // Initial check for pending invitations (WebSocket will handle real-time updates)
     _checkPendingInvitations();
-
-    // Use the configurable polling interval from AppConfig
-    final pollingInterval = AppConfig().invitationPollingInterval;
-    debugPrint(
-      '📅 Setting invitation polling interval to ${pollingInterval.inSeconds} seconds',
-    );
-
-    _invitationCheckTimer = Timer.periodic(
-      pollingInterval,
-      (_) => _checkPendingInvitations(),
-    );
 
     // Initialize WebSocket service
     _initializeWebSocket();
@@ -300,14 +293,87 @@ class MainAppContainerState extends State<MainAppContainer> {
   Future<void> _initializeWebSocket() async {
     try {
       debugPrint('🔌 MAIN: Initializing WebSocket service');
-      final webSocketService = Provider.of<WebSocketService>(
-        context,
-        listen: false,
-      );
-      await webSocketService.initialize();
+      _webSocketService = Provider.of<WebSocketService>(context, listen: false);
+      await _webSocketService!.initialize();
+
+      // Subscribe to invitation updates for real-time badge count
+      _setupInvitationWebSocket(_webSocketService!);
+
       debugPrint('✅ MAIN: WebSocket service initialized');
     } catch (e) {
       debugPrint('❌ MAIN: Error initializing WebSocket service: $e');
+    }
+  }
+
+  // Setup WebSocket subscription for invitation updates
+  void _setupInvitationWebSocket(WebSocketService webSocketService) {
+    try {
+      // Create invitation handler
+      final invitationHandler = (Map<String, dynamic> data) {
+        _handleIncomingInvitation(data);
+      };
+
+      // Subscribe to invitation updates
+      webSocketService.subscribe(
+        '/user/${widget.userId}/invitations',
+        invitationHandler,
+      );
+      debugPrint('🔌 MAIN: Subscribed to /user/${widget.userId}/invitations');
+    } catch (e) {
+      debugPrint('❌ MAIN: Error setting up invitation WebSocket: $e');
+    }
+  }
+
+  // Handle incoming invitation WebSocket messages
+  void _handleIncomingInvitation(Map<String, dynamic> data) {
+    try {
+      debugPrint('📨 INVITATION: Received WebSocket message: $data');
+
+      final messageType = data['type'] as String?;
+
+      if (messageType == 'NEW_INVITATION') {
+        // New invitation received - refresh count
+        debugPrint('📨 INVITATION: New invitation received');
+        _refreshInvitationCount();
+      } else if (messageType == 'INVITATION_ACCEPTED' ||
+          messageType == 'INVITATION_DECLINED') {
+        // Invitation response received - refresh count
+        debugPrint('📨 INVITATION: Invitation response received: $messageType');
+        _refreshInvitationCount();
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ INVITATION: Error handling WebSocket message: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
+  // Refresh invitation count from WebSocket update
+  Future<void> _refreshInvitationCount() async {
+    try {
+      // Check if widget is still mounted before using context
+      if (!mounted) {
+        debugPrint('⚠️ INVITATION: Widget unmounted, skipping refresh');
+        return;
+      }
+
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final invitations = await apiService.getInvitations();
+
+      final pendingCount =
+          invitations
+              .where(
+                (inv) => inv['status'] != null && inv['status'] == 'PENDING',
+              )
+              .length;
+
+      if (mounted) {
+        setState(() {
+          _pendingInvitationsCount = pendingCount;
+        });
+        debugPrint('✅ INVITATION: Updated badge count to $pendingCount');
+      }
+    } catch (e) {
+      debugPrint('❌ INVITATION: Error refreshing count: $e');
     }
   }
 
@@ -441,7 +507,14 @@ class MainAppContainerState extends State<MainAppContainer> {
   // Check for pending invitations and update badge count
   Future<void> _checkPendingInvitations() async {
     try {
-      debugPrint('🔍 Checking for pending invitations...');
+      debugPrint('🔍 Initial check for pending invitations...');
+
+      // Check if widget is still mounted before using context
+      if (!mounted) {
+        debugPrint('⚠️ INVITATION: Widget unmounted, skipping initial check');
+        return;
+      }
+
       final apiService = Provider.of<ApiService>(context, listen: false);
 
       // Get all invitations
@@ -460,9 +533,8 @@ class MainAppContainerState extends State<MainAppContainer> {
         setState(() {
           _pendingInvitationsCount = pendingCount;
         });
+        debugPrint('✅ Initial load: Found $pendingCount pending invitations');
       }
-
-      debugPrint('✅ Found $pendingCount pending invitations');
     } catch (e) {
       debugPrint('❌ Error checking pending invitations: $e');
       // Don't update the count on error - keep the previous value
@@ -473,7 +545,7 @@ class MainAppContainerState extends State<MainAppContainer> {
   void dispose() {
     // Cancel the timer to prevent memory leaks
     _authCheckTimer?.cancel();
-    _invitationCheckTimer?.cancel();
+    // Note: _invitationCheckTimer removed - now using WebSocket instead of polling
     _pageController.dispose();
     super.dispose();
   }
@@ -512,7 +584,7 @@ class MainAppContainerState extends State<MainAppContainer> {
         },
       ),
       floatingActionButton:
-          true
+          false
               ? FloatingActionButton(
                 heroTag: 'ws_test_button',
                 onPressed: () {

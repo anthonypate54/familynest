@@ -617,67 +617,17 @@ class _MessageCardState extends State<MessageCard> {
 
   Future<void> _toggleLike() async {
     try {
-      if (!widget.isThreadView) {
-        // This is a main message (not in thread view)
-        final messageProvider = Provider.of<MessageProvider>(
-          context,
-          listen: false,
-        );
-        final response = await widget.apiService.toggleMessageLike(
-          widget.message.id,
-          !isLiked,
-        );
-
-        if (response != null && response['like_count'] != null) {
-          setState(() {
-            isLiked = !isLiked;
-          });
-          messageProvider.updateMessageLikeCount(
-            widget.message.id,
-            response['like_count'],
-          );
-        }
+      if (widget.message.parentMessageId == null) {
+        // This is a main message
+        await widget.apiService.toggleMessageLike(widget.message.id, !isLiked);
       } else {
-        // This is in thread view
-        final commentProvider = Provider.of<CommentProvider>(
-          context,
-          listen: false,
-        );
-
-        if (widget.message.parentMessageId == null) {
-          // This is the parent message
-          final response = await widget.apiService.toggleMessageLike(
-            widget.message.id,
-            !isLiked,
-          );
-          if (response != null && response['like_count'] != null) {
-            setState(() {
-              isLiked = !isLiked;
-            });
-            if (isLiked) {
-              commentProvider.incrementLikeCount(widget.message.id);
-            } else {
-              commentProvider.decrementLikeCount(widget.message.id);
-            }
-          }
-        } else {
-          // This is a comment
-          await widget.apiService.toggleCommentLike(
-            widget.message.id,
-            !isLiked,
-          );
-          setState(() {
-            isLiked = !isLiked;
-          });
-          if (isLiked) {
-            commentProvider.incrementLikeCount(widget.message.id);
-          } else {
-            commentProvider.decrementLikeCount(widget.message.id);
-          }
-        }
+        // This is a comment
+        await widget.apiService.toggleCommentLike(widget.message.id, !isLiked);
       }
+      // WebSocket will handle the UI update - no local state changes needed
     } catch (e) {
       if (!mounted) return;
+      debugPrint('Error toggling like: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to update like: $e')));
@@ -686,83 +636,17 @@ class _MessageCardState extends State<MessageCard> {
 
   Future<void> _toggleLove() async {
     try {
-      if (!widget.isThreadView) {
-        // This is a main message (not in thread view)
-        final messageProvider = Provider.of<MessageProvider>(
-          context,
-          listen: false,
-        );
-        debugPrint('Message ${widget.message.id} before toggle:');
-        debugPrint('- Current isLoved: $isLoved');
-        debugPrint('- Current loveCount: ${widget.message.loveCount}');
-
-        final response = await widget.apiService.toggleMessageLove(
-          widget.message.id,
-          !isLoved,
-        );
-        debugPrint('Love toggle response: $response');
-
-        // Only update UI if API call was successful
-        if (response != null && response['love_count'] != null) {
-          debugPrint('Updating love count to: ${response['love_count']}');
-          messageProvider.updateMessageLoveCount(
-            widget.message.id,
-            response['love_count'],
-          );
-          // Only toggle the state after successful server response
-          setState(() {
-            isLoved = !isLoved;
-          });
-          debugPrint('After toggle:');
-          debugPrint('- New isLoved: $isLoved');
-          debugPrint('- New loveCount: ${response['love_count']}');
-        } else {
-          debugPrint(
-            'Failed to update love: response is null or missing love_count',
-          );
-        }
+      if (widget.message.parentMessageId == null) {
+        // This is a main message
+        await widget.apiService.toggleMessageLove(widget.message.id, !isLoved);
       } else {
-        // This is in thread view
-        final commentProvider = Provider.of<CommentProvider>(
-          context,
-          listen: false,
-        );
-
-        if (widget.message.parentMessageId == null) {
-          // This is the parent message
-          final response = await widget.apiService.toggleMessageLove(
-            widget.message.id,
-            !isLoved,
-          );
-          if (response != null && response['love_count'] != null) {
-            setState(() {
-              isLoved = !isLoved;
-            });
-            if (isLoved) {
-              commentProvider.incrementLoveCount(widget.message.id);
-            } else {
-              commentProvider.decrementLoveCount(widget.message.id);
-            }
-          }
-        } else {
-          // This is a comment
-          await widget.apiService.toggleCommentLove(
-            widget.message.id,
-            !isLoved,
-          );
-          setState(() {
-            isLoved = !isLoved;
-          });
-          if (isLoved) {
-            commentProvider.incrementLoveCount(widget.message.id);
-          } else {
-            commentProvider.decrementLoveCount(widget.message.id);
-          }
-        }
+        // This is a comment
+        await widget.apiService.toggleCommentLove(widget.message.id, !isLoved);
       }
+      // WebSocket will handle the UI update - no local state changes needed
     } catch (e) {
       if (!mounted) return;
-      debugPrint('Error in _toggleLove: $e');
+      debugPrint('Error toggling love: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to update love: $e')));
@@ -1052,11 +936,47 @@ class _MessageCardState extends State<MessageCard> {
       children: [
         GestureDetector(
           onTap: () {
+            // If this is a comment (has parentMessageId), navigate to the parent message's thread
+            // If this is a root message, navigate to its own thread
+            Map<String, dynamic> threadMessage = message;
+
+            if (message['parentMessageId'] != null) {
+              // This is a comment - we need to create a thread message for the parent
+              threadMessage = {
+                'id': message['parentMessageId'],
+                'content':
+                    'Original Message', // Placeholder - will be loaded in thread
+                'commentCount': message['commentCount'] ?? 0,
+                // Add other required fields with defaults
+                'senderId': message['senderId'],
+                'senderUserName': message['senderUserName'],
+                'timestamp': message['timestamp'],
+                'mediaType': null,
+                'mediaUrl': null,
+                'thumbnailUrl': null,
+                'senderPhoto': message['senderPhoto'],
+                'likeCount': 0,
+                'loveCount': 0,
+                'parentMessageId': null, // Root message has no parent
+                'isLiked': false,
+                'isLoved': false,
+              };
+              debugPrint(
+                '🔍 Navigating to parent thread for comment ${message['id']} -> parent ${message['parentMessageId']}',
+              );
+            } else {
+              debugPrint(
+                '🔍 Navigating to root message thread ${message['id']}',
+              );
+            }
+
             Navigator.push(
               context,
-
               SlidePageRoute(
-                page: ThreadScreen(userId: currentUserId, message: message),
+                page: ThreadScreen(
+                  userId: currentUserId,
+                  message: threadMessage,
+                ),
               ),
             );
           },

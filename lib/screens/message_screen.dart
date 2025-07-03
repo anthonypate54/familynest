@@ -54,6 +54,8 @@ class _MessageScreenState extends State<MessageScreen>
 
   // WebSocket state variables
   WebSocketMessageHandler? _familyMessageHandler;
+  WebSocketMessageHandler? _reactionHandler;
+  WebSocketMessageHandler? _commentCountHandler;
   bool _isWebSocketConnected = false;
   ConnectionStatusHandler? _connectionListener;
   WebSocketService? _webSocketService;
@@ -123,10 +125,12 @@ class _MessageScreenState extends State<MessageScreen>
     try {
       final messages = await apiService.getUserMessages(widget.userId);
       if (mounted) {
+        // Always use setMessages - refresh should get authoritative database state
         Provider.of<MessageProvider>(
           context,
           listen: false,
         ).setMessages(messages);
+
         if (showLoading) {
           setState(() {
             _isLoading = false;
@@ -272,6 +276,16 @@ class _MessageScreenState extends State<MessageScreen>
       _handleIncomingFamilyMessage(data);
     };
 
+    // Create reaction handler for live reaction updates only
+    _reactionHandler = (Map<String, dynamic> data) {
+      _handleIncomingReaction(data);
+    };
+
+    // Create dedicated comment count handler
+    _commentCountHandler = (Map<String, dynamic> data) {
+      _handleIncomingCommentCount(data);
+    };
+
     // Create connection status listener
     _connectionListener = (isConnected) {
       if (mounted) {
@@ -288,13 +302,31 @@ class _MessageScreenState extends State<MessageScreen>
 
     // Use the new simplified WebSocket subscription that handles all family memberships
     if (_currentUserId != null) {
-      // Subscribe to user-specific family messages (new improved architecture)
+      // Subscribe to user-specific new messages (separated from comments)
       _webSocketService!.subscribe(
-        '/user/$_currentUserId/family',
+        '/user/$_currentUserId/messages',
         _familyMessageHandler!,
       );
       debugPrint(
-        '🔌 MessageScreen: Subscribed to /user/$_currentUserId/family',
+        '🔌 MessageScreen: Subscribed to /user/$_currentUserId/messages',
+      );
+
+      // Subscribe to user-specific reactions
+      _webSocketService!.subscribe(
+        '/user/$_currentUserId/reactions',
+        _reactionHandler!,
+      );
+      debugPrint(
+        '🔌 MessageScreen: Subscribed to /user/$_currentUserId/reactions',
+      );
+
+      // Subscribe to user-specific comment counts
+      _webSocketService!.subscribe(
+        '/user/$_currentUserId/comment-counts',
+        _commentCountHandler!,
+      );
+      debugPrint(
+        '🔌 MessageScreen: Subscribed to /user/$_currentUserId/comment-counts',
       );
     }
 
@@ -305,41 +337,49 @@ class _MessageScreenState extends State<MessageScreen>
     _webSocketService!.initialize();
   }
 
-  // Handle incoming family messages from WebSocket
+  // Handle incoming new messages from WebSocket
   void _handleIncomingFamilyMessage(Map<String, dynamic> data) {
     try {
-      debugPrint('📨 FAMILY: Received WebSocket message: $data');
-      debugPrint('📨 FAMILY: Message ID type: ${data['id'].runtimeType}');
-      debugPrint('📨 FAMILY: Message ID value: ${data['id']}');
+      debugPrint('📨 MESSAGE: Received WebSocket message: $data');
+
+      // Check if this is a new message type
+      final messageType = data['type'] as String?;
+      if (messageType != 'NEW_MESSAGE') {
+        debugPrint('⚠️ MESSAGE: Not a new message, ignoring');
+        return;
+      }
+
+      debugPrint('📨 MESSAGE: Message ID type: ${data['id'].runtimeType}');
+      debugPrint('📨 MESSAGE: Message ID value: ${data['id']}');
 
       final message = Message.fromJson(data);
-      debugPrint('📨 FAMILY: Parsed message: ${message.id}');
+      debugPrint('📨 MESSAGE: Parsed message: ${message.id}');
       debugPrint(
-        '📨 FAMILY: Parsed message ID type: ${message.id.runtimeType}',
+        '📨 MESSAGE: Parsed message ID type: ${message.id.runtimeType}',
       );
 
       // Check if provider is available
       if (_messageProvider == null) {
-        debugPrint('❌ FAMILY: MessageProvider is null!');
+        debugPrint('❌ MESSAGE: MessageProvider is null!');
         return;
       }
 
       // Check current messages in provider
       final currentMessages = _messageProvider!.messages;
       debugPrint(
-        '📨 FAMILY: Current message count in provider: ${currentMessages.length}',
+        '📨 MESSAGE: Current message count in provider: ${currentMessages.length}',
       );
 
       if (currentMessages.isNotEmpty) {
         debugPrint(
-          '📨 FAMILY: First message ID in provider: ${currentMessages.first.id} (${currentMessages.first.id.runtimeType})',
+          '📨 MESSAGE: First message ID in provider: ${currentMessages.first.id} (${currentMessages.first.id.runtimeType})',
         );
       }
 
       // Add message to provider
       _messageProvider!.addMessage(message);
 
-      debugPrint('✅ FAMILY: Added new message to provider');
+      debugPrint('✅ MESSAGE: Added new message to provider');
 
       // Auto-scroll to show new message
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -352,20 +392,113 @@ class _MessageScreenState extends State<MessageScreen>
         }
       });
     } catch (e, stackTrace) {
-      debugPrint('❌ FAMILY: Error handling WebSocket message: $e');
+      debugPrint('❌ MESSAGE: Error handling WebSocket message: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
+  // Handle incoming reaction updates from WebSocket
+  void _handleIncomingReaction(Map<String, dynamic> data) {
+    try {
+      debugPrint('📨 REACTION: Received WebSocket reaction: $data');
+
+      // Check if this is a reaction type
+      final messageType = data['type'] as String?;
+      if (messageType != 'REACTION') {
+        debugPrint('⚠️ REACTION: Not a reaction, ignoring');
+        return;
+      }
+
+      final targetType = data['target_type'] as String?;
+      final messageId = data['id']?.toString();
+      final likeCount = data['like_count'] as int?;
+      final loveCount = data['love_count'] as int?;
+      final isLiked = data['is_liked'] as bool?;
+      final isLoved = data['is_loved'] as bool?;
+
+      if (messageId == null) {
+        debugPrint('⚠️ REACTION: Missing message ID');
+        return;
+      }
+
+      debugPrint(
+        '📨 REACTION: Updating $targetType $messageId - likes: $likeCount, loves: $loveCount, isLiked: $isLiked, isLoved: $isLoved',
+      );
+
+      // Update message provider with new reaction data
+      if (_messageProvider != null) {
+        _messageProvider!.updateMessageReactions(
+          messageId,
+          likeCount: likeCount,
+          loveCount: loveCount,
+          isLiked: isLiked,
+          isLoved: isLoved,
+        );
+        debugPrint('✅ REACTION: Updated message $messageId reactions');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ REACTION: Error handling WebSocket reaction: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
+  // Handle incoming comment count updates from WebSocket
+  void _handleIncomingCommentCount(Map<String, dynamic> data) {
+    try {
+      debugPrint('📨 COMMENT_COUNT: Received comment count update: $data');
+
+      final messageId = data['messageId']?.toString();
+      final commentCount = data['commentCount'] as int?;
+
+      if (messageId == null || commentCount == null) {
+        debugPrint('⚠️ COMMENT_COUNT: Missing message ID or comment count');
+        return;
+      }
+
+      debugPrint(
+        '📨 COMMENT_COUNT: Updating message $messageId comment count to $commentCount',
+      );
+
+      // Update message provider with new comment count
+      if (_messageProvider != null) {
+        _messageProvider!.updateMessageCommentCount(messageId, commentCount);
+        debugPrint('✅ COMMENT_COUNT: Updated message $messageId comment count');
+      } else {
+        debugPrint('❌ COMMENT_COUNT: MessageProvider is null!');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ COMMENT_COUNT: Error handling comment count update: $e');
       debugPrint('Stack trace: $stackTrace');
     }
   }
 
   @override
   void dispose() {
-    // Clean up WebSocket subscription
+    // Clean up WebSocket subscriptions
     if (_familyMessageHandler != null &&
         _webSocketService != null &&
         _currentUserId != null) {
       _webSocketService!.unsubscribe(
-        '/user/$_currentUserId/family',
+        '/user/$_currentUserId/messages',
         _familyMessageHandler!,
+      );
+    }
+
+    if (_reactionHandler != null &&
+        _webSocketService != null &&
+        _currentUserId != null) {
+      _webSocketService!.unsubscribe(
+        '/user/$_currentUserId/reactions',
+        _reactionHandler!,
+      );
+    }
+
+    if (_commentCountHandler != null &&
+        _webSocketService != null &&
+        _currentUserId != null) {
+      _webSocketService!.unsubscribe(
+        '/user/$_currentUserId/comment-counts',
+        _commentCountHandler!,
       );
     }
 
@@ -388,6 +521,36 @@ class _MessageScreenState extends State<MessageScreen>
     await AuthUtils.showLogoutConfirmation(
       context,
       Provider.of<ApiService>(context, listen: false),
+    );
+  }
+
+  // Show WebSocket connection status
+  Widget _buildConnectionStatus() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _isWebSocketConnected ? Colors.green : Colors.red,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _isWebSocketConnected ? Icons.wifi : Icons.wifi_off,
+            color: Colors.white,
+            size: 16,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            _isWebSocketConnected ? 'Live' : 'Offline',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -843,6 +1006,8 @@ class _MessageScreenState extends State<MessageScreen>
       appBar: AppBar(
         title: const Text('Messages'),
         actions: [
+          _buildConnectionStatus(),
+          const SizedBox(width: 8),
           IconButton(
             icon: Icon(
               Icons.refresh,

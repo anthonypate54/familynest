@@ -16,6 +16,14 @@ class AuthException implements Exception {
   AuthException(this.message);
 }
 
+class InvitationException implements Exception {
+  final String message;
+  final bool? userExists;
+  final List<String>? suggestedEmails;
+
+  InvitationException(this.message, {this.userExists, this.suggestedEmails});
+}
+
 class ApiService {
   // Dynamic baseUrl based on AppConfig
   String get baseUrl {
@@ -1193,6 +1201,8 @@ Network connection error. Please check:
 
     final familyId = ownedFamily['familyId'];
 
+    debugPrint('🔍 API: Sending invitation to $email for family $familyId');
+
     // Using the InvitationController endpoint
     final response = await client.post(
       Uri.parse('$baseUrl/api/invitations/$familyId/invite'),
@@ -1200,10 +1210,28 @@ Network connection error. Please check:
       body: jsonEncode({'email': email}),
     );
 
+    debugPrint('🔍 API: Invitation response status: ${response.statusCode}');
+    debugPrint('🔍 API: Invitation response body: ${response.body}');
+
     if (response.statusCode == 200 || response.statusCode == 201) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+
+      // The enhanced response now includes:
+      // - userExists: boolean
+      // - suggestedEmails: List<String> (if userExists is false)
+      // - message: enhanced message
+      // - recipientName: String (if userExists is true)
+
+      return responseData;
     } else {
-      throw Exception('Failed to invite user: ${response.body}');
+      // Handle error response which may also include suggestions
+      final errorData = jsonDecode(response.body) as Map<String, dynamic>;
+      throw InvitationException(
+        errorData['error'] ?? 'Failed to invite user',
+        userExists: errorData['userExists'],
+        suggestedEmails:
+            (errorData['suggestedEmails'] as List<dynamic>?)?.cast<String>(),
+      );
     }
   }
 

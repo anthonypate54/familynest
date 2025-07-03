@@ -250,6 +250,14 @@ class WebSocketService extends ChangeNotifier {
   /// Add connection status listener
   void addConnectionListener(ConnectionStatusHandler listener) {
     _connectionListeners.add(listener);
+
+    // Immediately notify the current connection status to the new listener
+    // This fixes timing issues where listeners are added after connection is established
+    try {
+      listener(_isConnected);
+    } catch (e) {
+      debugPrint('❌ WebSocket: Error notifying new connection listener: $e');
+    }
   }
 
   /// Remove connection status listener
@@ -332,14 +340,14 @@ class WebSocketService extends ChangeNotifier {
       }
     });
 
-    // Subscribe to family messages for this user (new improved architecture)
+    // Subscribe to new messages for this user (separated from comments/reactions)
     // The backend will broadcast to this topic for all families the user belongs to
-    subscribe('/user/$userId/family', (data) {
+    subscribe('/user/$userId/messages', (data) {
       try {
         final message = Message.fromJson(data);
         listener(message);
       } catch (e) {
-        debugPrint('❌ WebSocket: Error parsing family message: $e');
+        debugPrint('❌ WebSocket: Error parsing new message: $e');
       }
     });
 
@@ -373,6 +381,7 @@ class WebSocketService extends ChangeNotifier {
     });
 
     // Subscribe to family messages for this specific family (if user has one)
+    // NOTE: This is legacy support - new architecture uses user-specific topics
     if (familyId != null) {
       subscribe('/family/$familyId', (data) {
         try {

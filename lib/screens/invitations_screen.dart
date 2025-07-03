@@ -3,6 +3,8 @@ import '../services/api_service.dart';
 import '../controllers/bottom_navigation_controller.dart';
 import 'package:provider/provider.dart';
 import '../widgets/gradient_background.dart';
+import '../services/service_provider.dart';
+import '../services/websocket_service.dart';
 
 class InvitationsScreen extends StatefulWidget {
   final int userId;
@@ -18,22 +20,45 @@ class InvitationsScreen extends StatefulWidget {
   _InvitationsScreenState createState() => _InvitationsScreenState();
 }
 
-class _InvitationsScreenState extends State<InvitationsScreen> {
-  List<Map<String, dynamic>> _invitations = [];
-  bool _isLoading = true;
+class _InvitationsScreenState extends State<InvitationsScreen>
+    with WidgetsBindingObserver {
   late ApiService _apiService;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _apiService = Provider.of<ApiService>(context, listen: false);
-  }
+  List<Map<String, dynamic>> _invitations = [];
+  bool _isLoading = false;
+  WebSocketMessageHandler? _invitationHandler;
 
   @override
   void initState() {
     super.initState();
     _apiService = Provider.of<ApiService>(context, listen: false);
+    WidgetsBinding.instance.addObserver(this);
     _loadInvitations();
+    _setupWebSocketListener();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cleanupWebSocketListener();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && mounted) {
+      // Refresh when app comes back into focus
+      _loadInvitations();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh invitations when screen comes into focus
+    if (mounted && !_isLoading) {
+      _loadInvitations();
+    }
   }
 
   Future<void> _loadInvitations() async {
@@ -107,6 +132,55 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  // Setup WebSocket listener for real-time invitation updates
+  void _setupWebSocketListener() {
+    try {
+      final webSocketService = WebSocketService();
+
+      // Create invitation handler for this screen
+      _invitationHandler = (Map<String, dynamic> data) {
+        debugPrint('🔄 INVITATIONS_SCREEN: Received WebSocket message: $data');
+
+        final messageType = data['type'] as String?;
+        if (messageType == 'NEW_INVITATION' ||
+            messageType == 'INVITATION_ACCEPTED' ||
+            messageType == 'INVITATION_DECLINED') {
+          // Refresh the invitations list
+          if (mounted) {
+            _loadInvitations();
+          }
+        }
+      };
+
+      // Subscribe to invitation updates for the current user
+      webSocketService.subscribe(
+        '/user/${widget.userId}/invitations',
+        _invitationHandler!,
+      );
+      debugPrint(
+        '🔌 INVITATIONS_SCREEN: Subscribed to /user/${widget.userId}/invitations',
+      );
+    } catch (e) {
+      debugPrint('❌ INVITATIONS_SCREEN: Error setting up WebSocket: $e');
+    }
+  }
+
+  // Cleanup WebSocket listener
+  void _cleanupWebSocketListener() {
+    try {
+      if (_invitationHandler != null) {
+        final webSocketService = WebSocketService();
+        webSocketService.unsubscribe(
+          '/user/${widget.userId}/invitations',
+          _invitationHandler!,
+        );
+        debugPrint('🔌 INVITATIONS_SCREEN: Unsubscribed from WebSocket');
+      }
+    } catch (e) {
+      debugPrint('❌ INVITATIONS_SCREEN: Error cleaning up WebSocket: $e');
     }
   }
 

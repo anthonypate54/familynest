@@ -331,7 +331,7 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
               ),
               ElevatedButton(
                 onPressed: () {
-                  _inviteUserToFamily();
+                  _sendInvitation();
                   Navigator.pop(context);
                 },
                 style: ElevatedButton.styleFrom(
@@ -534,50 +534,43 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
     }
   }
 
-  Future<void> _inviteUserToFamily() async {
-    final email = _inviteEmailController.text.trim();
+  // Send an invitation to join the family
+  Future<void> _sendInvitation() async {
+    final String email = _inviteEmailController.text.trim();
     if (email.isEmpty) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter an email address')),
       );
       return;
     }
 
-    if (_ownedFamily == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You need to create a family first')),
-      );
-      return;
-    }
-
-    if (_invitationService == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Service not ready yet. Please try again in a moment.'),
-        ),
-      );
-      return;
-    }
-
-    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
       // Use invitation service to send invitation
-      final success = await _invitationService!.inviteUserToFamily(
+      final result = await _invitationService!.inviteUserToFamily(
         widget.userId,
         email,
       );
 
-      if (success) {
-        if (!mounted) return;
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        // Success - show enhanced feedback
+        final userExists = result['userExists'] ?? false;
+        final message = result['message'] ?? 'Invitation sent successfully';
+        final recipientName = result['recipientName'];
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Invitation sent to $email'),
-            backgroundColor: Colors.green,
-          ),
+          SnackBar(content: Text(message), backgroundColor: Colors.green),
         );
+
+        // Show additional info if user exists
+        if (userExists && recipientName != null) {
+          _showUserExistsDialog(email, recipientName);
+        } else if (!userExists) {
+          _showUnregisteredUserDialog(email, result['suggestedEmails']);
+        }
 
         // Clear the input field
         _inviteEmailController.clear();
@@ -585,31 +578,152 @@ class FamilyManagementScreenState extends State<FamilyManagementScreen>
         // Refresh data to show new pending invitations
         await _refreshData();
       } else {
-        throw Exception('Failed to send invitation');
+        // Handle error with potential suggestions
+        final error = result['error'] ?? 'Failed to send invitation';
+        final suggestedEmails = result['suggestedEmails'];
+
+        if (suggestedEmails != null && suggestedEmails.isNotEmpty) {
+          _showEmailSuggestionsDialog(email, error, suggestedEmails);
+        } else {
+          _showErrorSnackBar(error);
+        }
       }
     } catch (e) {
       debugPrint('Error sending invitation: $e');
-
-      // Show a user-friendly error message
-      String errorMessage = 'Failed to send invitation';
-
-      if (e.toString().contains('not found')) {
-        errorMessage = 'User not found. Please check the email address.';
-      } else if (e.toString().contains('already belongs to')) {
-        errorMessage = 'User already belongs to a family.';
-      } else if (e.toString().contains('already invited')) {
-        errorMessage = 'User has already been invited to this family.';
-      }
-
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
-      );
+      _showErrorSnackBar('Failed to send invitation: ${e.toString()}');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  // Show dialog when user exists
+  void _showUserExistsDialog(String email, String recipientName) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('✅ User Found'),
+            content: Text(
+              'Invitation sent to $recipientName ($email).\n\nThey will receive a real-time notification if they\'re currently online.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Show dialog when user doesn't exist
+  void _showUnregisteredUserDialog(
+    String email,
+    List<String>? suggestedEmails,
+  ) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('📧 Invitation Sent'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Invitation sent to $email'),
+                const SizedBox(height: 8),
+                const Text(
+                  'This email address isn\'t registered yet. The person can accept your invitation when they sign up for FamilyNest.',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                if (suggestedEmails != null && suggestedEmails.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Did you mean one of these registered users?',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  ...suggestedEmails.map(
+                    (suggestedEmail) => TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _inviteEmailController.text = suggestedEmail;
+                      },
+                      child: Text(suggestedEmail),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Show dialog with email suggestions
+  void _showEmailSuggestionsDialog(
+    String originalEmail,
+    String error,
+    List<String> suggestedEmails,
+  ) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('⚠️ Email Not Found'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(error),
+                const SizedBox(height: 16),
+                const Text(
+                  'Did you mean one of these registered emails?',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ...suggestedEmails.map(
+                  (suggestedEmail) => ListTile(
+                    leading: const Icon(Icons.person),
+                    title: Text(suggestedEmail),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _inviteEmailController.text = suggestedEmail;
+                    },
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _inviteEmailController.text = originalEmail;
+                },
+                child: const Text('Keep Original'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Show error snackbar
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
   }
 
   // Check if user is the family creator/owner

@@ -8,6 +8,7 @@ import './compose_message_screen.dart';
 import '../config/ui_config.dart';
 import '../services/api_service.dart';
 import '../services/message_service.dart';
+import '../services/websocket_service.dart';
 import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'dart:async';
@@ -50,13 +51,166 @@ class _ThreadScreenState extends State<ThreadScreen> {
   bool _isLoading = true;
   String? _error;
 
+  // WebSocket state variables
+  WebSocketMessageHandler? _commentMessageHandler;
+  WebSocketMessageHandler? _reactionHandler;
+  bool _isWebSocketConnected = false;
+  ConnectionStatusHandler? _connectionListener;
+  WebSocketService? _webSocketService;
+  CommentProvider? _commentProvider;
+  int? _parentMessageId;
+
   @override
   void initState() {
     super.initState();
     _messageController.addListener(() {
       _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
     });
+
+    // Store service references early
+    _webSocketService = Provider.of<WebSocketService>(context, listen: false);
+    _commentProvider = Provider.of<CommentProvider>(context, listen: false);
+    _parentMessageId = int.tryParse(widget.message['id'].toString());
+
     _loadComments();
+
+    // Initialize WebSocket after the first build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initWebSocket();
+    });
+  }
+
+  // Initialize WebSocket for comment updates
+  void _initWebSocket() {
+    if (_webSocketService == null) return;
+
+    // Create message handler for comment messages
+    _commentMessageHandler = (Map<String, dynamic> data) {
+      _handleIncomingCommentMessage(data);
+    };
+
+    // Create reaction handler for live reaction updates
+    _reactionHandler = (Map<String, dynamic> data) {
+      _handleIncomingReaction(data);
+    };
+
+    // Create connection status listener
+    _connectionListener = (isConnected) {
+      if (mounted) {
+        // Use post-frame callback to avoid setState during build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isWebSocketConnected = isConnected;
+            });
+          }
+        });
+      }
+    };
+
+    // Subscribe to thread-specific comment topic (separated from main messages)
+    _webSocketService!.subscribe(
+      '/user/${widget.userId}/comments/${_parentMessageId}',
+      _commentMessageHandler!,
+    );
+    debugPrint(
+      '🔌 ThreadScreen: Subscribed to /user/${widget.userId}/comments/${_parentMessageId} for thread comments',
+    );
+
+    // Subscribe to user-specific reactions
+    _webSocketService!.subscribe(
+      '/user/${widget.userId}/reactions',
+      _reactionHandler!,
+    );
+    debugPrint(
+      '🔌 ThreadScreen: Subscribed to /user/${widget.userId}/reactions',
+    );
+
+    // Listen for connection status changes
+    _webSocketService!.addConnectionListener(_connectionListener!);
+
+    // Initialize WebSocket connection if not already connected
+    _webSocketService!.initialize();
+  }
+
+  // Handle incoming comment messages from WebSocket
+  void _handleIncomingCommentMessage(Map<String, dynamic> data) {
+    try {
+      debugPrint('📨 COMMENT: Received WebSocket message: $data');
+
+      // Check if this is a comment type message
+      final messageType = data['type'] as String?;
+      if (messageType != 'COMMENT') {
+        debugPrint('⚠️ COMMENT: Not a comment message, ignoring');
+        return;
+      }
+
+      final message = Message.fromJson(data);
+      debugPrint(
+        '📨 COMMENT: Parsed comment: ${message.id} - "${message.content}"',
+      );
+
+      // Since we're subscribed to a thread-specific topic, we know this comment belongs to our thread
+      debugPrint(
+        '✅ COMMENT: Adding comment ${message.id} to thread ${_parentMessageId}',
+      );
+
+      // Add comment to provider (provider will handle duplicates)
+      _commentProvider?.addComment(message);
+
+      // Auto-scroll to show new comment
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+      });
+    } catch (e, stackTrace) {
+      debugPrint('❌ COMMENT: Error handling WebSocket message: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
+  // Handle incoming reaction updates from WebSocket
+  void _handleIncomingReaction(Map<String, dynamic> data) {
+    try {
+      debugPrint('📨 REACTION: Received WebSocket reaction: $data');
+
+      // Check if this is a reaction type
+      final messageType = data['type'] as String?;
+      if (messageType != 'REACTION') {
+        debugPrint('⚠️ REACTION: Not a reaction, ignoring');
+        return;
+      }
+
+      final targetType = data['target_type'] as String?;
+      final messageId = data['id']?.toString();
+      final likeCount = data['like_count'] as int?;
+      final loveCount = data['love_count'] as int?;
+      final isLiked = data['is_liked'] as bool?;
+      final isLoved = data['is_loved'] as bool?;
+
+      if (messageId == null) {
+        debugPrint('⚠️ REACTION: Missing message ID');
+        return;
+      }
+
+      debugPrint(
+        '📨 REACTION: Updating $targetType $messageId - likes: $likeCount, loves: $loveCount, isLiked: $isLiked, isLoved: $isLoved',
+      );
+
+      // Update comment provider with new reaction data
+      if (_commentProvider != null) {
+        _commentProvider!.updateMessageReactions(
+          messageId,
+          likeCount: likeCount,
+          loveCount: loveCount,
+          isLiked: isLiked,
+          isLoved: isLoved,
+        );
+        debugPrint('✅ REACTION: Updated message $messageId reactions');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ REACTION: Error handling WebSocket reaction: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
   }
 
   Future<void> _loadComments() async {
@@ -100,6 +254,29 @@ class _ThreadScreenState extends State<ThreadScreen> {
 
   @override
   void dispose() {
+    // Clean up WebSocket subscription
+    if (_commentMessageHandler != null &&
+        _webSocketService != null &&
+        _parentMessageId != null) {
+      _webSocketService!.unsubscribe(
+        '/user/${widget.userId}/comments/${_parentMessageId}',
+        _commentMessageHandler!,
+      );
+    }
+
+    // Clean up reaction handler subscription
+    if (_reactionHandler != null && _webSocketService != null) {
+      _webSocketService!.unsubscribe(
+        '/user/${widget.userId}/reactions',
+        _reactionHandler!,
+      );
+    }
+
+    // Clean up connection listener
+    if (_connectionListener != null && _webSocketService != null) {
+      _webSocketService!.removeConnectionListener(_connectionListener!);
+    }
+
     _scrollController.dispose();
     _messageController.dispose();
     _isSendButtonEnabled.dispose();
@@ -606,6 +783,36 @@ class _ThreadScreenState extends State<ThreadScreen> {
     }
   }
 
+  // Show WebSocket connection status
+  Widget _buildConnectionStatus() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _isWebSocketConnected ? Colors.green : Colors.red,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _isWebSocketConnected ? Icons.wifi : Icons.wifi_off,
+            color: Colors.white,
+            size: 16,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            _isWebSocketConnected ? 'Live' : 'Offline',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final apiService = Provider.of<ApiService>(context, listen: false);
@@ -613,6 +820,8 @@ class _ThreadScreenState extends State<ThreadScreen> {
       appBar: AppBar(
         title: const Text('Thread'),
         actions: [
+          _buildConnectionStatus(),
+          const SizedBox(width: 8),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
