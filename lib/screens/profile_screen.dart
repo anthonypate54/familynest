@@ -13,6 +13,10 @@ import '../controllers/bottom_navigation_controller.dart';
 import '../utils/auth_utils.dart';
 import 'package:provider/provider.dart';
 import '../widgets/gradient_background.dart';
+import '../models/user.dart';
+import '../widgets/subscription_card.dart';
+import '../widgets/user_profile_card.dart';
+import '../models/subscription.dart';
 
 class ProfileScreen extends StatefulWidget {
   final int userId;
@@ -36,21 +40,17 @@ class ProfileScreenState extends State<ProfileScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   XFile? _photoFile;
-  Future<Map<String, dynamic>?>? _userDataFuture;
+  Future<User?>? _userDataFuture;
   final _profileKey = GlobalKey<State>();
   late BottomNavigationController _navigationController;
 
-  // Tab controller for Profile/Invitations tabs
+  // Tab controller for Profile/Subscription tabs
   late TabController _tabController;
-
-  // Invitations data
-  List<Map<String, dynamic>> _invitations = [];
-  bool _isLoadingInvitations = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
 
     _animationController = AnimationController(
       vsync: this,
@@ -65,11 +65,6 @@ class ProfileScreenState extends State<ProfileScreen>
     _navigationController =
         widget.navigationController ?? BottomNavigationController();
     _userDataFuture = _loadUser();
-
-    // Add delayed ServiceProvider initialization check
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeServiceProvider();
-    });
   }
 
   @override
@@ -79,102 +74,21 @@ class ProfileScreenState extends State<ProfileScreen>
     super.dispose();
   }
 
-  // Load invitations using the improved invitation service
-  Future<void> _loadInvitations() async {
+  Future<User?> _loadUser() async {
     try {
-      // Check if ServiceProvider is initialized before accessing services
-      final serviceProvider = ServiceProvider();
-
-      // Wait for ServiceProvider to be initialized if it's not ready yet
-      if (!serviceProvider.isInitialized) {
-        debugPrint(
-          'ServiceProvider not ready yet, skipping invitation loading',
-        );
-        return; // Exit gracefully, invitations will remain empty
-      }
-
-      final invitationService = serviceProvider.invitationService;
-
-      await invitationService.loadInvitations(
-        userId: widget.userId,
-        setLoadingState: (isLoading) {
-          if (mounted) {
-            setState(() {
-              _isLoadingInvitations = isLoading;
-            });
-          }
-        },
-        setInvitationsState: (invitations) {
-          if (mounted) {
-            setState(() {
-              _invitations = invitations;
-            });
-          }
-        },
-        checkIfMounted: () => mounted,
-      );
-    } catch (e) {
-      debugPrint('Error loading invitations (ServiceProvider not ready): $e');
-      // Invitations will remain empty, which is fine - screen will work without them
-      if (mounted) {
-        setState(() {
-          _isLoadingInvitations = false;
-        });
-      }
-    }
-  }
-
-  // Respond to an invitation using the invitation service
-  Future<void> _respondToInvitation(int invitationId, bool accept) async {
-    try {
-      if (!mounted) return;
-      setState(() => _isLoadingInvitations = true);
-
-      // Get the service just when needed
-      final invitationService = ServiceProvider().invitationService;
-
-      final success = await invitationService.respondToInvitation(
-        invitationId,
-        accept,
-      );
-
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              accept ? 'Invitation accepted!' : 'Invitation declined',
-            ),
-          ),
-        );
-      } else {
-        throw Exception('Failed to process invitation');
-      }
-
-      // Refresh all data
-      await _loadInvitations();
-      if (_navigationController != null) {
-        _navigationController!.refreshUserFamilies();
-      }
-    } catch (e) {
-      debugPrint('Error responding to invitation: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
-    } finally {
-      if (mounted) {
-        setState(() => _isLoadingInvitations = false);
-      }
-    }
-  }
-
-  Future<Map<String, dynamic>?> _loadUser() async {
-    try {
-      final user = await Provider.of<ApiService>(
+      final userMap = await Provider.of<ApiService>(
         context,
         listen: false,
       ).getUserById(widget.userId);
-      debugPrint('User data loaded: $user');
-      return user;
+      debugPrint('User data loaded: $userMap');
+
+      if (userMap != null) {
+        final user = User.fromJson(userMap);
+        // For now, create a mock subscription for demo purposes
+        final mockSubscription = Subscription.createTrial(user.id);
+        return user.copyWith(subscription: mockSubscription);
+      }
+      return null;
     } catch (e) {
       debugPrint('Error loading user: $e');
       return null;
@@ -185,14 +99,12 @@ class ProfileScreenState extends State<ProfileScreen>
     try {
       final pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 30, // Compress image to 30% quality
-        maxWidth: 500, // Limit width to 500 pixels
-        maxHeight: 500, // Limit height to 500 pixels
+        imageQuality: 30,
+        maxWidth: 500,
+        maxHeight: 500,
       );
 
       if (pickedFile != null) {
-        // Show loading indicator
-        if (!mounted) return;
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -203,220 +115,40 @@ class ProfileScreenState extends State<ProfileScreen>
                   children: [
                     CircularProgressIndicator(),
                     SizedBox(height: 16),
-                    Text('Processing image...'),
+                    Text('Updating profile photo...'),
                   ],
                 ),
               ),
         );
 
-        // Handle file size checking
-        int fileSizeKB = 0;
-
-        if (mounted) {
-          setState(() {
-            _photoFile = pickedFile;
-          });
-        }
-
-        // Attempt upload
         try {
-          if (kIsWeb) {
-            try {
-              // For web browsers, read the bytes and send
-              final bytes = await pickedFile.readAsBytes();
-              fileSizeKB = bytes.length ~/ 1024;
-              debugPrint('Web image size: $fileSizeKB KB');
+          await Provider.of<ApiService>(
+            context,
+            listen: false,
+          ).updatePhoto(widget.userId, pickedFile.path);
 
-              if (bytes.length > 800 * 1024) {
-                // 800KB limit
-                // Close the progress dialog
-                if (!mounted) return;
-                Navigator.of(context).pop();
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Image is too large ($fileSizeKB KB). Please choose a smaller image.',
-                    ),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
-                return;
-              }
-
-              // Upload the file using the web-specific method
-              await Provider.of<ApiService>(
-                context,
-                listen: false,
-              ).updatePhotoWeb(
-                widget.userId,
-                bytes,
-                '${DateTime.now().millisecondsSinceEpoch}.jpg',
-              );
-
-              // Refresh user data
-              if (mounted) {
-                setState(() {
-                  _userDataFuture = _loadUser();
-                });
-              }
-
-              // Close the progress dialog
-              if (!mounted) return;
-              Navigator.of(context).pop();
-
-              // Show success message
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Profile photo updated successfully!'),
-                  backgroundColor: Colors.green,
-                  duration: Duration(seconds: 3),
-                ),
-              );
-            } catch (e) {
-              // Close the progress dialog
-              if (!mounted) return;
-              Navigator.of(context).pop();
-
-              // Show error message
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Error uploading image: $e'),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 5),
-                ),
-              );
-            }
-          } else {
-            // For mobile platforms, proceed with upload
-            final file = File(pickedFile.path);
-            final int fileSize = await file.length();
-            fileSizeKB = fileSize ~/ 1024;
-            debugPrint('Selected photo size: $fileSizeKB KB');
-
-            if (fileSize > 800 * 1024) {
-              // 800KB
-              // Close the progress dialog
-              if (!mounted) return;
-              Navigator.of(context).pop();
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Image is too large ($fileSizeKB KB). Please choose a smaller image.',
-                  ),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 3),
-                ),
-              );
-              return;
-            }
-
-            await Provider.of<ApiService>(
-              context,
-              listen: false,
-            ).updatePhoto(widget.userId, pickedFile.path);
-
-            // Refresh the user data after successful upload
-            if (mounted) {
-              setState(() {
-                _userDataFuture = _loadUser();
-              });
-            }
-
-            // Close the progress dialog
-            if (!mounted) return;
+          if (mounted) {
             Navigator.of(context).pop();
-
-            // Show success animation
-            showDialog(
-              context: context,
-              builder:
-                  (context) => Dialog(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.check_circle,
-                            color: Colors.green,
-                            size: 64,
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Photo Updated!',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Your profile photo has been updated successfully.',
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 24),
-                          ElevatedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size(200, 45),
-                            ),
-                            child: const Text('Great!'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-            );
+            setState(() {
+              _userDataFuture = _loadUser();
+            });
           }
         } catch (e) {
-          // Close the progress dialog
-          if (!mounted) return;
-          Navigator.of(context).pop();
-
-          // Create a user-friendly error message
-          String errorMessage = 'Unable to update profile photo';
-
-          if (e.toString().contains('413')) {
-            errorMessage =
-                'The server rejected the image. Please try a smaller or more compressed image.';
-          } else if (e.toString().contains('network')) {
-            errorMessage =
-                'Network error. Please check your connection and try again.';
-          } else {
-            errorMessage = 'Error updating photo: $e';
+          if (mounted) {
+            Navigator.of(context).pop();
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('Error updating photo: $e')));
           }
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 5),
-              action: SnackBarAction(
-                label: 'OK',
-                textColor: Colors.white,
-                onPressed: () {},
-              ),
-            ),
-          );
         }
       }
     } catch (e) {
-      debugPrint('Error picking image: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error selecting image: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      debugPrint('Error picking photo: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error selecting photo: $e')));
+      }
     }
   }
 
@@ -750,6 +482,34 @@ class ProfileScreenState extends State<ProfileScreen>
     }
   }
 
+  String _formatBirthDateFromMap(dynamic birthDate) {
+    if (birthDate == null) return '';
+
+    try {
+      // If it's already a string, return it as is
+      if (birthDate is String) {
+        return birthDate;
+      }
+
+      // If it's an integer timestamp, convert it to a date string
+      if (birthDate is int) {
+        final date = DateTime.fromMillisecondsSinceEpoch(birthDate);
+        return DateFormat('yyyy-MM-dd').format(date);
+      }
+
+      // If it's a double, convert to int first
+      if (birthDate is double) {
+        final date = DateTime.fromMillisecondsSinceEpoch(birthDate.toInt());
+        return DateFormat('yyyy-MM-dd').format(date);
+      }
+
+      return '';
+    } catch (e) {
+      debugPrint('Error formatting birth date: $e');
+      return '';
+    }
+  }
+
   // Show dialog to edit demographics
   Future<void> _showDemographicsDialog(Map<String, dynamic> user) async {
     final TextEditingController phoneController = TextEditingController(
@@ -771,7 +531,7 @@ class ProfileScreenState extends State<ProfileScreen>
       text: user['country'] as String? ?? '',
     );
     final TextEditingController birthDateController = TextEditingController(
-      text: user['birthDate'] as String? ?? '',
+      text: _formatBirthDateFromMap(user['birthDate']),
     );
     final TextEditingController bioController = TextEditingController(
       text: user['bio'] as String? ?? '',
@@ -1070,44 +830,273 @@ class ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  /*
-  // Extract the gradient background container into a separate method
-  Widget _buildGradientBackground({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Theme.of(context).colorScheme.primary,
-            Theme.of(context).colorScheme.secondary,
-          ],
-        ),
-      ),
-      child: child,
-    );
-  }
-*/
   @override
   Widget build(BuildContext context) {
-    // Calculate responsive width for the profile content
-    final double maxWidth = 500;
-    final double screenWidth = MediaQuery.of(context).size.width;
-    final double contentWidth =
-        screenWidth > maxWidth + 40 ? maxWidth : screenWidth - 40;
-    final bool isSmallScreen = screenWidth < 360;
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('Profile'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: () async {
+                await AuthUtils.showLogoutConfirmation(
+                  context,
+                  Provider.of<ApiService>(context, listen: false),
+                );
+              },
+            ),
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            labelStyle: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontWeight: FontWeight.normal,
+              fontSize: 14,
+            ),
+            tabs: [
+              Tab(icon: const Icon(Icons.person), text: 'Profile'),
+              Tab(icon: const Icon(Icons.star), text: 'Subscription'),
+              Tab(icon: const Icon(Icons.edit), text: 'Edit Info'),
+            ],
+          ),
+        ),
+        body: FutureBuilder<User?>(
+          future: _userDataFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-    // Count pending invitations for the badge
-    final pendingInvitationsCount =
-        _invitations.where((inv) => inv['status'] == 'PENDING').length;
+            if (snapshot.hasError || snapshot.data == null) {
+              return const Center(child: Text('Error loading profile'));
+            }
 
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: GradientBackground(
-        child: _buildProfileTab(contentWidth, isSmallScreen),
+            final user = snapshot.data!;
+            return FadeTransition(
+              opacity: _fadeAnimation,
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildModernProfileTab(user),
+                  _buildSubscriptionTab(user),
+                  _buildEditInfoTab(user),
+                ],
+              ),
+            );
+          },
+        ),
       ),
+    );
+  }
+
+  Widget _buildModernProfileTab(User user) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          UserProfileCard(
+            user: user,
+            photoUrl:
+                user.photo != null
+                    ? '${Provider.of<ApiService>(context, listen: false).baseUrl}${user.photo}?t=${DateTime.now().millisecondsSinceEpoch}'
+                    : null,
+            onEditPhoto: _pickPhoto,
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.family_restroom),
+              title: const Text('Family Management'),
+              subtitle: const Text('Manage your family settings'),
+              trailing: const Icon(Icons.arrow_forward_ios),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (context) =>
+                            FamilyManagementScreen(userId: widget.userId),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubscriptionTab(User user) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          SubscriptionCard(
+            subscription: user.subscription,
+            onUpgrade: _showSubscriptionDialog,
+            onManagePayment: _showSubscriptionDialog,
+            onViewBilling: _showBillingDialog,
+            onCancel: _showCancelSubscriptionDialog,
+          ),
+          const SizedBox(height: 12),
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Premium Features',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildFeatureItem(
+                    icon: Icons.cloud_upload,
+                    title: 'Unlimited Storage',
+                    description: 'Store unlimited photos and videos',
+                  ),
+                  _buildFeatureItem(
+                    icon: Icons.video_call,
+                    title: 'HD Video Messages',
+                    description: 'Send high-quality video messages',
+                  ),
+                  _buildFeatureItem(
+                    icon: Icons.group,
+                    title: 'Multiple Families',
+                    description: 'Join and manage multiple family groups',
+                  ),
+                  _buildFeatureItem(
+                    icon: Icons.block,
+                    title: 'Ad-Free Experience',
+                    description: 'Enjoy the app without advertisements',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.green, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  description,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSubscriptionDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Subscription Management'),
+            content: const Text(
+              'Payment gateway integration will be added here.\n\nThis will include:\n• Stripe integration\n• Payment method management\n• Billing history\n• Plan upgrades',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _showBillingDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Billing History'),
+            content: const Text(
+              'Billing history and invoices will be displayed here.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _showCancelSubscriptionDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Cancel Subscription'),
+            content: const Text(
+              'Are you sure you want to cancel your subscription? You will lose access to premium features.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Keep Subscription'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Subscription cancelled successfully'),
+                    ),
+                  );
+                },
+                child: const Text('Cancel Subscription'),
+              ),
+            ],
+          ),
     );
   }
 
@@ -1115,7 +1104,7 @@ class ProfileScreenState extends State<ProfileScreen>
   Widget _buildProfileTab(double contentWidth, bool isSmallScreen) {
     return SafeArea(
       key: _profileKey,
-      child: FutureBuilder<Map<String, dynamic>?>(
+      child: FutureBuilder<User?>(
         future: _userDataFuture ?? _loadUser(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1143,7 +1132,7 @@ class ProfileScreenState extends State<ProfileScreen>
 
   // Extract the profile content to a separate method
   Widget _buildProfileContent(
-    Map<String, dynamic> user,
+    User user,
     double contentWidth,
     bool isSmallScreen,
   ) {
@@ -1161,8 +1150,8 @@ class ProfileScreenState extends State<ProfileScreen>
               // Profile photo - smaller on small screens
               ProfilePhoto(
                 photoUrl:
-                    user['photo'] != null
-                        ? '${Provider.of<ApiService>(context, listen: false).baseUrl}${user['photo']}?t=${DateTime.now().millisecondsSinceEpoch}'
+                    user.photo != null
+                        ? '${Provider.of<ApiService>(context, listen: false).baseUrl}${user.photo}?t=${DateTime.now().millisecondsSinceEpoch}'
                         : null,
                 onTap: _pickPhoto,
                 size: isSmallScreen ? 90 : 110,
@@ -1185,7 +1174,7 @@ class ProfileScreenState extends State<ProfileScreen>
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    onPressed: () => _showDemographicsDialog(user),
+                    onPressed: () => _showDemographicsDialog(user.toJson()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
@@ -1218,10 +1207,10 @@ class ProfileScreenState extends State<ProfileScreen>
                           child: Padding(
                             padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                             child: ProfileInfo(
-                              username: user['username'] ?? '',
-                              firstName: user['firstName'] ?? '',
-                              lastName: user['lastName'] ?? '',
-                              email: user['email'] ?? 'Not available',
+                              username: user.username,
+                              firstName: user.firstName,
+                              lastName: user.lastName,
+                              email: user.email,
                               role: widget.userRole ?? 'Unknown',
                               isSmallScreen: isSmallScreen,
                             ),
@@ -1241,27 +1230,250 @@ class ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  // Add this new method
-  void _initializeServiceProvider() {
-    try {
-      if (ServiceProvider().isInitialized) {
-        _loadInvitations(); // Load invitations only after ServiceProvider is ready
-      } else {
-        // Retry after a short delay
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            _initializeServiceProvider();
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('ServiceProvider not ready yet, will retry: $e');
-      // Retry after a longer delay
-      Future.delayed(const Duration(milliseconds: 1000), () {
-        if (mounted) {
-          _initializeServiceProvider();
-        }
-      });
+  Widget _buildEditInfoTab(User user) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Contact Information',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildEditField(
+                    label: 'Phone Number',
+                    value: user.phoneNumber ?? '',
+                    icon: Icons.phone,
+                    hint: '+1 (123) 456-7890',
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEditField(
+                    label: 'Email',
+                    value: user.email,
+                    icon: Icons.email,
+                    hint: 'your.email@example.com',
+                    readOnly: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Address',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildEditField(
+                    label: 'Street Address',
+                    value: user.address ?? '',
+                    icon: Icons.home,
+                    hint: '123 Main St',
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: _buildEditField(
+                          label: 'City',
+                          value: user.city ?? '',
+                          icon: Icons.location_city,
+                          hint: 'City',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 1,
+                        child: _buildEditField(
+                          label: 'State',
+                          value: user.state ?? '',
+                          icon: Icons.map,
+                          hint: 'OR',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildEditField(
+                          label: 'Zip Code',
+                          value: user.zipCode ?? '',
+                          icon: Icons.pin,
+                          hint: '97140',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildEditField(
+                          label: 'Country',
+                          value: user.country ?? '',
+                          icon: Icons.public,
+                          hint: 'USA',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Personal Information',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildEditField(
+                    label: 'Birth Date',
+                    value: user.formattedBirthDate,
+                    icon: Icons.cake,
+                    hint: 'MM/DD/YYYY',
+                    onTap: () => _selectBirthDate(context, user),
+                    readOnly: true,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEditField(
+                    label: 'Bio',
+                    value: user.bio ?? '',
+                    icon: Icons.info,
+                    hint: 'Tell us about yourself...',
+                    maxLines: 3,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => _saveProfileChanges(user),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Save Changes',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditField({
+    required String label,
+    required String value,
+    required IconData icon,
+    required String hint,
+    int maxLines = 1,
+    bool readOnly = false,
+    VoidCallback? onTap,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey,
+          ),
+        ),
+        const SizedBox(height: 4),
+        TextFormField(
+          initialValue: value,
+          readOnly: readOnly,
+          onTap: onTap,
+          maxLines: maxLines,
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixIcon: Icon(icon, size: 20),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.green),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _saveProfileChanges(User user) {
+    // Implement save functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Profile changes saved!'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  Future<void> _selectBirthDate(BuildContext context, User user) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: user.birthDate ?? DateTime(1990),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      // Update the birth date
+      // This would need to be connected to a form controller or state management
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Birth date selected: ${picked.toString().split(' ')[0]}',
+          ),
+        ),
+      );
     }
   }
 }

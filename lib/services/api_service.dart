@@ -1272,7 +1272,7 @@ Network connection error. Please check:
     };
 
     final response = await client.post(
-      Uri.parse('$baseUrl/api/users/$userId/demographics'),
+      Uri.parse('$baseUrl/api/users/$userId/profile'),
       headers: headers,
       body: jsonEncode(data),
     );
