@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/api_service.dart';
@@ -17,6 +18,7 @@ import '../models/user.dart';
 import '../widgets/subscription_card.dart';
 import '../widgets/user_profile_card.dart';
 import '../models/subscription.dart';
+import 'dart:async';
 
 class ProfileScreen extends StatefulWidget {
   final int userId;
@@ -35,10 +37,10 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class ProfileScreenState extends State<ProfileScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
   late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
+  Animation<double>? _animation;
   XFile? _photoFile;
   Future<User?>? _userDataFuture;
   final _profileKey = GlobalKey<State>();
@@ -47,17 +49,20 @@ class ProfileScreenState extends State<ProfileScreen>
   // Tab controller for Profile/Subscription tabs
   late TabController _tabController;
 
+  Timer? _saveTimer;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
 
     _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
       vsync: this,
-      duration: const Duration(milliseconds: 800),
     );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    _animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
     );
     _animationController.forward();
 
@@ -69,6 +74,7 @@ class ProfileScreenState extends State<ProfileScreen>
 
   @override
   void dispose() {
+    _saveTimer?.cancel();
     _tabController.dispose();
     _animationController.dispose();
     super.dispose();
@@ -614,15 +620,13 @@ class ProfileScreenState extends State<ProfileScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(height: 10),
-                TextField(
-                  controller: phoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    icon: Icon(Icons.phone),
-                    helperText: 'Format: +1 (123) 456-7890',
-                  ),
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [phoneFormatter],
+                _buildEditField(
+                  label: 'Phone Number',
+                  value: user['phoneNumber'] ?? '',
+                  icon: Icons.phone,
+                  hint: '+1 (123) 456-7890',
+                  onChanged: (value) => _saveField('phoneNumber', value),
+                  isPhoneField: true,
                 ),
                 const SizedBox(height: 8),
                 TextField(
@@ -670,17 +674,7 @@ class ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
                 const SizedBox(height: 8),
-                TextField(
-                  controller: birthDateController,
-                  decoration: const InputDecoration(
-                    labelText: 'Birth Date',
-                    icon: Icon(Icons.cake),
-                    suffixIcon: Icon(Icons.calendar_today),
-                    helperText: 'Click to select from calendar',
-                  ),
-                  readOnly: true,
-                  onTap: () => _selectDate(context),
-                ),
+
                 const SizedBox(height: 8),
                 TextField(
                   controller: bioController,
@@ -783,10 +777,7 @@ class ProfileScreenState extends State<ProfileScreen>
                   Navigator.pop(context);
                   slidePush(
                     context,
-                    FamilyManagementScreen(
-                      userId: widget.userId,
-                      navigationController: _navigationController,
-                    ),
+                    FamilyManagementScreen(userId: widget.userId),
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -883,17 +874,23 @@ class ProfileScreenState extends State<ProfileScreen>
             }
 
             final user = snapshot.data!;
-            return FadeTransition(
-              opacity: _fadeAnimation,
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildModernProfileTab(user),
-                  _buildSubscriptionTab(user),
-                  _buildEditInfoTab(user),
-                ],
-              ),
+            final content = TabBarView(
+              controller: _tabController,
+              children: [
+                _buildModernProfileTab(user),
+                _buildSubscriptionTab(user),
+                _buildEditInfoTab(user),
+              ],
             );
+
+            // Only apply animation if it's been initialized
+            if (_animation != null &&
+                (_animationController.isCompleted ||
+                    _animationController.isAnimating)) {
+              return FadeTransition(opacity: _animation!, child: content);
+            } else {
+              return content;
+            }
           },
         ),
       ),
@@ -912,29 +909,6 @@ class ProfileScreenState extends State<ProfileScreen>
                     ? '${Provider.of<ApiService>(context, listen: false).baseUrl}${user.photo}?t=${DateTime.now().millisecondsSinceEpoch}'
                     : null,
             onEditPhoto: _pickPhoto,
-          ),
-          const SizedBox(height: 16),
-          Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ListTile(
-              leading: const Icon(Icons.family_restroom),
-              title: const Text('Family Management'),
-              subtitle: const Text('Manage your family settings'),
-              trailing: const Icon(Icons.arrow_forward_ios),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder:
-                        (context) =>
-                            FamilyManagementScreen(userId: widget.userId),
-                  ),
-                );
-              },
-            ),
           ),
         ],
       ),
@@ -1100,29 +1074,6 @@ class ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  // Profile Tab content with improved structure
-  Widget _buildProfileTab(double contentWidth, bool isSmallScreen) {
-    return SafeArea(
-      key: _profileKey,
-      child: FutureBuilder<User?>(
-        future: _userDataFuture ?? _loadUser(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError || snapshot.data == null) {
-            _redirectToLogin();
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final user = snapshot.data!;
-          return _buildProfileContent(user, contentWidth, isSmallScreen);
-        },
-      ),
-    );
-  }
-
   // Helper method to redirect to login
   void _redirectToLogin() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1130,109 +1081,9 @@ class ProfileScreenState extends State<ProfileScreen>
     });
   }
 
-  // Extract the profile content to a separate method
-  Widget _buildProfileContent(
-    User user,
-    double contentWidth,
-    bool isSmallScreen,
-  ) {
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: Center(
-        child: Container(
-          constraints: BoxConstraints(maxWidth: contentWidth),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(height: isSmallScreen ? 10 : 20),
-
-              // Profile photo - smaller on small screens
-              ProfilePhoto(
-                photoUrl:
-                    user.photo != null
-                        ? '${Provider.of<ApiService>(context, listen: false).baseUrl}${user.photo}?t=${DateTime.now().millisecondsSinceEpoch}'
-                        : null,
-                onTap: _pickPhoto,
-                size: isSmallScreen ? 90 : 110,
-              ),
-
-              SizedBox(height: isSmallScreen ? 5 : 10),
-
-              // Edit Info Button
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: SizedBox(
-                  width: 200,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    icon: Icon(Icons.edit, size: 24),
-                    label: Text(
-                      'EDIT INFO',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    onPressed: () => _showDemographicsDialog(user.toJson()),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 12,
-                        horizontal: 20,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      elevation: 5,
-                    ),
-                  ),
-                ),
-              ),
-
-              // Profile info card
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        margin: EdgeInsets.only(bottom: isSmallScreen ? 8 : 12),
-                        child: Card(
-                          elevation: 4,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                            child: ProfileInfo(
-                              username: user.username,
-                              firstName: user.firstName,
-                              lastName: user.lastName,
-                              email: user.email,
-                              role: widget.userRole ?? 'Unknown',
-                              isSmallScreen: isSmallScreen,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      SizedBox(height: isSmallScreen ? 10 : 20),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildEditInfoTab(User user) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       child: Column(
         children: [
           Card(
@@ -1241,22 +1092,24 @@ class ProfileScreenState extends State<ProfileScreen>
               borderRadius: BorderRadius.circular(12),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Contact Information',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
                   _buildEditField(
                     label: 'Phone Number',
                     value: user.phoneNumber ?? '',
                     icon: Icons.phone,
                     hint: '+1 (123) 456-7890',
+                    onChanged: (value) => _saveField('phoneNumber', value),
+                    isPhoneField: true,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   _buildEditField(
                     label: 'Email',
                     value: user.email,
@@ -1268,29 +1121,30 @@ class ProfileScreenState extends State<ProfileScreen>
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           Card(
             elevation: 4,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Address',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
                   _buildEditField(
                     label: 'Street Address',
                     value: user.address ?? '',
                     icon: Icons.home,
                     hint: '123 Main St',
+                    onChanged: (value) => _saveField('address', value),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
@@ -1300,9 +1154,10 @@ class ProfileScreenState extends State<ProfileScreen>
                           value: user.city ?? '',
                           icon: Icons.location_city,
                           hint: 'City',
+                          onChanged: (value) => _saveField('city', value),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       Expanded(
                         flex: 1,
                         child: _buildEditField(
@@ -1310,11 +1165,12 @@ class ProfileScreenState extends State<ProfileScreen>
                           value: user.state ?? '',
                           icon: Icons.map,
                           hint: 'OR',
+                          onChanged: (value) => _saveField('state', value),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
@@ -1323,15 +1179,17 @@ class ProfileScreenState extends State<ProfileScreen>
                           value: user.zipCode ?? '',
                           icon: Icons.pin,
                           hint: '97140',
+                          onChanged: (value) => _saveField('zipCode', value),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: _buildEditField(
                           label: 'Country',
                           value: user.country ?? '',
                           icon: Icons.public,
                           hint: 'USA',
+                          onChanged: (value) => _saveField('country', value),
                         ),
                       ),
                     ],
@@ -1340,61 +1198,44 @@ class ProfileScreenState extends State<ProfileScreen>
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           Card(
             elevation: 4,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Personal Information',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
                   _buildEditField(
                     label: 'Birth Date',
                     value: user.formattedBirthDate,
                     icon: Icons.cake,
-                    hint: 'MM/DD/YYYY',
-                    onTap: () => _selectBirthDate(context, user),
-                    readOnly: true,
+                    hint: 'MM/dd/yyyy',
+                    onChanged: (value) => _saveField('birthDate', value),
+                    isDateField: true,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   _buildEditField(
                     label: 'Bio',
                     value: user.bio ?? '',
                     icon: Icons.info,
                     hint: 'Tell us about yourself...',
                     maxLines: 3,
+                    onChanged: (value) => _saveField('bio', value),
                   ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => _saveProfileChanges(user),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Save Changes',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -1408,7 +1249,34 @@ class ProfileScreenState extends State<ProfileScreen>
     int maxLines = 1,
     bool readOnly = false,
     VoidCallback? onTap,
+    Function(String)? onChanged,
+    bool isPhoneField = false,
+    bool isDateField = false,
   }) {
+    final controller = TextEditingController(text: value);
+    final focusNode = FocusNode();
+
+    // Add focus listener for phone formatting
+    if (isPhoneField) {
+      focusNode.addListener(() {
+        if (!focusNode.hasFocus) {
+          _formatPhoneNumber(controller, onChanged);
+        }
+      });
+    }
+
+    // Input formatters for different field types
+    List<TextInputFormatter> inputFormatters = [];
+    if (isDateField) {
+      inputFormatters.add(
+        MaskTextInputFormatter(
+          mask: '##/##/####',
+          filter: {"#": RegExp(r'[0-9]')},
+          type: MaskAutoCompletionType.lazy,
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1422,10 +1290,18 @@ class ProfileScreenState extends State<ProfileScreen>
         ),
         const SizedBox(height: 4),
         TextFormField(
-          initialValue: value,
+          controller: controller,
+          focusNode: focusNode,
           readOnly: readOnly,
           onTap: onTap,
           maxLines: maxLines,
+          inputFormatters: inputFormatters,
+          keyboardType:
+              isPhoneField
+                  ? TextInputType.phone
+                  : isDateField
+                  ? TextInputType.number
+                  : TextInputType.text,
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: Icon(icon, size: 20),
@@ -1442,39 +1318,81 @@ class ProfileScreenState extends State<ProfileScreen>
               vertical: 12,
             ),
           ),
+          style: const TextStyle(fontSize: 14),
+          onChanged:
+              isPhoneField
+                  ? null
+                  : onChanged, // Don't trigger auto-save while typing for phone
         ),
       ],
     );
   }
 
-  void _saveProfileChanges(User user) {
-    // Implement save functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Profile changes saved!'),
-        backgroundColor: Colors.green,
-      ),
-    );
+  void _formatPhoneNumber(
+    TextEditingController controller,
+    Function(String)? onChanged,
+  ) {
+    final text = controller.text.replaceAll(
+      RegExp(r'[^\d]'),
+      '',
+    ); // Remove non-digits
+
+    if (text.length == 10) {
+      // Format as (123) 456-7890
+      final formatted =
+          '(${text.substring(0, 3)}) ${text.substring(3, 6)}-${text.substring(6)}';
+      controller.text = formatted;
+
+      // Trigger auto-save with formatted number
+      onChanged?.call(formatted);
+    } else if (text.length == 11 && text.startsWith('1')) {
+      // Handle 11-digit numbers starting with 1 (US country code)
+      final phoneDigits = text.substring(1); // Remove the leading 1
+      final formatted =
+          '(${phoneDigits.substring(0, 3)}) ${phoneDigits.substring(3, 6)}-${phoneDigits.substring(6)}';
+      controller.text = formatted;
+
+      // Trigger auto-save with formatted number
+      onChanged?.call(formatted);
+    } else if (text.isNotEmpty && text.length < 10) {
+      // For incomplete numbers, just trigger save without formatting
+      onChanged?.call(controller.text);
+    }
   }
 
-  Future<void> _selectBirthDate(BuildContext context, User user) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: user.birthDate ?? DateTime(1990),
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null) {
-      // Update the birth date
-      // This would need to be connected to a form controller or state management
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Birth date selected: ${picked.toString().split(' ')[0]}',
-          ),
-        ),
-      );
-    }
+  void _saveField(String field, String value) {
+    // Cancel any existing timer
+    _saveTimer?.cancel();
+
+    // Start a new timer to save after 2 seconds of inactivity
+    _saveTimer = Timer(const Duration(seconds: 2), () async {
+      try {
+        // Create the update data map
+        final updateData = {field: value};
+
+        // Call the API to save the field silently
+        await Provider.of<ApiService>(
+          context,
+          listen: false,
+        ).updateDemographics(widget.userId, updateData);
+
+        // No UI feedback - completely seamless
+      } catch (e) {
+        debugPrint('Error saving field $field: $e');
+        // Only show error messages, no success messages
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Error saving: ${e.toString().contains('Exception:') ? e.toString().split('Exception: ')[1] : e.toString()}',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    });
   }
 }
 

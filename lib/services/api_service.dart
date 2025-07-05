@@ -1618,8 +1618,19 @@ Network connection error. Please check:
       List<Map<String, dynamic>> result = [];
 
       for (var member in allMembers) {
-        // Only include members of this family
-        if (member['familyId'] == familyId) {
+        final memberFamilyId = member['familyId'];
+
+        // Only include members of this family - handle type conversion
+        final memberFamilyIdInt =
+            memberFamilyId is int
+                ? memberFamilyId
+                : int.tryParse(memberFamilyId.toString()) ?? -1;
+
+        debugPrint(
+          'ApiService: Comparing familyId $familyId with memberFamilyId $memberFamilyIdInt (original: $memberFamilyId, type: ${memberFamilyId.runtimeType})',
+        );
+
+        if (memberFamilyIdInt == familyId) {
           // Create a preference-like structure
           result.add({
             'familyId': familyId,
@@ -1632,9 +1643,16 @@ Network connection error. Please check:
             'memberUsername':
                 member['username'] ?? member['memberUsername'] ?? 'No username',
             'isOwner':
-                member['role'] == 'ADMIN' || member['role'] == 'FAMILY_ADMIN',
-            'memberOfFamilyName': familyDetails?['name'] ?? 'Unknown Family',
+                member['role'] == 'ADMIN' ||
+                member['role'] == 'FAMILY_ADMIN' ||
+                member['isOwner'] == true,
+            'memberOfFamilyName':
+                member['familyName'] ??
+                familyDetails?['name'] ??
+                'Unknown Family',
             'userId': userId,
+            'joinedAt':
+                DateTime.now(), // TODO: Get actual join date from backend
           });
         }
       }
@@ -2542,6 +2560,38 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('💥 Error testing search controller: $e');
       return null;
+    }
+  }
+
+  // Get complete family data in one call - families, members, and preferences
+  Future<Map<String, dynamic>> getCompleteFamilyData() async {
+    debugPrint('🔍 API: Getting complete family data');
+
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    } else {
+      throw Exception('No authentication token available');
+    }
+
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/families/complete-data'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint(
+          '🔍 API: Retrieved complete family data - ${result['families']?.length ?? 0} families, ${result['members']?.length ?? 0} members',
+        );
+        return result;
+      } else {
+        throw Exception('Failed to get complete family data: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('🔍 API: Error getting complete family data: $e');
+      rethrow;
     }
   }
 }

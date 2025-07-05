@@ -255,10 +255,7 @@ class MainAppContainerState extends State<MainAppContainer> {
         userRole: widget.userRole,
         navigationController: _navigationController,
       ),
-      FamilyManagementScreen(
-        userId: widget.userId,
-        navigationController: _navigationController,
-      ),
+      FamilyManagementScreen(userId: widget.userId),
       InvitationsScreen(
         userId: widget.userId,
         navigationController: _navigationController,

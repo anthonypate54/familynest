@@ -173,7 +173,7 @@ class User {
 
   String get formattedBirthDate {
     if (birthDate == null) return '';
-    return DateFormat('yyyy-MM-dd').format(birthDate!);
+    return DateFormat('MM/dd/yyyy').format(birthDate!);
   }
 
   bool get hasProfilePhoto => photo != null && photo!.isNotEmpty;
