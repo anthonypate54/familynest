@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import '../models/family.dart';
-import '../services/family_service.dart';
-import '../services/api_service.dart';
-import '../models/user.dart';
-import '../dialogs/family_notification_dialog.dart';
-import '../widgets/gradient_background.dart';
 import 'package:provider/provider.dart';
+import '../services/api_service.dart';
+import '../services/family_service.dart';
+import '../models/family.dart';
+import '../widgets/gradient_background.dart';
 
 class FamilyManagementScreen extends StatefulWidget {
   final int userId;
@@ -20,11 +18,10 @@ class FamilyManagementScreen extends StatefulWidget {
 class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  bool _isLoading = true;
-  bool _isLoadingData = false;
   List<Family> _families = [];
-  Family? _ownedFamily;
   Family? _selectedFamily;
+  Family? _ownedFamily;
+  bool _isLoading = true;
   List<Map<String, dynamic>> _allMembers = [];
   List<Map<String, dynamic>> _filteredMembers = [];
   final _searchController = TextEditingController();
@@ -48,28 +45,11 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
   }
 
   Future<void> _loadData() async {
-    if (_isLoadingData) {
-      debugPrint(
-        'FamilyManagementScreen: _loadData already in progress, skipping...',
-      );
-      return;
-    }
-
-    _isLoadingData = true;
     setState(() => _isLoading = true);
-
     try {
       final familyService = FamilyService.of(context);
+
       final families = await familyService.loadUserFamilies(widget.userId);
-
-      // Find owned family
-      Family? ownedFamily =
-          families.where((f) => f.isOwned).isNotEmpty
-              ? families.firstWhere((f) => f.isOwned)
-              : null;
-
-      // Set default selected family to null to show all members initially
-      Family? selectedFamily = null;
 
       // Use members that are already loaded in the Family objects
       List<Map<String, dynamic>> allMembers = [];
@@ -93,8 +73,11 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       if (mounted) {
         setState(() {
           _families = families;
-          _ownedFamily = ownedFamily;
-          _selectedFamily = selectedFamily;
+          _selectedFamily = families.isNotEmpty ? families.first : null;
+          _ownedFamily =
+              families.where((f) => f.isOwned).isNotEmpty
+                  ? families.firstWhere((f) => f.isOwned)
+                  : null;
           _allMembers = allMembers;
           _filteredMembers = allMembers;
           _isLoading = false;
@@ -104,80 +87,57 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         _filterMembers();
       }
     } catch (e) {
-      debugPrint('Error loading data: $e');
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
       }
-    } finally {
-      _isLoadingData = false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _buildAppBar(),
+      appBar: AppBar(
+        title: const Text('Family Management'),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+      ),
       body: GradientBackground(
-        child: Column(
-          children: [
-            // Tab bar
-            Container(
-              color: Colors.transparent,
-              child: TabBar(
-                controller: _tabController,
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white70,
-                indicatorColor: Colors.white,
-                indicatorWeight: 3,
-                labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-                tabs: const [
-                  Tab(text: 'Family'),
-                  Tab(text: 'Members'),
-                  Tab(text: 'Settings'),
-                ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Container(
+              child: SizedBox(
+                height: constraints.maxHeight,
+                child: Column(
+                  children: [
+                    // Tab bar
+                    TabBar(
+                      controller: _tabController,
+                      labelColor: Colors.white,
+                      unselectedLabelColor: Colors.white70,
+                      indicatorColor: Colors.white,
+                      tabs: const [
+                        Tab(text: 'Family'),
+                        Tab(text: 'Members'),
+                        Tab(text: 'Settings'),
+                      ],
+                    ),
+                    // Tab content
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildFamilyTab(),
+                          _buildMembersTab(),
+                          _buildSettingsTab(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-
-            // Tab content
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildFamilyTab(),
-                  _buildMembersTab(),
-                  _buildSettingsTab(),
-                ],
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      title: const Text(
-        'Family Management',
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-      ),
-      centerTitle: true,
-      backgroundColor: Theme.of(context).colorScheme.primary,
-      elevation: 0,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.refresh, color: Colors.white),
-          onPressed: _loadData,
-          tooltip: 'Refresh',
-        ),
-      ],
     );
   }
 
@@ -190,270 +150,74 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
 
     return RefreshIndicator(
       onRefresh: _loadData,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (_ownedFamily != null)
-            _buildFamilyCreatedCard()
-          else
-            _buildCreateFamilyCard(),
-
-          const SizedBox(height: 16),
-
-          // Show member families (non-owned)
-          if (_families.where((f) => !f.isOwned).isNotEmpty) ...[
-            _buildMemberFamiliesCard(),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFamilyCreatedCard() {
-    if (_ownedFamily == null) return const SizedBox();
-
-    final family = _ownedFamily!;
-
-    // Use _allMembers for owned family count since it's populated correctly
-    final ownedFamilyMembers =
-        _allMembers.where((m) => m['familyId'] == family.id).toList();
-    final memberCount = ownedFamilyMembers.length;
-
-    final newMembers =
-        ownedFamilyMembers.where((m) {
-          final joinedAt = m['joinedAt'] as DateTime?;
-          if (joinedAt == null) return false;
-          final daysSinceJoined = DateTime.now().difference(joinedAt).inDays;
-          return daysSinceJoined <= 7; // Show as "new" for 7 days
-        }).toList();
-
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // "Family Created" header with checkmark
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.check_circle, color: Colors.green),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Family Created',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            // Family info
-            Row(
-              children: [
-                Icon(Icons.family_restroom, color: Colors.grey[600], size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  family.name,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '$memberCount members',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // New members highlight
-            if (newMembers.isNotEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.new_releases,
-                          color: Colors.blue,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'New Members',
-                          style: TextStyle(
-                            color: Colors.blue[700],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ...newMembers.map(
-                      (member) => Text(
-                        '• ${member['firstName']} ${member['lastName']}',
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
+            // Family selector dropdown (for all families)
+            if (_families.isNotEmpty) ...[
+              _buildFamilySelector(),
+              const SizedBox(height: 8),
             ],
 
-            // Invite button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _showInviteDialog(),
-                icon: const Icon(Icons.person_add),
-                label: const Text('Invite New Member'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
+            // Family Overview Card with complex layout
+            _buildFamilyOverviewCard(),
+            const SizedBox(height: 6),
+
+            // Birthdays Card
+            _buildBirthdaysCard(),
+            const SizedBox(height: 6),
+
+            // Activity Chart Card
+            _buildWeeklyUsageCard(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCreateFamilyCard() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.add_circle, color: Colors.orange),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Create Your Family',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        'Start connecting with your family members',
-                        style: TextStyle(color: Colors.grey, fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _showCreateFamilyDialog(),
-                icon: const Icon(Icons.family_restroom),
-                label: const Text('Create Family'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMemberFamiliesCard() {
-    final memberFamilies = _families.where((f) => !f.isOwned).toList();
+  Widget _buildFamilySelector() {
+    final selectedFamily = _selectedFamily;
 
     return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
           children: [
+            const Icon(Icons.family_restroom, color: Colors.blue, size: 20),
+            const SizedBox(width: 12),
             const Text(
-              'Member Of',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              'Viewing:',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
-            const SizedBox(height: 12),
-            ...memberFamilies.map(
-              (family) => Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.people, color: Colors.grey),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            family.name,
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                          Text(
-                            '${family.members.length} members',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<Family>(
+                  value: selectedFamily,
+                  isExpanded: true,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                  items:
+                      _families.map((family) {
+                        String roleLabel = family.isOwned ? 'Owner' : 'Member';
+                        return DropdownMenuItem<Family>(
+                          value: family,
+                          child: Text('${family.name} ($roleLabel)'),
+                        );
+                      }).toList(),
+                  onChanged: (Family? newFamily) {
+                    if (newFamily != null) {
+                      setState(() {
+                        _selectedFamily = newFamily;
+                      });
+                    }
+                  },
                 ),
               ),
             ),
@@ -603,112 +367,6 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     );
   }
 
-  Widget _buildMemberCard(Map<String, dynamic> member) {
-    final isNew = () {
-      if (member['joinedAt'] == null) return false;
-      final joinedAt = member['joinedAt'] as DateTime;
-      final daysSinceJoined = DateTime.now().difference(joinedAt).inDays;
-      return daysSinceJoined <= 7;
-    }();
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      child: InkWell(
-        onTap: () => _viewMemberDemographics(member),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Member avatar
-              CircleAvatar(
-                radius: 20,
-                backgroundColor:
-                    isNew
-                        ? Colors.green
-                        : Color(member['firstName'].hashCode | 0xFF000000),
-                child: Text(
-                  member['firstName'][0].toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-
-              // Member name and info - expanded to fill space
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${member['firstName']} ${member['lastName']}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                        if (isNew) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'NEW',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    Text(
-                      '@${member['username']}',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Mute checkbox - right column
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Mute',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 4),
-                  Checkbox(
-                    value: member['isMuted'] ?? false,
-                    onChanged: (value) {
-                      _toggleMemberMute(member, value ?? false);
-                    },
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildSettingsTab() {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -852,115 +510,457 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     );
   }
 
-  void _showCreateFamilyDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Create Family'),
-            content: TextField(
-              controller: _familyNameController,
-              decoration: const InputDecoration(
-                labelText: 'Family Name',
-                hintText: 'Enter your family name',
+  Widget _buildFamilyOverviewCard() {
+    final selectedFamily = _selectedFamily;
+
+    if (selectedFamily == null) {
+      return Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Left column - Create Family
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.family_restroom,
+                      size: 32,
+                      color: Colors.orange,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Create Your Family',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Start connecting with your family members',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => _createFamily(),
-                child: const Text('Create'),
+
+              const SizedBox(width: 16),
+
+              // Right column - Empty for non-admin
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.admin_panel_settings,
+                      size: 32,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No Admin Functions',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Create family first',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-    );
-  }
-
-  void _showInviteDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Invite Member'),
-            content: TextField(
-              controller: _inviteEmailController,
-              decoration: const InputDecoration(
-                labelText: 'Email Address',
-                hintText: 'Enter member email',
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => _inviteMember(),
-                child: const Text('Invite'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  Future<void> _createFamily() async {
-    final name = _familyNameController.text.trim();
-    if (name.isEmpty) return;
-
-    try {
-      Navigator.pop(context);
-
-      final apiService = Provider.of<ApiService>(context, listen: false);
-      await apiService.createFamily(widget.userId, name);
-
-      _familyNameController.clear();
-      await _loadData();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Family created successfully!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error creating family: $e')));
-      }
-    }
-  }
-
-  Future<void> _inviteMember() async {
-    final email = _inviteEmailController.text.trim();
-    if (email.isEmpty) return;
-
-    try {
-      Navigator.pop(context);
-
-      final familyService = FamilyService.of(context);
-      await familyService.sendInvitation(
-        widget.userId,
-        email,
-        _ownedFamily?.name ?? '',
+        ),
       );
-
-      _inviteEmailController.clear();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invitation sent successfully!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error sending invitation: $e')));
-      }
     }
+
+    final isOwner = selectedFamily.isOwned;
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            // Left column - Family Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.family_restroom,
+                        size: 32,
+                        color: isOwner ? Colors.blue : Colors.green,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          selectedFamily.name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Created January 2024',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  // Total members info
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.people, size: 16, color: Colors.blue[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        '3 Total Members',
+                        style: TextStyle(
+                          color: Colors.blue[600],
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // Pending invites info
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.mail_outline,
+                        size: 16,
+                        color: Colors.orange[600],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '2 Pending Invites',
+                        style: TextStyle(
+                          color: Colors.orange[600],
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            // Right column - Admin Functions or Member View
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (isOwner) ...[
+                    // Owner view - Admin functions
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.admin_panel_settings,
+                          size: 20,
+                          color: Colors.blue[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Family Admin',
+                          style: TextStyle(
+                            color: Colors.blue[600],
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          _showInviteDialog();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.person_add, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              'Invite Members',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    // Member view
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.person, size: 20, color: Colors.green[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Family Member',
+                          style: TextStyle(
+                            color: Colors.green[600],
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Contact family admin to invite new members',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 10),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBirthdaysCard() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.cake, color: Colors.orange[600], size: 20),
+                const SizedBox(width: 8),
+                const Text(
+                  'Upcoming Birthdays',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildBirthdayItem('Amy Johnson', 'Tue Jun 6'),
+            const SizedBox(height: 6),
+            _buildBirthdayItem('Mike Stevens', 'Fri Jun 16'),
+            const SizedBox(height: 6),
+            _buildBirthdayItem('Sarah Williams', 'Wed Jun 28'),
+            const SizedBox(height: 6),
+            _buildBirthdayItem('David Chen', 'Mon Jul 3'),
+            const SizedBox(height: 6),
+            _buildBirthdayItem('Emily Rodriguez', 'Thu Jul 8'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBirthdayItem(String name, String date) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: Colors.orange[400],
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text('$name - $date', style: const TextStyle(fontSize: 14)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWeeklyUsageCard() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Activity Chart',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                Row(
+                  children: [
+                    _buildPeriodButton('Wk', true),
+                    const SizedBox(width: 4),
+                    _buildPeriodButton('Mo', false),
+                    const SizedBox(width: 4),
+                    _buildPeriodButton('Yr', false),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Y-axis labels and chart area
+            Row(
+              children: [
+                // Y-axis labels
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _buildYAxisLabel('25'),
+                    _buildYAxisLabel('20'),
+                    _buildYAxisLabel('15'),
+                    _buildYAxisLabel('10'),
+                    _buildYAxisLabel('5'),
+                  ],
+                ),
+                const SizedBox(width: 8),
+
+                // Chart area
+                Expanded(
+                  child: CustomPaint(
+                    painter: CompactLineChartPainter(),
+                    child: Container(height: 49),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // Day labels
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children:
+                  ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+                      .map(
+                        (day) => Text(
+                          day,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      )
+                      .toList(),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Message counts
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Messages this week: 247',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                ),
+                Text(
+                  'Total messages: 1,234',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPeriodButton(String period, bool isSelected) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isSelected ? Colors.green : Colors.grey[200],
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        period,
+        style: TextStyle(
+          fontSize: 12,
+          color: isSelected ? Colors.white : Colors.grey[600],
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildYAxisLabel(String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Text(
+        value,
+        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+      ),
+    );
+  }
+
+  void _filterMembers() {
+    final query = _searchController.text.toLowerCase().trim();
+
+    setState(() {
+      _filteredMembers =
+          _allMembers.where((member) {
+            // Filter by selected family if one is chosen
+            if (_selectedFamily != null &&
+                member['familyId'] != _selectedFamily!.id) {
+              return false;
+            }
+
+            // Filter by search query
+            if (query.isNotEmpty) {
+              final firstName =
+                  member['firstName']?.toString().toLowerCase() ?? '';
+              final lastName =
+                  member['lastName']?.toString().toLowerCase() ?? '';
+              final username =
+                  member['username']?.toString().toLowerCase() ?? '';
+
+              final fullName = '$firstName $lastName';
+              return fullName.contains(query) || username.contains(query);
+            }
+
+            return true;
+          }).toList();
+    });
   }
 
   Future<void> _toggleMemberMute(Map<String, dynamic> member, bool mute) async {
@@ -1075,33 +1075,285 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     );
   }
 
-  void _filterMembers() {
-    final query = _searchController.text.toLowerCase().trim();
+  void _showCreateFamilyDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Create Family'),
+            content: TextField(
+              controller: _familyNameController,
+              decoration: const InputDecoration(
+                labelText: 'Family Name',
+                hintText: 'Enter your family name',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => _createFamily(),
+                child: const Text('Create'),
+              ),
+            ],
+          ),
+    );
+  }
 
-    setState(() {
-      _filteredMembers =
-          _allMembers.where((member) {
-            // Filter by selected family if one is chosen
-            if (_selectedFamily != null &&
-                member['familyId'] != _selectedFamily!.id) {
-              return false;
-            }
+  void _showInviteDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Invite Member'),
+            content: TextField(
+              controller: _inviteEmailController,
+              decoration: const InputDecoration(
+                labelText: 'Email Address',
+                hintText: 'Enter member email',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => _inviteMember(),
+                child: const Text('Invite'),
+              ),
+            ],
+          ),
+    );
+  }
 
-            // Filter by search query
-            if (query.isNotEmpty) {
-              final firstName =
-                  member['firstName']?.toString().toLowerCase() ?? '';
-              final lastName =
-                  member['lastName']?.toString().toLowerCase() ?? '';
-              final username =
-                  member['username']?.toString().toLowerCase() ?? '';
+  Future<void> _createFamily() async {
+    final name = _familyNameController.text.trim();
+    if (name.isEmpty) return;
 
-              final fullName = '$firstName $lastName';
-              return fullName.contains(query) || username.contains(query);
-            }
+    try {
+      Navigator.pop(context);
 
-            return true;
-          }).toList();
-    });
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      await apiService.createFamily(widget.userId, name);
+
+      _familyNameController.clear();
+      await _loadData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Family created successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error creating family: $e')));
+      }
+    }
+  }
+
+  Future<void> _inviteMember() async {
+    final email = _inviteEmailController.text.trim();
+    if (email.isEmpty) return;
+
+    try {
+      Navigator.pop(context);
+
+      final familyService = FamilyService.of(context);
+      await familyService.sendInvitation(
+        widget.userId,
+        email,
+        _ownedFamily?.name ?? '',
+      );
+
+      _inviteEmailController.clear();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invitation sent successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error sending invitation: $e')));
+      }
+    }
+  }
+
+  Widget _buildMemberCard(Map<String, dynamic> member) {
+    final isNew = () {
+      if (member['joinedAt'] == null) return false;
+      final joinedAt = member['joinedAt'] as DateTime;
+      final daysSinceJoined = DateTime.now().difference(joinedAt).inDays;
+      return daysSinceJoined <= 7;
+    }();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      child: InkWell(
+        onTap: () => _viewMemberDemographics(member),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Member avatar
+              CircleAvatar(
+                radius: 20,
+                backgroundColor:
+                    isNew
+                        ? Colors.green
+                        : Color(member['firstName'].hashCode | 0xFF000000),
+                child: Text(
+                  member['firstName'][0].toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // Member name and info - expanded to fill space
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${member['firstName']} ${member['lastName']}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        if (isNew) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'NEW',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    Text(
+                      '@${member['username']}',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Mute checkbox - right column
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Mute',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 4),
+                  Checkbox(
+                    value: member['isMuted'] ?? false,
+                    onChanged: (value) {
+                      _toggleMemberMute(member, value ?? false);
+                    },
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class CompactLineChartPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..color = Colors.blue
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke;
+
+    final path = Path();
+
+    // Sample data points (messages per day) - can be made dynamic later
+    final dataPoints = [12.0, 8.0, 15.0, 20.0, 18.0, 25.0, 22.0];
+    final maxValue = 25.0;
+
+    // Add some padding from top and bottom
+    final paddingTop = size.height * 0.1;
+    final paddingBottom = size.height * 0.1;
+    final chartHeight = size.height - paddingTop - paddingBottom;
+
+    // Draw horizontal grid lines (y-axis: 0, 5, 10, 15, 20, 25)
+    final gridPaint =
+        Paint()
+          ..color = Colors.grey.withOpacity(0.3)
+          ..strokeWidth = 0.5;
+
+    for (int i = 0; i <= 5; i++) {
+      final value = i * 5.0; // 0, 5, 10, 15, 20, 25
+      final y = paddingTop + (1.0 - (value / maxValue)) * chartHeight;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    // Calculate and draw the data line
+    for (int i = 0; i < dataPoints.length; i++) {
+      final x = (i / (dataPoints.length - 1)) * size.width;
+      final y = paddingTop + (1.0 - (dataPoints[i] / maxValue)) * chartHeight;
+
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+
+    canvas.drawPath(path, paint);
+
+    // Draw dots at data points
+    final dotPaint =
+        Paint()
+          ..color = Colors.blue
+          ..style = PaintingStyle.fill;
+
+    for (int i = 0; i < dataPoints.length; i++) {
+      final x = (i / (dataPoints.length - 1)) * size.width;
+      final y = paddingTop + (1.0 - (dataPoints[i] / maxValue)) * chartHeight;
+      canvas.drawCircle(Offset(x, y), 2.5, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return false;
   }
 }
