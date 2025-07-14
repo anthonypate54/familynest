@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'subscription.dart';
 
+enum OnboardingFlow { normal, familyMember, invitationFirst, freshUser }
+
 class FamilyDetails {
   final int id;
   final String name;
@@ -62,6 +64,7 @@ class User {
   final int? familyId;
   final FamilyDetails? familyDetails;
   final Subscription? subscription;
+  final int? onboardingState;
 
   User({
     required this.id,
@@ -83,13 +86,29 @@ class User {
     this.familyId,
     this.familyDetails,
     this.subscription,
+    this.onboardingState,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
     debugPrint('Creating user from JSON: $json');
 
+    // Handle id field with proper type conversion
+    dynamic rawId = json['id'] ?? json['userId'];
+    int id;
+    if (rawId is int) {
+      id = rawId;
+    } else if (rawId is String) {
+      id = int.parse(rawId);
+    } else if (rawId is num) {
+      id = rawId.toInt();
+    } else {
+      throw Exception(
+        'User id is required but was null or invalid type: $rawId',
+      );
+    }
+
     return User(
-      id: json['id'],
+      id: id,
       username: json['username'] ?? '',
       firstName: json['firstName'] ?? '',
       lastName: json['lastName'] ?? '',
@@ -114,6 +133,7 @@ class User {
           json['subscription'] != null
               ? Subscription.fromJson(json['subscription'])
               : null,
+      onboardingState: json['onboardingState'] ?? 0, // Default to 0 if null
     );
   }
 
@@ -138,6 +158,7 @@ class User {
       'familyId': familyId,
       'familyDetails': familyDetails?.toJson(),
       'subscription': subscription?.toJson(),
+      'onboardingState': onboardingState,
     };
   }
 
@@ -191,6 +212,46 @@ class User {
   bool get subscriptionExpired => subscription?.isExpired ?? false;
   int get trialDaysLeft => subscription?.daysLeftInTrial ?? 0;
 
+  // Onboarding flow determination using bitmap logic
+  OnboardingFlow getOnboardingFlow() {
+    int state = onboardingState ?? 0;
+
+    // Check decision flow based on our flowchart
+    // 1. Has messages (1) OR DMs (2) → Normal flow (skip onboarding)
+    if ((state & 3) > 0) {
+      return OnboardingFlow.normal;
+    }
+
+    // 2. Has family membership (4) → Family member onboarding
+    if ((state & 4) > 0) {
+      return OnboardingFlow.familyMember;
+    }
+
+    // 3. Has pending invitations (8) → Invitation-first onboarding
+    if ((state & 8) > 0) {
+      return OnboardingFlow.invitationFirst;
+    }
+
+    // 4. Fresh user → Full onboarding
+    return OnboardingFlow.freshUser;
+  }
+
+  // Helper methods for debugging onboarding state
+  bool get hasMessages => (onboardingState ?? 0) & 1 > 0;
+  bool get hasDMs => (onboardingState ?? 0) & 2 > 0;
+  bool get hasFamilyMembership => (onboardingState ?? 0) & 4 > 0;
+  bool get hasPendingInvitations => (onboardingState ?? 0) & 8 > 0;
+
+  String get onboardingStateDebug {
+    int state = onboardingState ?? 0;
+    List<String> flags = [];
+    if (hasMessages) flags.add('HAS_MESSAGES');
+    if (hasDMs) flags.add('HAS_DMS');
+    if (hasFamilyMembership) flags.add('HAS_FAMILY_MEMBERSHIP');
+    if (hasPendingInvitations) flags.add('HAS_PENDING_INVITATIONS');
+    return 'State: $state (${flags.join(', ')})';
+  }
+
   // Create a copy with updated demographics
   User copyWith({
     int? id,
@@ -212,6 +273,7 @@ class User {
     int? familyId,
     FamilyDetails? familyDetails,
     Subscription? subscription,
+    int? onboardingState,
   }) {
     return User(
       id: id ?? this.id,
@@ -233,6 +295,7 @@ class User {
       familyId: familyId ?? this.familyId,
       familyDetails: familyDetails ?? this.familyDetails,
       subscription: subscription ?? this.subscription,
+      onboardingState: onboardingState ?? this.onboardingState,
     );
   }
 }

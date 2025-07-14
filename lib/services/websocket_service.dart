@@ -4,6 +4,8 @@ import 'package:stomp_dart_client/stomp.dart';
 import 'package:stomp_dart_client/stomp_config.dart';
 import 'package:stomp_dart_client/stomp_frame.dart';
 import 'dart:convert';
+import 'dart:async';
+import 'dart:math';
 import '../config/app_config.dart';
 import '../models/message.dart';
 
@@ -34,16 +36,31 @@ class WebSocketService extends ChangeNotifier {
   // Debug message listeners (for test screen)
   final List<WebSocketMessageHandler> _debugMessageListeners = [];
 
-  // Connection retry logic
+  // Connection retry logic with exponential backoff
   int _retryCount = 0;
-  static const int _maxRetries = 3;
-  static const Duration _retryDelay = Duration(seconds: 5);
+  static const int _maxRetries = 10; // Increased from 3
+  static const Duration _baseRetryDelay = Duration(seconds: 2); // Base delay
+  static const Duration _maxRetryDelay = Duration(
+    seconds: 60,
+  ); // Cap at 1 minute
+
+  // Connection health monitoring
+  Timer? _healthCheckTimer;
+  Timer? _reconnectTimer;
+  DateTime? _lastHealthCheck;
+  int _consecutiveFailures = 0;
+
+  // Connection quality metrics
+  int _messagesSent = 0;
+  int _messagesReceived = 0;
+  DateTime? _lastMessageTime;
+  Duration _averageLatency = Duration.zero;
 
   // Getters
   bool get isConnected => _isConnected;
   bool get isConnecting => _isConnecting;
 
-  /// Initialize and connect to WebSocket
+  /// Enhanced connection with exponential backoff
   Future<void> initialize() async {
     if (_isConnecting || _isConnected) {
       debugPrint('🔌 WebSocket: Already connecting or connected');
@@ -56,7 +73,9 @@ class WebSocketService extends ChangeNotifier {
     try {
       final baseUrl = AppConfig().baseUrl;
       final wsUrl = '$baseUrl/ws';
-      debugPrint('🔌 WebSocket: Connecting to $wsUrl');
+      debugPrint(
+        '🔌 WebSocket: Connecting to $wsUrl (attempt ${_retryCount + 1})',
+      );
 
       _stompClient = StompClient(
         config: StompConfig.SockJS(
@@ -64,6 +83,8 @@ class WebSocketService extends ChangeNotifier {
           onConnect: _onConnect,
           onWebSocketError: _onError,
           onDisconnect: _onDisconnect,
+          heartbeatIncoming: const Duration(seconds: 30),
+          heartbeatOutgoing: const Duration(seconds: 30),
         ),
       );
 
@@ -82,63 +103,153 @@ class WebSocketService extends ChangeNotifier {
     });
   }
 
-  /// Handle successful connection
+  /// Enhanced connection success handler
   void _onConnect(StompFrame frame) {
     debugPrint('✅ WebSocket: Connected successfully');
     _isConnected = true;
     _isConnecting = false;
     _retryCount = 0;
+    _consecutiveFailures = 0;
     _safeNotifyListeners();
     _notifyConnectionListeners(true);
+
+    // Start health monitoring
+    _startHealthMonitoring();
 
     // Resubscribe to all topics
     _resubscribeToAllTopics();
   }
 
-  /// Handle connection errors
+  /// Enhanced error handler
   void _onError(dynamic error) {
     debugPrint('❌ WebSocket: Connection error: $error');
+    _consecutiveFailures++;
+    _stopHealthMonitoring();
     _handleConnectionFailure();
   }
 
-  /// Handle disconnection
+  /// Enhanced disconnect handler
   void _onDisconnect(StompFrame frame) {
     debugPrint('🔌 WebSocket: Disconnected');
     _isConnected = false;
     _isConnecting = false;
+    _stopHealthMonitoring();
     _safeNotifyListeners();
     _notifyConnectionListeners(false);
 
-    // Attempt to reconnect
-    _scheduleReconnect();
+    // Attempt to reconnect with exponential backoff
+    _scheduleReconnectWithBackoff();
   }
 
-  /// Handle connection failure
+  /// Enhanced failure handler
   void _handleConnectionFailure() {
     _isConnected = false;
     _isConnecting = false;
+    _consecutiveFailures++;
     _safeNotifyListeners();
     _notifyConnectionListeners(false);
 
     if (_retryCount < _maxRetries) {
-      _scheduleReconnect();
+      _scheduleReconnectWithBackoff();
     } else {
       debugPrint('❌ WebSocket: Max retry attempts reached');
     }
   }
 
-  /// Schedule reconnection attempt
-  void _scheduleReconnect() {
+  /// Schedule reconnection with exponential backoff
+  void _scheduleReconnectWithBackoff() {
     _retryCount++;
-    debugPrint(
-      '🔄 WebSocket: Scheduling reconnect attempt $_retryCount/$_maxRetries',
+
+    // Calculate exponential backoff delay
+    final exponentialDelay = _baseRetryDelay * pow(2, _retryCount - 1);
+    final cappedDelay =
+        exponentialDelay > _maxRetryDelay ? _maxRetryDelay : exponentialDelay;
+
+    // Add jitter to prevent thundering herd
+    final jitter = Random().nextDouble() * 0.3; // 0-30% jitter
+    final finalDelay = Duration(
+      milliseconds: (cappedDelay.inMilliseconds * (1 + jitter)).round(),
     );
 
-    Future.delayed(_retryDelay, () {
+    debugPrint(
+      '🔄 WebSocket: Scheduling reconnect attempt $_retryCount/$_maxRetries in ${finalDelay.inSeconds}s',
+    );
+
+    // Cancel any existing timer
+    _reconnectTimer?.cancel();
+
+    _reconnectTimer = Timer(finalDelay, () {
       if (!_isConnected && !_isConnecting) {
         initialize();
       }
     });
+  }
+
+  /// Start health monitoring with periodic checks
+  void _startHealthMonitoring() {
+    _stopHealthMonitoring(); // Clear any existing timer
+
+    _healthCheckTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _performHealthCheck();
+    });
+
+    _lastHealthCheck = DateTime.now();
+    debugPrint('💓 WebSocket: Health monitoring started');
+  }
+
+  /// Stop health monitoring
+  void _stopHealthMonitoring() {
+    _healthCheckTimer?.cancel();
+    _healthCheckTimer = null;
+    debugPrint('💓 WebSocket: Health monitoring stopped');
+  }
+
+  /// Perform health check
+  void _performHealthCheck() {
+    if (!_isConnected || _stompClient == null) return;
+
+    final now = DateTime.now();
+    _lastHealthCheck = now;
+
+    // Check if we've received any messages recently
+    final timeSinceLastMessage =
+        _lastMessageTime != null
+            ? now.difference(_lastMessageTime!)
+            : Duration(hours: 1);
+
+    if (timeSinceLastMessage.inMinutes > 5) {
+      debugPrint(
+        '⚠️ WebSocket: No messages received in ${timeSinceLastMessage.inMinutes} minutes',
+      );
+
+      // Try sending a ping message
+      _sendPing();
+    }
+
+    debugPrint(
+      '💓 WebSocket: Health check - Connected: $_isConnected, Messages sent: $_messagesSent, received: $_messagesReceived',
+    );
+  }
+
+  /// Send ping message for health check
+  void _sendPing() {
+    if (!_isConnected || _stompClient == null) return;
+
+    try {
+      final pingMessage = {
+        'type': 'PING',
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      _stompClient!.send(
+        destination: '/app/ping',
+        body: jsonEncode(pingMessage),
+      );
+
+      debugPrint('🏓 WebSocket: Sent ping message');
+    } catch (e) {
+      debugPrint('❌ WebSocket: Error sending ping: $e');
+    }
   }
 
   /// Subscribe to a topic with a message handler
@@ -211,11 +322,20 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 
-  /// Handle incoming messages for a topic
+  /// Enhanced message handling with metrics
   void _handleMessage(String topic, String body) {
     try {
+      _messagesReceived++;
+      _lastMessageTime = DateTime.now();
+
       debugPrint('📨 WebSocket: Received message on $topic: $body');
       final jsonData = jsonDecode(body);
+
+      // Handle pong responses
+      if (jsonData['type'] == 'PONG') {
+        debugPrint('🏓 WebSocket: Received pong response');
+        return;
+      }
 
       // Notify debug listeners with raw message data
       for (var debugListener in _debugMessageListeners) {
@@ -288,7 +408,7 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 
-  /// Send a message to a topic
+  /// Enhanced message sending with metrics
   void sendMessage(String destination, Map<String, dynamic> message) {
     if (!_isConnected || _stompClient == null) {
       debugPrint('❌ WebSocket: Cannot send message - not connected');
@@ -298,30 +418,88 @@ class WebSocketService extends ChangeNotifier {
     try {
       final messageBody = jsonEncode(message);
       _stompClient!.send(destination: destination, body: messageBody);
+
+      _messagesSent++;
       debugPrint('📤 WebSocket: Sent message to $destination: $messageBody');
     } catch (e) {
       debugPrint('❌ WebSocket: Error sending message: $e');
     }
   }
 
-  /// Disconnect and cleanup
+  /// Enhanced disconnect with cleanup
   void disconnect() {
     debugPrint('🔌 WebSocket: Disconnecting');
+
+    // Stop all timers
+    _stopHealthMonitoring();
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+
+    // Disconnect client
+    _stompClient?.deactivate();
+    _stompClient = null;
+
+    // Reset state
+    _isConnected = false;
+    _isConnecting = false;
+    _retryCount = 0;
+    _consecutiveFailures = 0;
+    _subscriptions.clear();
+    _connectionListeners.clear();
+
+    // Reset metrics
+    _messagesSent = 0;
+    _messagesReceived = 0;
+    _lastMessageTime = null;
+    _lastHealthCheck = null;
+
+    notifyListeners();
+  }
+
+  /// Get detailed connection status
+  String get connectionStatus {
+    if (_isConnecting) {
+      return _retryCount > 0
+          ? 'Reconnecting... (${_retryCount}/$_maxRetries)'
+          : 'Connecting...';
+    }
+    if (_isConnected) {
+      return 'Connected';
+    }
+    return _retryCount >= _maxRetries ? 'Connection Failed' : 'Disconnected';
+  }
+
+  /// Get connection quality info
+  Map<String, dynamic> get connectionInfo {
+    return {
+      'isConnected': _isConnected,
+      'isConnecting': _isConnecting,
+      'retryCount': _retryCount,
+      'maxRetries': _maxRetries,
+      'consecutiveFailures': _consecutiveFailures,
+      'messagesSent': _messagesSent,
+      'messagesReceived': _messagesReceived,
+      'lastMessageTime': _lastMessageTime?.toIso8601String(),
+      'lastHealthCheck': _lastHealthCheck?.toIso8601String(),
+      'connectionStatus': connectionStatus,
+    };
+  }
+
+  /// Force reconnection (for manual retry)
+  Future<void> forceReconnect() async {
+    debugPrint('🔄 WebSocket: Force reconnecting...');
+
+    // Stop current connection
     _stompClient?.deactivate();
     _stompClient = null;
     _isConnected = false;
     _isConnecting = false;
-    _subscriptions.clear();
-    _connectionListeners.clear();
-    _retryCount = 0;
-    notifyListeners();
-  }
 
-  /// Get connection status string
-  String get connectionStatus {
-    if (_isConnecting) return 'Connecting...';
-    if (_isConnected) return 'Connected';
-    return 'Disconnected';
+    // Reset retry count for immediate retry
+    _retryCount = 0;
+
+    // Reconnect immediately
+    await initialize();
   }
 
   // ===== MESSAGE LISTENER METHODS =====

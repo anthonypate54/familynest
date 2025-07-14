@@ -518,6 +518,8 @@ Network connection error. Please check:
         return {
           'userId': userId,
           'role': responseBody['role'] as String? ?? 'USER',
+          // Include all other fields from the backend response
+          ...responseBody,
         };
       } else if (response.statusCode == 401 || response.statusCode == 403) {
         _token = null;
@@ -1235,6 +1237,90 @@ Network connection error. Please check:
     }
   }
 
+  // Invite a user to a specific family (takes family ID directly)
+  Future<Map<String, dynamic>> inviteUserToFamily(
+    int familyId,
+    String email,
+  ) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    debugPrint('🔍 API: Sending invitation to $email for family $familyId');
+
+    // Using the InvitationController endpoint with the specified family ID
+    final response = await client.post(
+      Uri.parse('$baseUrl/api/invitations/$familyId/invite'),
+      headers: headers,
+      body: jsonEncode({'email': email}),
+    );
+
+    debugPrint('🔍 API: Invitation response status: ${response.statusCode}');
+    debugPrint('🔍 API: Invitation response body: ${response.body}');
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+      return responseData;
+    } else if (response.statusCode == 403) {
+      // Token might be expired, try to get a fresh one
+      debugPrint('🔑 Token expired, trying to get fresh test token');
+      final freshToken = await getTestToken();
+      if (freshToken != null) {
+        // Retry the invitation with the fresh token
+        debugPrint('🔍 Retrying invitation with fresh token');
+        final retryResponse = await client.post(
+          Uri.parse('$baseUrl/api/invitations/$familyId/invite'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_token',
+          },
+          body: jsonEncode({'email': email}),
+        );
+
+        debugPrint(
+          '🔍 API: Retry invitation response status: ${retryResponse.statusCode}',
+        );
+        debugPrint(
+          '🔍 API: Retry invitation response body: ${retryResponse.body}',
+        );
+
+        if (retryResponse.statusCode == 200 ||
+            retryResponse.statusCode == 201) {
+          final responseData =
+              jsonDecode(retryResponse.body) as Map<String, dynamic>;
+          return responseData;
+        } else {
+          // Handle error response from retry
+          final errorData =
+              jsonDecode(retryResponse.body) as Map<String, dynamic>;
+          throw InvitationException(
+            errorData['error'] ?? 'Failed to invite user after token refresh',
+            userExists: errorData['userExists'],
+            suggestedEmails:
+                (errorData['suggestedEmails'] as List<dynamic>?)
+                    ?.cast<String>(),
+          );
+        }
+      }
+      // If token refresh failed, throw the original error
+      throw InvitationException(
+        'Authentication failed - please try logging out and back in',
+        userExists: false,
+        suggestedEmails: null,
+      );
+    } else {
+      // Handle error response which may also include suggestions
+      final errorData = jsonDecode(response.body) as Map<String, dynamic>;
+      throw InvitationException(
+        errorData['error'] ?? 'Failed to invite user',
+        userExists: errorData['userExists'],
+        suggestedEmails:
+            (errorData['suggestedEmails'] as List<dynamic>?)?.cast<String>(),
+      );
+    }
+  }
+
   // Get family owned by a user
   Future<Map<String, dynamic>?> getOwnedFamily(int userId) async {
     final headers = {'Content-Type': 'application/json'};
@@ -1329,6 +1415,43 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('Error fetching invitations: $e');
       return [];
+    }
+  }
+
+  // Get sent invitations by the current user
+  Future<Map<String, dynamic>> getSentInvitations() async {
+    debugPrint('Getting sent invitations from backend endpoint');
+
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    } else {
+      debugPrint('No token available for getting sent invitations');
+      return {'success': false, 'invitations': []};
+    }
+
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/invitations/sent'),
+        headers: headers,
+      );
+
+      debugPrint('Sent invitations response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 404) {
+        debugPrint(
+          'Sent invitations endpoint not found (404): ${response.body}',
+        );
+        return {'success': false, 'invitations': []};
+      } else {
+        debugPrint('Failed to get sent invitations: ${response.body}');
+        return {'success': false, 'invitations': []};
+      }
+    } catch (e) {
+      debugPrint('Error fetching sent invitations: $e');
+      return {'success': false, 'invitations': []};
     }
   }
 
@@ -2592,6 +2715,199 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('🔍 API: Error getting complete family data: $e');
       rethrow;
+    }
+  }
+
+  // Get upcoming birthdays for a family (next 7 days)
+  Future<List<Map<String, dynamic>>> getUpcomingBirthdays(int familyId) async {
+    debugPrint('Getting upcoming birthdays for family $familyId');
+
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    } else {
+      debugPrint('No token available for getting birthdays');
+      return [];
+    }
+
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/families/$familyId/birthdays'),
+        headers: headers,
+      );
+
+      debugPrint('Birthdays response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> birthdays =
+            jsonDecode(response.body) as List<dynamic>;
+        return birthdays.cast<Map<String, dynamic>>();
+      } else if (response.statusCode == 404) {
+        debugPrint('Birthdays endpoint not found (404): ${response.body}');
+        return [];
+      } else {
+        debugPrint('Failed to get birthdays: ${response.body}');
+        return [];
+      }
+    } catch (e) {
+      debugPrint('Error fetching birthdays: $e');
+      return [];
+    }
+  }
+
+  // Get weekly activity data for a family (past 7 days)
+  Future<Map<String, dynamic>?> getWeeklyActivity(int familyId) async {
+    debugPrint('Getting weekly activity for family $familyId');
+
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    } else {
+      debugPrint('No token available for getting weekly activity');
+      return null;
+    }
+
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/families/$familyId/weekly-activity'),
+        headers: headers,
+      );
+
+      debugPrint('Weekly activity response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> activity =
+            jsonDecode(response.body) as Map<String, dynamic>;
+        return activity;
+      } else if (response.statusCode == 404) {
+        debugPrint(
+          'Weekly activity endpoint not found (404): ${response.body}',
+        );
+        return null;
+      } else {
+        debugPrint('Failed to get weekly activity: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error fetching weekly activity: $e');
+      return null;
+    }
+  }
+
+  // Get monthly activity data for a family (past 30 days)
+  Future<Map<String, dynamic>?> getMonthlyActivity(int familyId) async {
+    debugPrint('Getting monthly activity for family $familyId');
+
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    } else {
+      debugPrint('No token available for getting monthly activity');
+      return null;
+    }
+
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/families/$familyId/monthly-activity'),
+        headers: headers,
+      );
+
+      debugPrint('Monthly activity response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> activity =
+            jsonDecode(response.body) as Map<String, dynamic>;
+        return activity;
+      } else if (response.statusCode == 404) {
+        debugPrint(
+          'Monthly activity endpoint not found (404): ${response.body}',
+        );
+        return null;
+      } else {
+        debugPrint('Failed to get monthly activity: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error fetching monthly activity: $e');
+      return null;
+    }
+  }
+
+  // Get yearly activity data for a family (past 12 months)
+  Future<Map<String, dynamic>?> getYearlyActivity(int familyId) async {
+    debugPrint('Getting yearly activity for family $familyId');
+
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    } else {
+      debugPrint('No token available for getting yearly activity');
+      return null;
+    }
+
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/families/$familyId/yearly-activity'),
+        headers: headers,
+      );
+
+      debugPrint('Yearly activity response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> activity =
+            jsonDecode(response.body) as Map<String, dynamic>;
+        return activity;
+      } else if (response.statusCode == 404) {
+        debugPrint(
+          'Yearly activity endpoint not found (404): ${response.body}',
+        );
+        return null;
+      } else {
+        debugPrint('Failed to get yearly activity: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error fetching yearly activity: $e');
+      return null;
+    }
+  }
+
+  // Get multi-year activity data for a family (past 5 years)
+  Future<Map<String, dynamic>?> getMultiYearActivity(int familyId) async {
+    debugPrint('Getting multi-year activity for family $familyId');
+
+    final headers = {'Content-Type': 'application/json'};
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    } else {
+      debugPrint('No token available for getting multi-year activity');
+      return null;
+    }
+
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/families/$familyId/multi-year-activity'),
+        headers: headers,
+      );
+
+      debugPrint('Multi-year activity response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> activity =
+            jsonDecode(response.body) as Map<String, dynamic>;
+        return activity;
+      } else if (response.statusCode == 404) {
+        debugPrint(
+          'Multi-year activity endpoint not found (404): ${response.body}',
+        );
+        return null;
+      } else {
+        debugPrint('Failed to get multi-year activity: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error fetching multi-year activity: $e');
+      return null;
     }
   }
 }

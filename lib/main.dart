@@ -25,6 +25,7 @@ import 'models/message.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'screens/websocket_test_screen.dart';
 import 'services/websocket_service.dart';
+import 'services/onboarding_service.dart'; // Import OnboardingService
 
 // Function to get device model name
 Future<String?> getDeviceModel() async {
@@ -212,11 +213,13 @@ class MyAppState extends State<MyApp> {
 class MainAppContainer extends StatefulWidget {
   final int userId;
   final String userRole;
+  final int? initialTabIndex; // Add optional initial tab parameter
 
   const MainAppContainer({
     super.key,
     required this.userId,
     required this.userRole,
+    this.initialTabIndex, // Optional parameter to set initial tab
   });
 
   @override
@@ -241,7 +244,7 @@ class MainAppContainerState extends State<MainAppContainer> {
   WebSocketMessageHandler? _invitationHandler;
   WebSocketService? _webSocketService;
 
-  // Add loading state for initial screen determination
+  // Remove loading state flag since we don't need complex onboarding checking
   bool _isCheckingInitialScreen = true;
 
   @override
@@ -255,15 +258,36 @@ class MainAppContainerState extends State<MainAppContainer> {
         userRole: widget.userRole,
         navigationController: _navigationController,
       ),
-      FamilyManagementScreen(userId: widget.userId),
+      FamilyManagementScreen(
+        userId: widget.userId,
+        navigationController: _navigationController,
+      ),
       InvitationsScreen(
         userId: widget.userId,
         navigationController: _navigationController,
       ),
     ];
 
-    // Check for existing DMs and set initial screen accordingly
-    _checkForExistingDMs();
+    // Use initial tab index if provided, otherwise check for existing DMs
+    if (widget.initialTabIndex != null) {
+      debugPrint(
+        '🎯 MAIN: Using provided initial tab index: ${widget.initialTabIndex}',
+      );
+      setState(() {
+        _currentIndex = widget.initialTabIndex!;
+        _isCheckingInitialScreen = false;
+      });
+
+      // Navigate to the specified tab after build completes
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(_currentIndex);
+        }
+      });
+    } else {
+      // Fall back to existing logic
+      _checkForExistingDMs();
+    }
 
     // Register callbacks
     _navigationController.updatePendingInvitationsCount = (count) {
@@ -374,92 +398,6 @@ class MainAppContainerState extends State<MainAppContainer> {
     }
   }
 
-  // Check for existing DM conversations and navigate accordingly
-  Future<void> _checkForExistingDMs() async {
-    try {
-      print('🔍 STARTUP: Checking user activity for initial screen...');
-
-      final prefs = await SharedPreferences.getInstance();
-      final hasSeenWelcome = prefs.getBool('hasSeenWelcome') ?? false;
-
-      if (hasSeenWelcome) {
-        // User has seen welcome before - check if they have DMs to go to DM screen
-        debugPrint('🔍 STARTUP: User has seen welcome - checking for DMs');
-        if (!mounted) return;
-        final apiService = Provider.of<ApiService>(context, listen: false);
-        final conversations = await apiService.getDMConversations();
-
-        if (mounted) {
-          setState(() {
-            if (conversations.isNotEmpty) {
-              debugPrint('🔍 STARTUP: Has DMs - navigating to DM screen');
-              _currentIndex = 1; // DM screen index
-            } else {
-              debugPrint(
-                '🔍 STARTUP: No DMs - staying on MessageScreen (no welcome dialog)',
-              );
-              _currentIndex = 0; // MessageScreen index
-            }
-            _isCheckingInitialScreen = false;
-          });
-        }
-      } else {
-        // New user - check for any activity
-        debugPrint('🔍 STARTUP: New user - checking for any activity');
-        if (!mounted) return;
-        final apiService = Provider.of<ApiService>(context, listen: false);
-
-        final results = await Future.wait([
-          apiService.getDMConversations(),
-          apiService.getUserMessages(widget.userId.toString()),
-        ]);
-
-        final conversations = results[0] as List<dynamic>;
-        final messages = results[1] as List<Message>;
-        final hasActivity = conversations.isNotEmpty || messages.isNotEmpty;
-
-        if (mounted) {
-          setState(() {
-            if (hasActivity) {
-              // User has activity - mark welcome seen and go to appropriate screen
-              debugPrint('🔍 STARTUP: Found activity - marking welcome seen');
-              prefs.setBool('hasSeenWelcome', true);
-              _currentIndex =
-                  conversations.isNotEmpty
-                      ? 1
-                      : 0; // DM screen if has DMs, otherwise Messages
-            } else {
-              debugPrint(
-                '🔍 STARTUP: No activity - staying on MessageScreen (will show welcome)',
-              );
-              _currentIndex = 0; // MessageScreen with welcome dialog
-            }
-            _isCheckingInitialScreen = false;
-          });
-        }
-      }
-
-      // Navigate to the determined screen after build completes
-      if (mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_pageController.hasClients) {
-            _pageController.jumpToPage(_currentIndex);
-          }
-        });
-      }
-    } catch (e) {
-      print(
-        '🔍 STARTUP: Error checking activity: $e - staying on default screen',
-      );
-      if (mounted) {
-        setState(() {
-          _currentIndex = 0; // Default to MessageScreen
-          _isCheckingInitialScreen = false;
-        });
-      }
-    }
-  }
-
   // Check if we're still authenticated
   Future<void> _checkAuthenticationState() async {
     try {
@@ -538,6 +476,39 @@ class MainAppContainerState extends State<MainAppContainer> {
     }
   }
 
+  // Check for existing DMs and set initial screen accordingly
+  Future<void> _checkForExistingDMs() async {
+    try {
+      debugPrint('🔍 Checking for existing DMs to determine initial screen...');
+      if (!mounted) return;
+
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final conversations = await apiService.getDMConversations();
+
+      if (mounted) {
+        setState(() {
+          if (conversations.isNotEmpty) {
+            debugPrint('🔍 STARTUP: Has DMs - navigating to DM screen');
+            _currentIndex = 1; // DM screen index
+          } else {
+            debugPrint('🔍 STARTUP: No DMs - staying on MessageScreen');
+            _currentIndex = 0; // MessageScreen index
+          }
+          _isCheckingInitialScreen = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error checking for DMs: $e');
+      // On error, proceed with default screen (MessageScreen)
+      if (mounted) {
+        setState(() {
+          _currentIndex = 0; // Default to MessageScreen
+          _isCheckingInitialScreen = false;
+        });
+      }
+    }
+  }
+
   @override
   void dispose() {
     // Cancel the timer to prevent memory leaks
@@ -575,6 +546,17 @@ class MainAppContainerState extends State<MainAppContainer> {
         physics: const NeverScrollableScrollPhysics(), // Disable swiping
         children: _screens,
         onPageChanged: (index) {
+          final screenNames = [
+            'MessageScreen',
+            'MessagesHomeScreen',
+            'ProfileScreen',
+            'FamilyManagementScreen',
+            'InvitationsScreen',
+          ];
+          debugPrint(
+            '📱 PAGE_VIEW: Page changed to $index (${screenNames[index]}) for user ${widget.userId}',
+          );
+
           setState(() {
             _currentIndex = index;
           });
@@ -604,6 +586,17 @@ class MainAppContainerState extends State<MainAppContainer> {
         controller: _navigationController,
         pendingInvitationsCount: _pendingInvitationsCount,
         onTabChanged: (index) {
+          final tabNames = [
+            'Messages',
+            'DMs',
+            'Profile',
+            'Family',
+            'Invitations',
+          ];
+          debugPrint(
+            '🔀 MAIN_NAV: Tab changed to $index (${tabNames[index]}) for user ${widget.userId}',
+          );
+
           // Animate to the selected page
           _pageController.animateToPage(
             index,

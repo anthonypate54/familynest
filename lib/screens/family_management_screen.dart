@@ -4,12 +4,18 @@ import '../services/api_service.dart';
 import '../services/family_service.dart';
 import '../models/family.dart';
 import '../widgets/gradient_background.dart';
+import 'package:intl/intl.dart';
+import '../controllers/bottom_navigation_controller.dart';
 
 class FamilyManagementScreen extends StatefulWidget {
   final int userId;
+  final BottomNavigationController? navigationController;
 
-  const FamilyManagementScreen({Key? key, required this.userId})
-    : super(key: key);
+  const FamilyManagementScreen({
+    Key? key,
+    required this.userId,
+    this.navigationController,
+  }) : super(key: key);
 
   @override
   State<FamilyManagementScreen> createState() => _FamilyManagementScreenState();
@@ -18,12 +24,25 @@ class FamilyManagementScreen extends StatefulWidget {
 class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool _isLoading = true;
   List<Family> _families = [];
   Family? _selectedFamily;
   Family? _ownedFamily;
-  bool _isLoading = true;
   List<Map<String, dynamic>> _allMembers = [];
   List<Map<String, dynamic>> _filteredMembers = [];
+  List<Map<String, dynamic>> _pendingInvitations = [];
+  List<Map<String, dynamic>> _sentInvitations = [];
+  Map<int, int> _familyPendingInviteCounts = {};
+  List<Map<String, dynamic>> _upcomingBirthdays = [];
+  bool _loadingBirthdays = false;
+  Map<String, dynamic>? _weeklyActivity;
+  bool _loadingWeeklyActivity = false;
+
+  // Period selection state
+  String _selectedPeriod = 'Wk'; // 'Wk', 'Mo', 'Yr'
+  Map<String, dynamic>? _currentActivity;
+  bool _loadingActivity = false;
+
   final _searchController = TextEditingController();
   final _familyNameController = TextEditingController();
   final _inviteEmailController = TextEditingController();
@@ -44,10 +63,202 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     super.dispose();
   }
 
+  Future<void> _loadPendingInvitations() async {
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final response = await apiService.getSentInvitations();
+
+      debugPrint('🔍 SENT INVITATIONS DEBUG - Response: $response');
+
+      if (response['success'] != false) {
+        final List<dynamic> invitations = response['invitations'] ?? [];
+
+        debugPrint('🔍 SENT INVITATIONS DEBUG - Raw invitations: $invitations');
+
+        // Process invitations and count pending ones by family
+        Map<int, int> pendingCounts = {};
+        List<Map<String, dynamic>> sentInvitations = [];
+
+        for (var invitation in invitations) {
+          final invitationMap = invitation as Map<String, dynamic>;
+          debugPrint(
+            '🔍 SENT INVITATIONS DEBUG - Processing invitation: $invitationMap',
+          );
+
+          sentInvitations.add(invitationMap);
+
+          // Count pending invitations by family
+          if (invitationMap['status'] == 'PENDING') {
+            final familyId = invitationMap['familyId'];
+            if (familyId != null) {
+              // Convert to int if it's a string or number
+              int familyIdInt;
+              if (familyId is String) {
+                familyIdInt = int.tryParse(familyId) ?? 0;
+              } else if (familyId is int) {
+                familyIdInt = familyId;
+              } else {
+                continue; // Skip if we can't parse family ID
+              }
+
+              pendingCounts[familyIdInt] =
+                  (pendingCounts[familyIdInt] ?? 0) + 1;
+            }
+          }
+        }
+
+        debugPrint(
+          '🔍 SENT INVITATIONS DEBUG - Pending counts: $pendingCounts',
+        );
+
+        if (mounted) {
+          setState(() {
+            _sentInvitations = sentInvitations;
+            _familyPendingInviteCounts = pendingCounts;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading pending invitations: $e');
+    }
+  }
+
+  Future<void> _loadUpcomingBirthdays() async {
+    final selectedFamily = _selectedFamily;
+    if (selectedFamily == null) return;
+
+    if (mounted) {
+      setState(() {
+        _loadingBirthdays = true;
+      });
+    }
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final birthdays = await apiService.getUpcomingBirthdays(
+        selectedFamily.id,
+      );
+
+      debugPrint(
+        '🎂 BIRTHDAYS DEBUG - Loaded ${birthdays.length} birthdays for family ${selectedFamily.id}',
+      );
+
+      if (mounted) {
+        setState(() {
+          _upcomingBirthdays = birthdays;
+          _loadingBirthdays = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading upcoming birthdays: $e');
+      if (mounted) {
+        setState(() {
+          _loadingBirthdays = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadWeeklyActivity() async {
+    final selectedFamily = _selectedFamily;
+    if (selectedFamily == null) return;
+
+    if (mounted) {
+      setState(() {
+        _loadingWeeklyActivity = true;
+      });
+    }
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final activity = await apiService.getWeeklyActivity(selectedFamily.id);
+
+      debugPrint(
+        '📊 WEEKLY ACTIVITY DEBUG - Loaded activity for family ${selectedFamily.id}: $activity',
+      );
+
+      if (mounted) {
+        setState(() {
+          _weeklyActivity = activity;
+          _loadingWeeklyActivity = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading weekly activity: $e');
+      if (mounted) {
+        setState(() {
+          _loadingWeeklyActivity = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadActivity({String? period}) async {
+    final selectedFamily = _selectedFamily;
+    if (selectedFamily == null) return;
+
+    final targetPeriod = period ?? _selectedPeriod;
+
+    if (mounted) {
+      setState(() {
+        _loadingActivity = true;
+        if (period != null) {
+          _selectedPeriod = period;
+        }
+      });
+    }
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      Map<String, dynamic>? activity;
+
+      switch (targetPeriod) {
+        case 'Wk':
+          activity = await apiService.getWeeklyActivity(selectedFamily.id);
+          break;
+        case 'Mo':
+          activity = await apiService.getYearlyActivity(selectedFamily.id);
+          break;
+        case 'Yr':
+          activity = await apiService.getMultiYearActivity(selectedFamily.id);
+          break;
+        default:
+          activity = await apiService.getWeeklyActivity(selectedFamily.id);
+      }
+
+      debugPrint(
+        '📊 ACTIVITY DEBUG - Loaded $targetPeriod activity for family ${selectedFamily.id}: $activity',
+      );
+
+      if (mounted) {
+        setState(() {
+          _currentActivity = activity;
+          _weeklyActivity = activity; // Keep for backward compatibility
+          _loadingActivity = false;
+          _loadingWeeklyActivity = false; // Keep for backward compatibility
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading $targetPeriod activity: $e');
+      if (mounted) {
+        setState(() {
+          _loadingActivity = false;
+          _loadingWeeklyActivity = false;
+        });
+      }
+    }
+  }
+
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
     try {
       final familyService = FamilyService.of(context);
+      final apiService = Provider.of<ApiService>(context, listen: false);
 
       final families = await familyService.loadUserFamilies(widget.userId);
 
@@ -70,6 +281,14 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         }
       }
 
+      // If user has no families, fetch pending invitations
+      List<Map<String, dynamic>> pendingInvitations = [];
+      if (families.isEmpty) {
+        try {} catch (e) {
+          debugPrint('Error fetching pending invitations: $e');
+        }
+      }
+
       if (mounted) {
         setState(() {
           _families = families;
@@ -80,15 +299,34 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                   : null;
           _allMembers = allMembers;
           _filteredMembers = allMembers;
-          _isLoading = false;
+          _pendingInvitations = pendingInvitations;
         });
 
         // Apply initial filtering
         _filterMembers();
+
+        // Load pending invitations count for families (only if user has families)
+        if (families.isNotEmpty) {
+          await _loadPendingInvitations();
+        }
+
+        // Load upcoming birthdays for selected family
+        if (_selectedFamily != null) {
+          await _loadUpcomingBirthdays();
+        }
+
+        // Load weekly activity for selected family
+        if (_selectedFamily != null) {
+          await _loadActivity();
+        }
       }
     } catch (e) {
+      debugPrint('Error in _loadData: $e');
+    } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -162,14 +400,16 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
 
             // Family Overview Card with complex layout
             _buildFamilyOverviewCard(),
-            const SizedBox(height: 6),
 
-            // Birthdays Card
-            _buildBirthdaysCard(),
-            const SizedBox(height: 6),
-
-            // Activity Chart Card
-            _buildWeeklyUsageCard(),
+            // Only show these cards if user has families
+            if (_families.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              // Birthdays Card
+              _buildBirthdaysCard(),
+              const SizedBox(height: 6),
+              // Activity Chart Card
+              _buildWeeklyUsageCard(),
+            ],
           ],
         ),
       ),
@@ -212,11 +452,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                         );
                       }).toList(),
                   onChanged: (Family? newFamily) {
-                    if (newFamily != null) {
-                      setState(() {
-                        _selectedFamily = newFamily;
-                      });
-                    }
+                    _onFamilySelected(newFamily);
                   },
                 ),
               ),
@@ -514,76 +750,182 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     final selectedFamily = _selectedFamily;
 
     if (selectedFamily == null) {
-      return Card(
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Left column - Create Family
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(
-                      Icons.family_restroom,
-                      size: 32,
-                      color: Colors.orange,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Create Your Family',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Start connecting with your family members',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
+      // Check if user has pending invitations
+      if (_pendingInvitations.isNotEmpty) {
+        final invitation = _pendingInvitations.first;
+        final inviterName = invitation['senderName'] ?? 'Someone';
+        final familyName = invitation['familyName'] ?? 'Unknown Family';
 
-              const SizedBox(width: 16),
-
-              // Right column - Empty for non-admin
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.admin_panel_settings,
-                      size: 32,
-                      color: Colors.grey[400],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'No Admin Functions',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Create family first',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+        return Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-        ),
-      );
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.mail_outline, size: 32, color: Colors.blue[600]),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'You have been invited!',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Join the "$familyName" family',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Invited by $inviterName',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Accept/Decline buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => _acceptInvitation(invitation),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text('Accept'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => _declineInvitation(invitation),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey[400],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text('Decline'),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Secondary option - Create own family
+                Center(
+                  child: Column(
+                    children: [
+                      Text(
+                        'Or you can always create a family of your own',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: _showCreateFamilyDialog,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.blue,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                        ),
+                        child: const Text(
+                          'Create Family',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        // No pending invitations - show create family option
+        return Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.family_restroom,
+                  size: 48,
+                  color: Colors.orange,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Create Your Family',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Start connecting with your family members',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: _showCreateFamilyDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text('Create Family'),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
     }
 
     final isOwner = selectedFamily.isOwned;
+    final createdAt = selectedFamily.createdAt;
+    final memberCount = selectedFamily.members.length;
 
     return Card(
       elevation: 4,
@@ -618,7 +960,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Created January 2024',
+                    'Created on ${DateFormat('MMM dd, yyyy').format(createdAt)}',
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                   const SizedBox(height: 6),
@@ -629,7 +971,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                       Icon(Icons.people, size: 16, color: Colors.blue[600]),
                       const SizedBox(width: 4),
                       Text(
-                        '3 Total Members',
+                        '$memberCount Total Members',
                         style: TextStyle(
                           color: Colors.blue[600],
                           fontSize: 12,
@@ -639,26 +981,39 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     ],
                   ),
                   const SizedBox(height: 4),
-                  // Pending invites info
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.mail_outline,
-                        size: 16,
-                        color: Colors.orange[600],
+                  // Pending invites info - only show if user is owner AND has pending invites
+                  if (isOwner &&
+                      (_familyPendingInviteCounts[selectedFamily.id] ?? 0) >
+                          0) ...[
+                    InkWell(
+                      onTap: () => _showPendingInvitesDialog(selectedFamily),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.mail_outline,
+                            size: 16,
+                            color: Colors.orange[600],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${_familyPendingInviteCounts[selectedFamily.id] ?? 0} Pending Invites',
+                            style: TextStyle(
+                              color: Colors.orange[600],
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            size: 12,
+                            color: Colors.orange[600],
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '2 Pending Invites',
-                        style: TextStyle(
-                          color: Colors.orange[600],
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -740,10 +1095,34 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'Contact family admin to invite new members',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 10),
-                      textAlign: TextAlign.center,
+                    Builder(
+                      builder: (context) {
+                        // Find the owner from members list
+                        final owner =
+                            selectedFamily.members
+                                .where((member) => member.isOwner)
+                                .firstOrNull;
+
+                        if (owner != null) {
+                          return Text(
+                            'DM your family owner "${owner.displayName}" to invite new members.',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 10,
+                            ),
+                            textAlign: TextAlign.center,
+                          );
+                        } else {
+                          return Text(
+                            'Contact family admin to invite new members',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 10,
+                            ),
+                            textAlign: TextAlign.center,
+                          );
+                        }
+                      },
                     ),
                   ],
                 ],
@@ -772,44 +1151,171 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                   'Upcoming Birthdays',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
+                const Spacer(),
+                if (_loadingBirthdays)
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Colors.orange[600]!,
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 12),
-            _buildBirthdayItem('Amy Johnson', 'Tue Jun 6'),
-            const SizedBox(height: 6),
-            _buildBirthdayItem('Mike Stevens', 'Fri Jun 16'),
-            const SizedBox(height: 6),
-            _buildBirthdayItem('Sarah Williams', 'Wed Jun 28'),
-            const SizedBox(height: 6),
-            _buildBirthdayItem('David Chen', 'Mon Jul 3'),
-            const SizedBox(height: 6),
-            _buildBirthdayItem('Emily Rodriguez', 'Thu Jul 8'),
+            if (_upcomingBirthdays.isEmpty && !_loadingBirthdays)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.celebration, color: Colors.grey[400], size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      'No birthdays in the next 7 days',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...(_upcomingBirthdays.map((birthday) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: _buildBirthdayItem(
+                    '${birthday['firstName']} ${birthday['lastName']}',
+                    birthday['description'] ?? 'Unknown',
+                    birthday['daysUntil'] ?? 0,
+                  ),
+                );
+              }).toList()),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBirthdayItem(String name, String date) {
+  Widget _buildBirthdayItem(String name, String description, int daysUntil) {
+    Color dotColor;
+    if (daysUntil == 0) {
+      dotColor = Colors.red[400]!; // Today - red
+    } else if (daysUntil == 1) {
+      dotColor = Colors.orange[400]!; // Tomorrow - orange
+    } else {
+      dotColor = Colors.orange[400]!; // Future - orange
+    }
+
     return Row(
       children: [
         Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(
-            color: Colors.orange[400],
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text('$name - $date', style: const TextStyle(fontSize: 14)),
+          child: Text(
+            '$name - $description',
+            style: const TextStyle(fontSize: 14),
+          ),
         ),
       ],
     );
   }
 
+  void _onFamilySelected(Family? newFamily) {
+    if (newFamily != null && newFamily != _selectedFamily) {
+      setState(() {
+        _selectedFamily = newFamily;
+      });
+      _filterMembers();
+      _loadUpcomingBirthdays(); // Load birthdays for the new family
+      _loadActivity(); // Load activity for the new family
+    }
+  }
+
   Widget _buildWeeklyUsageCard() {
+    // Use current activity data based on selected period
+    final activityData = _currentActivity ?? _weeklyActivity;
+
+    // Extract data based on selected period
+    List<dynamic> timeActivity;
+    int periodTotal;
+    String periodLabel;
+    List<double> defaultChartData;
+    List<String> defaultLabels;
+
+    switch (_selectedPeriod) {
+      case 'Mo':
+        timeActivity = activityData?['monthlyActivity'] as List<dynamic>? ?? [];
+        periodTotal = activityData?['yearlyTotal'] as int? ?? 0;
+        periodLabel = 'past year';
+        defaultChartData = List.filled(12, 0.0); // 12 months
+        defaultLabels = [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
+        ];
+        break;
+      case 'Yr':
+        timeActivity = activityData?['yearlyActivity'] as List<dynamic>? ?? [];
+        periodTotal = activityData?['allYearsTotal'] as int? ?? 0;
+        periodLabel = 'past years';
+        defaultChartData = List.filled(5, 0.0); // 5 years
+        defaultLabels = [
+          '2020',
+          '2021',
+          '2022',
+          '2023',
+          '2024',
+        ]; // Will be dynamic from data
+        break;
+      default: // 'Wk'
+        timeActivity = activityData?['dailyActivity'] as List<dynamic>? ?? [];
+        periodTotal = activityData?['weeklyTotal'] as int? ?? 0;
+        periodLabel = 'week';
+        defaultChartData = List.filled(7, 0.0); // 7 days
+        defaultLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    }
+
+    final totalMessages = activityData?['totalMessages'] as int? ?? 0;
+
+    // Convert activity to chart data
+    final chartData =
+        timeActivity.map((item) {
+          return (item['messageCount'] as num).toDouble();
+        }).toList();
+
+    // Get labels from the data
+    final labels =
+        timeActivity.map((item) {
+          // Use the appropriate label for each period
+          switch (_selectedPeriod) {
+            case 'Mo':
+              return item['monthLabel'] as String? ?? 'X';
+            case 'Yr':
+              return item['yearLabel'] as String? ?? 'X';
+            default: // 'Wk'
+              return item['dayLabel'] as String? ?? 'X';
+          }
+        }).toList();
+
+    // Use actual data if available, otherwise use defaults
+    final displayChartData =
+        chartData.isNotEmpty ? chartData : defaultChartData;
+    final displayLabels = labels.isNotEmpty ? labels : defaultLabels;
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -821,103 +1327,181 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Activity Chart',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                Row(
+                  children: [
+                    Icon(Icons.analytics, color: Colors.blue[600], size: 20),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Activity Chart',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
                 Row(
                   children: [
-                    _buildPeriodButton('Wk', true),
-                    const SizedBox(width: 4),
-                    _buildPeriodButton('Mo', false),
-                    const SizedBox(width: 4),
-                    _buildPeriodButton('Yr', false),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Y-axis labels and chart area
-            Row(
-              children: [
-                // Y-axis labels
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _buildYAxisLabel('25'),
-                    _buildYAxisLabel('20'),
-                    _buildYAxisLabel('15'),
-                    _buildYAxisLabel('10'),
-                    _buildYAxisLabel('5'),
-                  ],
-                ),
-                const SizedBox(width: 8),
-
-                // Chart area
-                Expanded(
-                  child: CustomPaint(
-                    painter: CompactLineChartPainter(),
-                    child: Container(height: 49),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 8),
-
-            // Day labels
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children:
-                  ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-                      .map(
-                        (day) => Text(
-                          day,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
+                    if (_loadingActivity || _loadingWeeklyActivity)
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.blue[600]!,
                           ),
                         ),
                       )
-                      .toList(),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Message counts
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Messages this week: 247',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                ),
-                Text(
-                  'Total messages: 1,234',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                    else ...[
+                      _buildPeriodButton('Wk', _selectedPeriod == 'Wk'),
+                      const SizedBox(width: 4),
+                      _buildPeriodButton('Mo', _selectedPeriod == 'Mo'),
+                      const SizedBox(width: 4),
+                      _buildPeriodButton('Yr', _selectedPeriod == 'Yr'),
+                    ],
+                  ],
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+
+            if (activityData == null &&
+                !_loadingActivity &&
+                !_loadingWeeklyActivity)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    'No activity data available',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  ),
+                ),
+              )
+            else ...[
+              // Y-axis labels and chart area
+              Row(
+                children: [
+                  // Y-axis labels - calculate max value from data
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _buildYAxisLabel(
+                        _getMaxValue(displayChartData).toString(),
+                      ),
+                      _buildYAxisLabel(
+                        (_getMaxValue(displayChartData) * 0.8)
+                            .round()
+                            .toString(),
+                      ),
+                      _buildYAxisLabel(
+                        (_getMaxValue(displayChartData) * 0.6)
+                            .round()
+                            .toString(),
+                      ),
+                      _buildYAxisLabel(
+                        (_getMaxValue(displayChartData) * 0.4)
+                            .round()
+                            .toString(),
+                      ),
+                      _buildYAxisLabel(
+                        (_getMaxValue(displayChartData) * 0.2)
+                            .round()
+                            .toString(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+
+                  // Chart area
+                  Expanded(
+                    child: CustomPaint(
+                      painter: CompactLineChartPainter(
+                        dataPoints: displayChartData,
+                        maxValue: _getMaxValue(displayChartData).toDouble(),
+                      ),
+                      child: Container(height: 49),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // Day labels
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children:
+                    displayLabels
+                        .map(
+                          (day) => Text(
+                            day,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        )
+                        .toList(),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Message counts
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Messages this $periodLabel: $periodTotal',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                  ),
+                  Text(
+                    'Total messages: $totalMessages',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
+  int _getMaxValue(List<double> data) {
+    if (data.isEmpty) return 25;
+    final max = data.reduce((a, b) => a > b ? a : b);
+    // Return a nice round number that's at least as big as the max
+    if (max <= 5) return 5;
+    if (max <= 10) return 10;
+    if (max <= 15) return 15;
+    if (max <= 20) return 20;
+    if (max <= 25) return 25;
+    if (max <= 50) return 50;
+    if (max <= 100) return 100;
+    return ((max / 50).ceil() * 50).toInt(); // Round up to nearest 50
+  }
+
   Widget _buildPeriodButton(String period, bool isSelected) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: isSelected ? Colors.green : Colors.grey[200],
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        period,
-        style: TextStyle(
-          fontSize: 12,
-          color: isSelected ? Colors.white : Colors.grey[600],
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+    return GestureDetector(
+      onTap: () {
+        if (!isSelected && !_loadingActivity) {
+          _loadActivity(period: period);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.green : Colors.grey[200],
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          period,
+          style: TextStyle(
+            fontSize: 12,
+            color: isSelected ? Colors.white : Colors.grey[600],
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
         ),
       ),
     );
@@ -1158,30 +1742,140 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
 
   Future<void> _inviteMember() async {
     final email = _inviteEmailController.text.trim();
-    if (email.isEmpty) return;
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter an email address')),
+      );
+      return;
+    }
 
     try {
-      Navigator.pop(context);
+      final selectedFamily = _selectedFamily;
+      if (selectedFamily == null || !selectedFamily.isOwned) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Must create family before invite')),
+        );
+        return;
+      }
 
-      final familyService = FamilyService.of(context);
-      await familyService.sendInvitation(
-        widget.userId,
-        email,
-        _ownedFamily?.name ?? '',
-      );
+      await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).inviteUserToFamily(selectedFamily.id, email);
 
-      _inviteEmailController.clear();
+      // Refresh pending invitation counts
+      await _loadPendingInvitations();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invitation sent successfully!')),
-        );
+        Navigator.pop(context);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Invitation sent to $email')));
+        _inviteEmailController.clear();
+
+        // Update the UI to show the new pending count
+        setState(() {});
       }
     } catch (e) {
       if (mounted) {
+        Navigator.pop(context);
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error sending invitation: $e')));
+      }
+    }
+  }
+
+  Future<void> _acceptInvitation(Map<String, dynamic> invitation) async {
+    try {
+      final invitationId = invitation['id'];
+      if (invitationId == null) {
+        throw Exception('Invalid invitation ID');
+      }
+
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      await apiService.respondToFamilyInvitation(invitationId, true);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invitation accepted! Welcome to the family!'),
+          ),
+        );
+
+        // Reload data to show the new family
+        await _loadData();
+
+        // Update navigation controller's invitation count
+        if (widget.navigationController != null) {
+          try {
+            final invitations = await apiService.getInvitations();
+            final pendingCount =
+                invitations
+                    .where(
+                      (inv) =>
+                          inv['status'] != null && inv['status'] == 'PENDING',
+                    )
+                    .length;
+            widget.navigationController!.setPendingInvitationsCount(
+              pendingCount,
+            );
+          } catch (e) {
+            debugPrint('Error updating invitation count: $e');
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error accepting invitation: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _declineInvitation(Map<String, dynamic> invitation) async {
+    try {
+      final invitationId = invitation['id'];
+      if (invitationId == null) {
+        throw Exception('Invalid invitation ID');
+      }
+
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      await apiService.respondToFamilyInvitation(invitationId, false);
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Invitation declined')));
+
+        // Reload data to remove the declined invitation
+        await _loadData();
+
+        // Update navigation controller's invitation count
+        if (widget.navigationController != null) {
+          try {
+            final invitations = await apiService.getInvitations();
+            final pendingCount =
+                invitations
+                    .where(
+                      (inv) =>
+                          inv['status'] != null && inv['status'] == 'PENDING',
+                    )
+                    .length;
+            widget.navigationController!.setPendingInvitationsCount(
+              pendingCount,
+            );
+          } catch (e) {
+            debugPrint('Error updating invitation count: $e');
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error declining invitation: $e')),
+        );
       }
     }
   }
@@ -1291,9 +1985,125 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       ),
     );
   }
+
+  void _showPendingInvitesDialog(Family? family) {
+    if (family == null) return;
+
+    final pendingInvites =
+        _sentInvitations.where((inv) {
+          final invFamilyId = inv['familyId'];
+          final invStatus = inv['status'];
+          final familyMatches =
+              (invFamilyId == family.id) ||
+              (invFamilyId.toString() == family.id.toString());
+          final statusMatches = invStatus == 'PENDING';
+
+          return familyMatches && statusMatches;
+        }).toList();
+
+    if (pendingInvites.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No pending invitations for this family.'),
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('Pending Invitations for ${family.name}'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: pendingInvites.length,
+                itemBuilder: (context, index) {
+                  final invite = pendingInvites[index];
+                  final email = invite['email'];
+                  final createdAt = invite['createdAt'];
+                  final expiresAt = invite['expiresAt'];
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.mail_outline,
+                        color: Colors.orange,
+                      ),
+                      title: Text('Invitation to $email'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Status: Pending'),
+                          Text(
+                            'Sent: ${createdAt?.substring(0, 10) ?? 'Unknown'}',
+                          ),
+                          Text(
+                            'Expires: ${expiresAt?.substring(0, 10) ?? 'Unknown'}',
+                          ),
+                        ],
+                      ),
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (value) {
+                          if (value == 'cancel') {
+                            _cancelInvitation(invite);
+                          } else if (value == 'resend') {
+                            _resendInvitation(invite);
+                          }
+                        },
+                        itemBuilder:
+                            (context) => [
+                              const PopupMenuItem(
+                                value: 'resend',
+                                child: Text('Resend'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'cancel',
+                                child: Text('Cancel'),
+                              ),
+                            ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _cancelInvitation(Map<String, dynamic> invitation) {
+    Navigator.pop(context);
+    // TODO: Implement cancel invitation
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cancel invitation feature coming soon!')),
+    );
+  }
+
+  void _resendInvitation(Map<String, dynamic> invitation) {
+    Navigator.pop(context);
+    // TODO: Implement resend invitation
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Resend invitation feature coming soon!')),
+    );
+  }
 }
 
 class CompactLineChartPainter extends CustomPainter {
+  final List<double> dataPoints;
+  final double maxValue;
+
+  CompactLineChartPainter({required this.dataPoints, required this.maxValue});
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint =
@@ -1304,31 +2114,34 @@ class CompactLineChartPainter extends CustomPainter {
 
     final path = Path();
 
-    // Sample data points (messages per day) - can be made dynamic later
-    final dataPoints = [12.0, 8.0, 15.0, 20.0, 18.0, 25.0, 22.0];
-    final maxValue = 25.0;
+    // Use passed-in data or default to empty chart
+    final points =
+        dataPoints.isNotEmpty
+            ? dataPoints
+            : [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    final max = maxValue > 0 ? maxValue : 25.0;
 
     // Add some padding from top and bottom
     final paddingTop = size.height * 0.1;
     final paddingBottom = size.height * 0.1;
     final chartHeight = size.height - paddingTop - paddingBottom;
 
-    // Draw horizontal grid lines (y-axis: 0, 5, 10, 15, 20, 25)
+    // Draw horizontal grid lines (y-axis: 0, 20%, 40%, 60%, 80%, 100% of max)
     final gridPaint =
         Paint()
           ..color = Colors.grey.withOpacity(0.3)
           ..strokeWidth = 0.5;
 
     for (int i = 0; i <= 5; i++) {
-      final value = i * 5.0; // 0, 5, 10, 15, 20, 25
-      final y = paddingTop + (1.0 - (value / maxValue)) * chartHeight;
+      final value = (i / 5.0) * max; // 0%, 20%, 40%, 60%, 80%, 100% of max
+      final y = paddingTop + (1.0 - (value / max)) * chartHeight;
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
     // Calculate and draw the data line
-    for (int i = 0; i < dataPoints.length; i++) {
-      final x = (i / (dataPoints.length - 1)) * size.width;
-      final y = paddingTop + (1.0 - (dataPoints[i] / maxValue)) * chartHeight;
+    for (int i = 0; i < points.length; i++) {
+      final x = (i / (points.length - 1)) * size.width;
+      final y = paddingTop + (1.0 - (points[i] / max)) * chartHeight;
 
       if (i == 0) {
         path.moveTo(x, y);
@@ -1345,15 +2158,17 @@ class CompactLineChartPainter extends CustomPainter {
           ..color = Colors.blue
           ..style = PaintingStyle.fill;
 
-    for (int i = 0; i < dataPoints.length; i++) {
-      final x = (i / (dataPoints.length - 1)) * size.width;
-      final y = paddingTop + (1.0 - (dataPoints[i] / maxValue)) * chartHeight;
+    for (int i = 0; i < points.length; i++) {
+      final x = (i / (points.length - 1)) * size.width;
+      final y = paddingTop + (1.0 - (points[i] / max)) * chartHeight;
       canvas.drawCircle(Offset(x, y), 2.5, dotPaint);
     }
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
+    return oldDelegate is CompactLineChartPainter &&
+        (oldDelegate.dataPoints != dataPoints ||
+            oldDelegate.maxValue != maxValue);
   }
 }

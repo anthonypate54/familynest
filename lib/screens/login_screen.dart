@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import '../utils/page_transitions.dart';
-import '../main.dart'; // Import to access MainAppContainer
+import '../services/onboarding_service.dart';
+import '../models/user.dart'; // Import User model
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../widgets/gradient_background.dart';
+import '../main.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -62,16 +63,16 @@ class LoginScreenState extends State<LoginScreen> {
         return; // Stay on login screen
       }
 
-      final user =
+      final userResponse =
           await Provider.of<ApiService>(
             context,
             listen: false,
           ).getCurrentUser();
 
-      if (user != null && mounted) {
-        // Extra validation - make sure we have a valid user ID
-        final userId = user['userId'];
-        final userRole = user['role'] ?? 'USER';
+      if (userResponse != null && mounted) {
+        // Extract user data
+        final userId = userResponse['userId'];
+        final userRole = userResponse['role'] ?? 'USER';
 
         debugPrint(
           'LOGIN_SCREEN: Auto-login successful, userId: $userId, role: $userRole',
@@ -79,11 +80,20 @@ class LoginScreenState extends State<LoginScreen> {
 
         // Only navigate if we have a valid user ID
         if (userId != null) {
-          debugPrint('LOGIN_SCREEN: Navigating to MainAppContainer');
-          if (!mounted) return;
-          slidePushReplacement(
+          // Check onboarding state for simple routing
+          final user = User.fromJson(userResponse);
+          final onboardingState = user.onboardingState;
+
+          debugPrint(
+            'LOGIN_SCREEN: Auto-login user $userId has onboarding_state: $onboardingState',
+          );
+
+          // Use OnboardingService to route based on onboarding state bitmap
+          await OnboardingService.routeAfterLogin(
             context,
-            MainAppContainer(userId: userId, userRole: userRole),
+            userId,
+            userRole,
+            onboardingState ?? 0,
           );
         } else {
           debugPrint('LOGIN_SCREEN: Not navigating - userId is null');
@@ -122,15 +132,35 @@ class LoginScreenState extends State<LoginScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('explicitly_logged_out', false);
 
-        debugPrint('Login successful, navigating to main app');
-        if (!mounted) return;
-        slidePushReplacement(
-          context,
-          MainAppContainer(
-            userId: response['userId'],
-            userRole: response['role'] ?? 'USER',
-          ),
+        final userId = response['userId'];
+        final userRole = response['role'] ?? 'USER';
+
+        debugPrint(
+          'Login successful for user $userId, checking onboarding state...',
         );
+
+        // Get current user to check onboarding state
+        final apiService = Provider.of<ApiService>(context, listen: false);
+        final userResponse = await apiService.getCurrentUser();
+
+        if (userResponse != null && mounted) {
+          final user = User.fromJson(userResponse);
+          final onboardingState = user.onboardingState;
+
+          debugPrint('User $userId has onboarding_state: $onboardingState');
+
+          // Use OnboardingService to route based on onboarding state bitmap
+          await OnboardingService.routeAfterLogin(
+            context,
+            userId,
+            userRole,
+            onboardingState ?? 0,
+          );
+        } else {
+          // Fallback to normal flow if we can't get user data
+          debugPrint('Could not get user data, falling back to normal flow');
+          OnboardingService.normalFlow(context, userId, userRole);
+        }
       } else {
         if (!mounted) return;
         setState(() {
