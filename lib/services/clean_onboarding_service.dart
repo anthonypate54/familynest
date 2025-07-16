@@ -67,9 +67,17 @@ class CleanOnboardingService {
       TourType.freshUser,
     );
 
-    // 2. Handle different tour results
+    // 2. Handle notification setup REGARDLESS of tour choice
+    debugPrint('🔀 FRESH_USER: Tour completed, starting notification setup');
+    await NotificationSetupService.handleNotificationSetup(
+      context,
+      userId,
+      userRole,
+    );
+
+    // 3. Handle different tour results for navigation
     if (tourResult == 'create_family') {
-      // User wants to create family - skip notifications, go to family tab
+      // User wants to create family - go to family tab
       debugPrint('🔀 FRESH_USER: User wants to create family');
       _navigateToMainApp(
         context,
@@ -78,7 +86,7 @@ class CleanOnboardingService {
         initialTab: 3,
       ); // Family tab
     } else if (tourResult == 'check_invitations') {
-      // User wants to check invitations - skip notifications, go to invitations tab
+      // User wants to check invitations - go to invitations tab
       debugPrint('🔀 FRESH_USER: User wants to check invitations');
       _navigateToMainApp(
         context,
@@ -87,12 +95,7 @@ class CleanOnboardingService {
         initialTab: 4,
       ); // Invitations tab
     } else {
-      // Normal completion - show notifications then go to main app
-      await NotificationSetupService.handleNotificationSetup(
-        context,
-        userId,
-        userRole,
-      );
+      // Normal completion - go to main app
       _navigateToMainApp(
         context,
         userId,

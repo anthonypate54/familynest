@@ -44,6 +44,10 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
   Map<String, dynamic>? _currentActivity;
   bool _loadingActivity = false;
 
+  // Notification preferences state
+  Map<String, dynamic>? _notificationPreferences;
+  bool _loadingNotifications = false;
+
   final _searchController = TextEditingController();
   final _familyNameController = TextEditingController();
   final _inviteEmailController = TextEditingController();

@@ -26,12 +26,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
-  bool _autoRefreshEnabled = true;
-  String _refreshInterval = '5 min';
-  bool _showOfflineContent = true;
-
-  // Notification preferences
   Map<String, dynamic>? _notificationPreferences;
   bool _loadingNotifications = false;
 
@@ -87,12 +81,6 @@ class SettingsScreenState extends State<SettingsScreen> {
 
             _buildSectionHeader('Notifications'),
             _buildNotificationSettings(),
-
-            _buildSectionHeader('Content'),
-            _buildContentSettings(),
-
-            _buildSectionHeader('Data & Privacy'),
-            _buildPrivacySettings(),
 
             _buildSectionHeader('About'),
             _buildAboutSettings(),
@@ -388,287 +376,87 @@ class SettingsScreenState extends State<SettingsScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final globalSettings =
-        _notificationPreferences?['globalNotifications'] ?? {};
-    final dmSettings = _notificationPreferences?['dmNotifications'] ?? {};
-    final invitationSettings =
-        _notificationPreferences?['invitationNotifications'] ?? {};
+    final bool devicePermissionGranted =
+        _notificationPreferences?['devicePermissionGranted'] ?? false;
+    final bool pushEnabled =
+        _notificationPreferences?['pushNotificationsEnabled'] ?? false;
+    final bool emailEnabled =
+        _notificationPreferences?['emailNotificationsEnabled'] ?? false;
 
     return Column(
       children: [
-        // Global notification settings
+        // Push Notifications
         SwitchListTile(
           title: const Text('Push Notifications'),
-          subtitle: const Text('Receive push notifications'),
-          secondary: const Icon(Icons.notifications),
-          value: globalSettings['pushNotificationsEnabled'] ?? true,
+          subtitle: Text(
+            devicePermissionGranted
+                ? 'Receive push notifications on your device'
+                : 'Enable in iOS Settings > Notifications > FamilyNest first',
+          ),
+          secondary: Icon(
+            Icons.notifications,
+            color: devicePermissionGranted ? null : Colors.grey,
+          ),
+          value: devicePermissionGranted ? pushEnabled : false,
           activeColor: Colors.white,
           activeTrackColor: AppTheme.getSwitchColor(context),
-          onChanged: (value) async {
-            await _updateGlobalNotificationSetting(
-              'pushNotificationsEnabled',
-              value,
-            );
-          },
+          onChanged:
+              devicePermissionGranted
+                  ? (value) async {
+                    await _updateNotificationSetting(
+                      'pushNotificationsEnabled',
+                      value,
+                    );
+                  }
+                  : null, // Disabled when no device permission
         ),
+
+        // Show helper text when device permission not granted
+        if (!devicePermissionGranted)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 8.0,
+            ),
+            child: Text(
+              '💡 To enable push notifications, first allow notifications in your device settings, then return here to turn them on.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.orange[300],
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+
+        // Email Notifications (always functional)
         SwitchListTile(
           title: const Text('Email Notifications'),
           subtitle: const Text('Receive email notifications'),
           secondary: const Icon(Icons.email),
-          value: globalSettings['emailNotificationsEnabled'] ?? true,
+          value: emailEnabled,
           activeColor: Colors.white,
           activeTrackColor: AppTheme.getSwitchColor(context),
           onChanged: (value) async {
-            await _updateGlobalNotificationSetting(
+            await _updateNotificationSetting(
               'emailNotificationsEnabled',
               value,
             );
           },
         ),
 
-        const Divider(),
-
-        // DM notification settings
-        SwitchListTile(
-          title: const Text('DM Notifications'),
-          subtitle: const Text('Receive notifications for direct messages'),
-          secondary: const Icon(Icons.message),
-          value: dmSettings['receiveDMNotifications'] ?? true,
-          activeColor: Colors.white,
-          activeTrackColor: AppTheme.getSwitchColor(context),
-          onChanged: (value) async {
-            await _updateDMNotificationSetting('receiveDMNotifications', value);
-          },
-        ),
-        SwitchListTile(
-          title: const Text('DM Email Notifications'),
-          subtitle: const Text('Receive email notifications for DMs'),
-          secondary: const Icon(Icons.email_outlined),
-          value: dmSettings['emailDMNotifications'] ?? true,
-          activeColor: Colors.white,
-          activeTrackColor: AppTheme.getSwitchColor(context),
-          onChanged: (value) async {
-            await _updateDMNotificationSetting('emailDMNotifications', value);
-          },
-        ),
-
-        const Divider(),
-
-        // Invitation notification settings
-        SwitchListTile(
-          title: const Text('Invitation Notifications'),
-          subtitle: const Text('Receive notifications for invitations'),
-          secondary: const Icon(Icons.family_restroom),
-          value: invitationSettings['receiveInvitationNotifications'] ?? true,
-          activeColor: Colors.white,
-          activeTrackColor: AppTheme.getSwitchColor(context),
-          onChanged: (value) async {
-            await _updateInvitationNotificationSetting(
-              'receiveInvitationNotifications',
-              value,
-            );
-          },
-        ),
-        SwitchListTile(
-          title: const Text('Invitation Acceptance Notifications'),
-          subtitle: const Text('Get notified when invitations are accepted'),
-          secondary: const Icon(Icons.check_circle),
-          value: invitationSettings['notifyOnInvitationAccepted'] ?? true,
-          activeColor: Colors.white,
-          activeTrackColor: AppTheme.getSwitchColor(context),
-          onChanged: (value) async {
-            await _updateInvitationNotificationSetting(
-              'notifyOnInvitationAccepted',
-              value,
-            );
-          },
-        ),
-
-        const Divider(),
-
-        // Quiet hours settings
-        SwitchListTile(
-          title: const Text('Quiet Hours'),
-          subtitle: const Text('Pause notifications during quiet hours'),
-          secondary: const Icon(Icons.bedtime),
-          value: globalSettings['quietHoursEnabled'] ?? false,
-          activeColor: Colors.white,
-          activeTrackColor: AppTheme.getSwitchColor(context),
-          onChanged: (value) async {
-            await _updateGlobalNotificationSetting('quietHoursEnabled', value);
-          },
-        ),
-        if (globalSettings['quietHoursEnabled'] ?? false)
-          ListTile(
-            leading: const Icon(Icons.schedule),
-            title: const Text('Quiet Hours Schedule'),
-            subtitle: Text(
-              '${globalSettings['quietHoursStart'] ?? '22:00'} - ${globalSettings['quietHoursEnd'] ?? '08:00'}',
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Text(
+            'These settings control all notifications from FamilyNest including messages, invitations, and family updates.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.grey[400],
+              fontStyle: FontStyle.italic,
             ),
-            onTap: () => _showQuietHoursDialog(),
+            textAlign: TextAlign.center,
           ),
-
-        SwitchListTile(
-          title: const Text('Weekend Notifications'),
-          subtitle: const Text('Receive notifications on weekends'),
-          secondary: const Icon(Icons.weekend),
-          value: globalSettings['weekendNotifications'] ?? true,
-          activeColor: Colors.white,
-          activeTrackColor: AppTheme.getSwitchColor(context),
-          onChanged: (value) async {
-            await _updateGlobalNotificationSetting(
-              'weekendNotifications',
-              value,
-            );
-          },
         ),
       ],
-    );
-  }
-
-  Widget _buildContentSettings() {
-    return Column(
-      children: [
-        SwitchListTile(
-          title: const Text('Auto-refresh Content'),
-          subtitle: const Text('Automatically update feeds'),
-          secondary: const Icon(Icons.refresh),
-          value: _autoRefreshEnabled,
-          activeColor: Colors.white,
-          activeTrackColor: AppTheme.getSwitchColor(context),
-          onChanged: (value) {
-            setState(() {
-              _autoRefreshEnabled = value;
-            });
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.timer),
-          title: const Text('Refresh Interval'),
-          subtitle: Text(_refreshInterval),
-          enabled: _autoRefreshEnabled,
-          onTap: () {
-            if (_autoRefreshEnabled) {
-              _showRefreshIntervalDialog();
-            }
-          },
-        ),
-        SwitchListTile(
-          title: const Text('Show Offline Content'),
-          subtitle: const Text('Access content when offline'),
-          secondary: const Icon(Icons.offline_pin),
-          value: _showOfflineContent,
-          activeColor: Colors.white,
-          activeTrackColor: AppTheme.getSwitchColor(context),
-          onChanged: (value) {
-            setState(() {
-              _showOfflineContent = value;
-            });
-          },
-        ),
-      ],
-    );
-  }
-
-  void _showRefreshIntervalDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (BuildContext dialogContext) => AlertDialog(
-            title: const Text('Refresh Interval'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildIntervalOption('1 min', dialogContext),
-                _buildIntervalOption('5 min', dialogContext),
-                _buildIntervalOption('15 min', dialogContext),
-                _buildIntervalOption('30 min', dialogContext),
-                _buildIntervalOption('1 hour', dialogContext),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  Widget _buildIntervalOption(String interval, BuildContext dialogContext) {
-    return RadioListTile<String>(
-      title: Text(interval),
-      value: interval,
-      groupValue: _refreshInterval,
-      activeColor:
-          Theme.of(context).brightness == Brightness.dark
-              ? AppTheme.darkGreenAccent
-              : AppTheme.primaryColor,
-      onChanged: (value) {
-        if (value != null) {
-          setState(() {
-            _refreshInterval = value;
-          });
-          Navigator.pop(dialogContext);
-        }
-      },
-    );
-  }
-
-  Widget _buildPrivacySettings() {
-    return Column(
-      children: [
-        ListTile(
-          leading: const Icon(Icons.security),
-          title: const Text('Privacy Settings'),
-          subtitle: const Text('Manage your data and privacy'),
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Privacy Settings tapped')),
-            );
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.delete),
-          title: const Text('Clear App Data'),
-          subtitle: const Text('Delete cached content'),
-          onTap: () {
-            _showClearDataDialog();
-          },
-        ),
-      ],
-    );
-  }
-
-  void _showClearDataDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (BuildContext dialogContext) => AlertDialog(
-            title: const Text('Clear App Data'),
-            content: const Text(
-              'This will delete all cached data including saved messages and media. This action cannot be undone.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('App data cleared')),
-                  );
-                },
-                child: const Text(
-                  'Clear Data',
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            ],
-          ),
     );
   }
 
@@ -736,42 +524,32 @@ class SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Notification preference update methods
-  Future<void> _updateGlobalNotificationSetting(String key, bool value) async {
-    final currentGlobal =
-        _notificationPreferences?['globalNotifications'] ?? {};
-
+  // Simplified notification preference update method
+  Future<void> _updateNotificationSetting(String key, bool value) async {
     try {
-      final success = await widget.apiService
-          .updateGlobalNotificationPreferences(
-            widget.userId,
-            emailNotificationsEnabled:
-                key == 'emailNotificationsEnabled'
-                    ? value
-                    : (currentGlobal['emailNotificationsEnabled'] ?? true),
-            pushNotificationsEnabled:
-                key == 'pushNotificationsEnabled'
-                    ? value
-                    : (currentGlobal['pushNotificationsEnabled'] ?? true),
-            quietHoursEnabled:
-                key == 'quietHoursEnabled'
-                    ? value
-                    : (currentGlobal['quietHoursEnabled'] ?? false),
-            quietHoursStart: currentGlobal['quietHoursStart'] ?? '22:00',
-            quietHoursEnd: currentGlobal['quietHoursEnd'] ?? '08:00',
-            weekendNotifications:
-                key == 'weekendNotifications'
-                    ? value
-                    : (currentGlobal['weekendNotifications'] ?? true),
-          );
+      final currentPrefs = _notificationPreferences ?? {};
+
+      // Create updated preferences map
+      final updatedPrefs = <String, bool>{
+        'pushNotificationsEnabled':
+            key == 'pushNotificationsEnabled'
+                ? value
+                : (currentPrefs['pushNotificationsEnabled'] ?? false) as bool,
+        'emailNotificationsEnabled':
+            key == 'emailNotificationsEnabled'
+                ? value
+                : (currentPrefs['emailNotificationsEnabled'] ?? false) as bool,
+      };
+
+      final success = await widget.apiService.updateNotificationPreferences(
+        widget.userId,
+        updatedPrefs,
+      );
 
       if (success) {
         // Update local state
         setState(() {
-          _notificationPreferences = {
-            ..._notificationPreferences ?? {},
-            'globalNotifications': {...currentGlobal, key: value},
-          };
+          _notificationPreferences = updatedPrefs;
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -784,219 +562,6 @@ class SettingsScreenState extends State<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error updating notification setting: $e')),
       );
-    }
-  }
-
-  Future<void> _updateDMNotificationSetting(String key, bool value) async {
-    final currentDM = _notificationPreferences?['dmNotifications'] ?? {};
-
-    try {
-      final success = await widget.apiService.updateDMNotificationPreferences(
-        widget.userId,
-        receiveDMNotifications:
-            key == 'receiveDMNotifications'
-                ? value
-                : (currentDM['receiveDMNotifications'] ?? true),
-        emailDMNotifications:
-            key == 'emailDMNotifications'
-                ? value
-                : (currentDM['emailDMNotifications'] ?? true),
-        pushDMNotifications:
-            key == 'pushDMNotifications'
-                ? value
-                : (currentDM['pushDMNotifications'] ?? true),
-      );
-
-      if (success) {
-        // Update local state
-        setState(() {
-          _notificationPreferences = {
-            ..._notificationPreferences ?? {},
-            'dmNotifications': {...currentDM, key: value},
-          };
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to update DM notification setting'),
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating DM notification setting: $e')),
-      );
-    }
-  }
-
-  Future<void> _updateInvitationNotificationSetting(
-    String key,
-    bool value,
-  ) async {
-    final currentInvitation =
-        _notificationPreferences?['invitationNotifications'] ?? {};
-
-    try {
-      final success = await widget.apiService
-          .updateInvitationNotificationPreferences(
-            widget.userId,
-            receiveInvitationNotifications:
-                key == 'receiveInvitationNotifications'
-                    ? value
-                    : (currentInvitation['receiveInvitationNotifications'] ??
-                        true),
-            emailInvitationNotifications:
-                key == 'emailInvitationNotifications'
-                    ? value
-                    : (currentInvitation['emailInvitationNotifications'] ??
-                        true),
-            pushInvitationNotifications:
-                key == 'pushInvitationNotifications'
-                    ? value
-                    : (currentInvitation['pushInvitationNotifications'] ??
-                        true),
-            notifyOnInvitationAccepted:
-                key == 'notifyOnInvitationAccepted'
-                    ? value
-                    : (currentInvitation['notifyOnInvitationAccepted'] ?? true),
-            notifyOnInvitationDeclined:
-                key == 'notifyOnInvitationDeclined'
-                    ? value
-                    : (currentInvitation['notifyOnInvitationDeclined'] ??
-                        false),
-          );
-
-      if (success) {
-        // Update local state
-        setState(() {
-          _notificationPreferences = {
-            ..._notificationPreferences ?? {},
-            'invitationNotifications': {...currentInvitation, key: value},
-          };
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to update invitation notification setting'),
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error updating invitation notification setting: $e'),
-        ),
-      );
-    }
-  }
-
-  void _showQuietHoursDialog() {
-    final currentGlobal =
-        _notificationPreferences?['globalNotifications'] ?? {};
-    String startTime = currentGlobal['quietHoursStart'] ?? '22:00';
-    String endTime = currentGlobal['quietHoursEnd'] ?? '08:00';
-
-    showDialog(
-      context: context,
-      builder:
-          (BuildContext dialogContext) => AlertDialog(
-            title: const Text('Quiet Hours'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: const Text('Start Time'),
-                  subtitle: Text(startTime),
-                  onTap: () async {
-                    final time = await showTimePicker(
-                      context: dialogContext,
-                      initialTime: TimeOfDay(
-                        hour: int.parse(startTime.split(':')[0]),
-                        minute: int.parse(startTime.split(':')[1]),
-                      ),
-                    );
-                    if (time != null) {
-                      startTime =
-                          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-                    }
-                  },
-                ),
-                ListTile(
-                  title: const Text('End Time'),
-                  subtitle: Text(endTime),
-                  onTap: () async {
-                    final time = await showTimePicker(
-                      context: dialogContext,
-                      initialTime: TimeOfDay(
-                        hour: int.parse(endTime.split(':')[0]),
-                        minute: int.parse(endTime.split(':')[1]),
-                      ),
-                    );
-                    if (time != null) {
-                      endTime =
-                          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-                    }
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(dialogContext);
-                  // Update quiet hours
-                  await _updateQuietHours(startTime, endTime);
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  Future<void> _updateQuietHours(String startTime, String endTime) async {
-    final currentGlobal =
-        _notificationPreferences?['globalNotifications'] ?? {};
-
-    try {
-      final success = await widget.apiService
-          .updateGlobalNotificationPreferences(
-            widget.userId,
-            emailNotificationsEnabled:
-                currentGlobal['emailNotificationsEnabled'] ?? true,
-            pushNotificationsEnabled:
-                currentGlobal['pushNotificationsEnabled'] ?? true,
-            quietHoursEnabled: currentGlobal['quietHoursEnabled'] ?? false,
-            quietHoursStart: startTime,
-            quietHoursEnd: endTime,
-            weekendNotifications: currentGlobal['weekendNotifications'] ?? true,
-          );
-
-      if (success) {
-        // Update local state
-        setState(() {
-          _notificationPreferences = {
-            ..._notificationPreferences ?? {},
-            'globalNotifications': {
-              ...currentGlobal,
-              'quietHoursStart': startTime,
-              'quietHoursEnd': endTime,
-            },
-          };
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to update quiet hours')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error updating quiet hours: $e')));
     }
   }
 

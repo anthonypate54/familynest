@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/clean_onboarding_service.dart'; // Use clean service
+import '../services/notification_service.dart'; // Add notification service import
 import '../models/user.dart'; // Import User model
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/gradient_background.dart';
@@ -88,6 +89,17 @@ class LoginScreenState extends State<LoginScreen> {
             'LOGIN_SCREEN: Auto-login user $userId has onboarding_state: $onboardingState',
           );
 
+          // Register FCM token with backend after successful auto-login
+          try {
+            await NotificationService.sendTokenToBackend(userId.toString());
+            debugPrint(
+              '✅ FCM token registered with backend for auto-login user $userId',
+            );
+          } catch (e) {
+            debugPrint('⚠️ Failed to register FCM token for auto-login: $e');
+            // Don't block auto-login flow if FCM token registration fails
+          }
+
           // Use OnboardingService to route based on onboarding state bitmap
           await CleanOnboardingService.routeAfterLogin(
             context,
@@ -149,6 +161,15 @@ class LoginScreenState extends State<LoginScreen> {
 
           debugPrint('User $userId has onboarding_state: $onboardingState');
 
+          // Register FCM token with backend after successful login
+          try {
+            await NotificationService.sendTokenToBackend(userId.toString());
+            debugPrint('✅ FCM token registered with backend for user $userId');
+          } catch (e) {
+            debugPrint('⚠️ Failed to register FCM token: $e');
+            // Don't block login flow if FCM token registration fails
+          }
+
           // Use OnboardingService to route based on onboarding state bitmap
           await CleanOnboardingService.routeAfterLogin(
             context,
@@ -159,6 +180,17 @@ class LoginScreenState extends State<LoginScreen> {
         } else {
           // Fallback to normal flow if we can't get user data
           debugPrint('Could not get user data, falling back to normal flow');
+
+          // Still try to register FCM token even in fallback
+          try {
+            await NotificationService.sendTokenToBackend(userId.toString());
+            debugPrint(
+              '✅ FCM token registered with backend for user $userId (fallback)',
+            );
+          } catch (e) {
+            debugPrint('⚠️ Failed to register FCM token in fallback: $e');
+          }
+
           CleanOnboardingService.normalFlow(context, userId, userRole);
         }
       } else {

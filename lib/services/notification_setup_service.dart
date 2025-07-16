@@ -76,23 +76,36 @@ class NotificationSetupService {
                   debugPrint(
                     '🔔 NOTIFICATION_SETUP: User chose to enable notifications',
                   );
+                  debugPrint(
+                    '🔔 NOTIFICATION_SETUP: About to request Firebase permissions...',
+                  );
 
-                  // Request Firebase permissions
+                  // Request Firebase permissions first
                   bool granted =
                       await NotificationService.requestPermissionsAndEnable();
                   debugPrint(
                     '🔔 NOTIFICATION_SETUP: Firebase permissions granted: $granted',
                   );
 
-                  if (granted) {
+                  if (granted && context.mounted) {
+                    debugPrint(
+                      '🔔 NOTIFICATION_SETUP: Context still mounted, proceeding with API call...',
+                    );
                     // Enable all notification preferences in database
                     try {
                       final apiService = Provider.of<ApiService>(
                         context,
                         listen: false,
                       );
+                      debugPrint(
+                        '🔔 NOTIFICATION_SETUP: Got ApiService, calling enableAllNotificationPreferences...',
+                      );
                       bool success = await apiService
                           .enableAllNotificationPreferences(userId);
+
+                      debugPrint(
+                        '🔔 NOTIFICATION_SETUP: API call result: $success',
+                      );
 
                       if (success) {
                         debugPrint(
@@ -113,15 +126,44 @@ class NotificationSetupService {
                         debugPrint(
                           '❌ NOTIFICATION_SETUP: Failed to enable notification preferences',
                         );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Failed to enable notification preferences',
+                              ),
+                              backgroundColor: Colors.red,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
                       }
                     } catch (e) {
                       debugPrint(
                         '❌ NOTIFICATION_SETUP: Error enabling preferences: $e',
                       );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error enabling preferences: $e'),
+                            backgroundColor: Colors.red,
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      }
                     }
+                  } else {
+                    debugPrint(
+                      '❌ NOTIFICATION_SETUP: Permissions not granted OR context not mounted',
+                    );
+                    debugPrint('   - granted: $granted');
+                    debugPrint('   - context.mounted: ${context.mounted}');
                   }
 
-                  Navigator.of(context).pop();
+                  // Close dialog AFTER async operations complete
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
                   completed = true;
                 },
                 child: const Text('Enable Notifications'),

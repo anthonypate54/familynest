@@ -3038,15 +3038,27 @@ Network connection error. Please check:
   // Enable all notification preferences for onboarding
   Future<bool> enableAllNotificationPreferences(int userId) async {
     try {
+      debugPrint(
+        '🔔 API_SERVICE: Starting enableAllNotificationPreferences for user $userId',
+      );
+
       final headers = {'Content-Type': 'application/json'};
       if (_token != null) {
         headers['Authorization'] = 'Bearer $_token';
+        debugPrint(
+          '🔔 API_SERVICE: Using auth token: ${_token?.substring(0, 20)}...',
+        );
+      } else {
+        debugPrint('❌ API_SERVICE: No auth token available!');
       }
 
-      final response = await client.post(
-        Uri.parse('$baseUrl/api/notification-preferences/$userId/enable-all'),
-        headers: headers,
-      );
+      final url = '$baseUrl/api/notification-preferences/$userId/enable-all';
+      debugPrint('🔔 API_SERVICE: Making POST request to: $url');
+
+      final response = await client.post(Uri.parse(url), headers: headers);
+
+      debugPrint('🔔 API_SERVICE: Response status: ${response.statusCode}');
+      debugPrint('🔔 API_SERVICE: Response body: ${response.body}');
 
       if (response.statusCode == 200) {
         debugPrint('✅ All notification preferences enabled for user $userId');
@@ -3055,10 +3067,35 @@ Network connection error. Please check:
         debugPrint(
           '❌ Failed to enable notification preferences: ${response.statusCode}',
         );
+        debugPrint('Response body: ${response.body}');
         return false;
       }
     } catch (e) {
       debugPrint('❌ Error enabling all notification preferences: $e');
+      return false;
+    }
+  }
+
+  // Simplified notification preferences update method
+  Future<bool> updateNotificationPreferences(
+    int userId,
+    Map<String, bool> preferences,
+  ) async {
+    try {
+      final headers = {'Content-Type': 'application/json'};
+      if (_token != null) {
+        headers['Authorization'] = 'Bearer $_token';
+      }
+
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/notification-preferences/$userId'),
+        headers: headers,
+        body: jsonEncode(preferences),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating notification preferences: $e');
       return false;
     }
   }

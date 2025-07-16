@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'api_service.dart';
 
 class NotificationService {
   static final FirebaseMessaging _firebaseMessaging =
@@ -339,10 +342,23 @@ class NotificationService {
     debugPrint('📤 Sending FCM token to backend for user: $userId');
 
     try {
-      // TODO: Implement API call to send token to backend
-      // Example:
-      // await ApiService.sendFcmToken(userId, _fcmToken!);
-      debugPrint('✅ FCM token sent to backend (TODO: implement API call)');
+      // Import the API service
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/users/$userId/fcm-token'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${ApiService.getToken()}',
+        },
+        body: json.encode({'fcmToken': _fcmToken}),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('✅ FCM token sent to backend successfully');
+      } else {
+        debugPrint(
+          '❌ Failed to send FCM token: ${response.statusCode} - ${response.body}',
+        );
+      }
     } catch (e) {
       debugPrint('❌ Error sending FCM token to backend: $e');
     }
