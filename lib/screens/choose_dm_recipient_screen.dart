@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
-import '../widgets/gradient_background.dart';
-import 'dm_thread_screen.dart';
-import '../utils/page_transitions.dart';
 import '../models/dm_conversation.dart';
+import '../models/dm_message.dart';
+import '../providers/dm_conversation_provider.dart';
+import '../providers/dm_message_provider.dart';
+import '../widgets/gradient_background.dart';
+import '../utils/page_transitions.dart';
+import 'dm_thread_screen.dart';
+import '../theme/app_theme.dart';
 
 class ChooseDMRecipientScreen extends StatefulWidget {
   final int userId;
@@ -219,7 +223,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        backgroundColor: AppTheme.getAppBarColor(context),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),

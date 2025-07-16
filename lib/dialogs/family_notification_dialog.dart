@@ -3,6 +3,7 @@ import '../models/family.dart';
 import '../services/family_service.dart';
 import '../widgets/family_card.dart';
 import 'package:provider/provider.dart';
+import '../theme/app_theme.dart';
 
 class FamilyNotificationDialog extends StatefulWidget {
   final Family family;
@@ -225,7 +226,10 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
             _buildSectionHeader('Individual Members'),
             Text(
               'Mute specific family members',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 8),
             ..._family.members
@@ -290,12 +294,16 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
       ),
       subtitle: Text(
         subtitle,
-        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        style: TextStyle(
+          fontSize: 12,
+          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+        ),
       ),
       trailing: Switch(
         value: value,
         onChanged: onChanged,
-        activeColor: Theme.of(context).primaryColor,
+        activeColor: Colors.white,
+        activeTrackColor: AppTheme.getSwitchColor(context),
       ),
     );
   }
@@ -325,7 +333,10 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
         ),
         subtitle: Text(
           subtitle,
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+          ),
         ),
         trailing: const Icon(Icons.touch_app),
       ),
@@ -375,14 +386,20 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,
-            color: isMuted ? Colors.grey : null,
+            color:
+                isMuted
+                    ? Theme.of(context).colorScheme.onSurface.withOpacity(0.5)
+                    : null,
           ),
         ),
         subtitle: Text(
           member.roleDisplayText,
           style: TextStyle(
             fontSize: 12,
-            color: isMuted ? Colors.grey : member.roleColor,
+            color:
+                isMuted
+                    ? Theme.of(context).colorScheme.onSurface.withOpacity(0.5)
+                    : member.roleColor,
           ),
         ),
         trailing: Switch(
@@ -398,7 +415,8 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
               _preferences = _preferences.copyWith(mutedMemberIds: newMutedIds);
             });
           },
-          activeColor: Theme.of(context).primaryColor,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
         ),
       ),
     );

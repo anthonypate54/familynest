@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../widgets/gradient_background.dart';
 import '../services/service_provider.dart';
 import '../services/websocket_service.dart';
+import '../theme/app_theme.dart';
 
 class InvitationsScreen extends StatefulWidget {
   final int userId;
@@ -190,7 +191,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
       appBar: AppBar(
         title: const Text('Family Invitations'),
         centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        backgroundColor: AppTheme.getAppBarColor(context),
         elevation: 0,
         actions: [
           // Refresh button

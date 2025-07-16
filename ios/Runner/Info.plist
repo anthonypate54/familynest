@@ -53,5 +53,9 @@
 	<string>This app needs photo library access to share photos and videos with family members.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs microphone access to record videos with audio.</string>
+	
+	<!-- Notification Permissions -->
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>This app needs notification permission to send you alerts about family messages, photos, and updates.</string>
 </dict>
 </plist>

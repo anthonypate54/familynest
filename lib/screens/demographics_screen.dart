@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 import 'family_screen.dart';
 
 class DemographicsScreen extends StatefulWidget {
@@ -301,6 +302,8 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
               secondary: const Icon(Icons.visibility, size: 20),
               contentPadding: EdgeInsets.zero,
               value: _showDemographics,
+              activeColor: Colors.white,
+              activeTrackColor: AppTheme.getSwitchColor(context),
               onChanged: (value) {
                 setState(() {
                   _showDemographics = value;

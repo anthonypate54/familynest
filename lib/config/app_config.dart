@@ -20,18 +20,44 @@ class AppConfig {
   String get _devBaseUrl {
     try {
       if (!dotenv.isInitialized) {
-        print('⚠️ dotenv not initialized, using default URL');
-        return 'http://10.0.0.10:8080';
+        print(
+          '⚠️ dotenv not initialized, using platform-specific default for direct IDE run',
+        );
+        return _getPlatformDefaultUrl();
       }
       final url = dotenv.env['API_URL'];
       if (url == null || url.isEmpty) {
-        print('⚠️ API_URL not found in environment variables, using default');
-        return 'http://10.0.0.10:8080';
+        print(
+          '⚠️ API_URL not found in .env (direct IDE run), using platform default',
+        );
+        return _getPlatformDefaultUrl();
       }
+      print('✅ Using API_URL from .env: $url (run.sh mode)');
       return url;
     } catch (e) {
-      print('⚠️ Error reading API_URL from environment, using default: $e');
-      return 'http://10.0.0.10:8080';
+      print(
+        '⚠️ Error reading API_URL from environment, using platform default: $e',
+      );
+      return _getPlatformDefaultUrl();
+    }
+  }
+
+  /// Get the correct default URL based on the current platform (for direct IDE runs)
+  String _getPlatformDefaultUrl() {
+    if (Platform.isAndroid) {
+      // Android emulator default (most common for development)
+      print(
+        '📱 Android detected - using emulator default: http://10.0.2.2:8080',
+      );
+      return 'http://10.0.2.2:8080';
+    } else if (Platform.isIOS) {
+      // iOS simulator default
+      print('📱 iOS detected - using simulator default: http://localhost:8080');
+      return 'http://localhost:8080';
+    } else {
+      // Web/Desktop default
+      print('💻 Web/Desktop detected - using localhost:8080');
+      return 'http://localhost:8080';
     }
   }
 
@@ -116,22 +142,24 @@ class AppConfig {
       default:
         try {
           if (!dotenv.isInitialized) {
-            print('⚠️ dotenv not initialized for media URL, using default');
-            return _devBaseUrl; // Use the same base URL as API
+            print(
+              '⚠️ dotenv not initialized for media URL, using platform default',
+            );
+            return _getPlatformDefaultUrl();
           }
           final mediaUrl = dotenv.env['MEDIA_URL'];
           if (mediaUrl == null || mediaUrl.isEmpty) {
             print(
-              '⚠️ MEDIA_URL not found in environment variables, using API base URL',
+              '⚠️ MEDIA_URL not found in environment variables, using platform default',
             );
-            return _devBaseUrl; // Use the same base URL as API
+            return _getPlatformDefaultUrl();
           }
           return mediaUrl;
         } catch (e) {
           print(
-            '⚠️ Error reading MEDIA_URL from environment, using API base URL: $e',
+            '⚠️ Error reading MEDIA_URL from environment, using platform default: $e',
           );
-          return _devBaseUrl; // Use the same base URL as API
+          return _getPlatformDefaultUrl();
         }
     }
   }
@@ -140,22 +168,24 @@ class AppConfig {
   String get ngrokUrl {
     try {
       if (!dotenv.isInitialized) {
-        print('⚠️ dotenv not initialized for ngrok URL, using default');
-        return _devBaseUrl; // Use the same base URL as API
+        print(
+          '⚠️ dotenv not initialized for ngrok URL, using platform default',
+        );
+        return _getPlatformDefaultUrl();
       }
       final url = dotenv.env['MEDIA_URL'];
       if (url == null || url.isEmpty) {
         print(
-          '⚠️ MEDIA_URL not found in environment variables, using API base URL',
+          '⚠️ MEDIA_URL not found in environment variables, using platform default',
         );
-        return _devBaseUrl; // Use the same base URL as API
+        return _getPlatformDefaultUrl();
       }
       return url;
     } catch (e) {
       print(
-        '⚠️ Error reading MEDIA_URL from environment, using API base URL: $e',
+        '⚠️ Error reading MEDIA_URL from environment, using platform default: $e',
       );
-      return _devBaseUrl; // Use the same base URL as API
+      return _getPlatformDefaultUrl();
     }
   }
 

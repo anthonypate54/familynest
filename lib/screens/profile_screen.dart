@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/api_service.dart';
 import 'family_management_screen.dart';
 import 'login_screen.dart';
+import 'settings_screen.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
@@ -518,6 +519,12 @@ class ProfileScreenState extends State<ProfileScreen>
 
   // Show dialog to edit demographics
   Future<void> _showDemographicsDialog(Map<String, dynamic> user) async {
+    final TextEditingController firstNameController = TextEditingController(
+      text: user['firstName'] as String? ?? '',
+    );
+    final TextEditingController lastNameController = TextEditingController(
+      text: user['lastName'] as String? ?? '',
+    );
     final TextEditingController phoneController = TextEditingController(
       text: user['phoneNumber'] as String? ?? '+1 ',
     );
@@ -620,6 +627,33 @@ class ProfileScreenState extends State<ProfileScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(height: 10),
+                // Personal Details
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: firstNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'First Name',
+                          icon: Icon(Icons.person),
+                          helperText: 'Enter your first name',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: lastNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Last Name',
+                          icon: Icon(Icons.person_outline),
+                          helperText: 'Enter your last name',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 _buildEditField(
                   label: 'Phone Number',
                   value: user['phoneNumber'] ?? '',
@@ -696,6 +730,14 @@ class ProfileScreenState extends State<ProfileScreen>
             ElevatedButton(
               onPressed: () {
                 final Map<String, dynamic> data = {
+                  'firstName':
+                      firstNameController.text.isEmpty
+                          ? null
+                          : firstNameController.text,
+                  'lastName':
+                      lastNameController.text.isEmpty
+                          ? null
+                          : lastNameController.text,
                   'phoneNumber':
                       phoneController.text.isEmpty
                           ? null
@@ -831,6 +873,25 @@ class ProfileScreenState extends State<ProfileScreen>
           backgroundColor: Colors.transparent,
           elevation: 0,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (context) => SettingsScreen(
+                          apiService: Provider.of<ApiService>(
+                            context,
+                            listen: false,
+                          ),
+                          userId: widget.userId,
+                          userRole: widget.userRole,
+                        ),
+                  ),
+                );
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.logout),
               onPressed: () async {
@@ -1086,6 +1147,52 @@ class ProfileScreenState extends State<ProfileScreen>
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
+          // Personal Details Section
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Personal Details',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildEditField(
+                          label: 'First Name',
+                          value: user.firstName,
+                          icon: Icons.person,
+                          hint: 'Enter your first name',
+                          onChanged: (value) => _saveField('firstName', value),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildEditField(
+                          label: 'Last Name',
+                          value: user.lastName,
+                          icon: Icons.person_outline,
+                          hint: 'Enter your last name',
+                          onChanged: (value) => _saveField('lastName', value),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Contact Information Section
           Card(
             elevation: 4,
             shape: RoundedRectangleBorder(

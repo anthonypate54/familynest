@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_styles.dart';
-import '../components/bottom_navigation.dart';
+import '../providers/theme_provider.dart';
+import '../providers/text_size_provider.dart';
 import 'login_screen.dart';
 import '../utils/page_transitions.dart';
-import '../controllers/bottom_navigation_controller.dart';
+import '../widgets/gradient_background.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ApiService apiService;
@@ -25,49 +27,79 @@ class SettingsScreen extends StatefulWidget {
 
 class SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = true;
-  bool _darkModeEnabled = false;
   bool _autoRefreshEnabled = true;
   String _refreshInterval = '5 min';
   bool _showOfflineContent = true;
+
+  // Notification preferences
+  Map<String, dynamic>? _notificationPreferences;
+  bool _loadingNotifications = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotificationPreferences();
+  }
+
+  Future<void> _loadNotificationPreferences() async {
+    setState(() {
+      _loadingNotifications = true;
+    });
+
+    try {
+      final prefs = await widget.apiService.getNotificationPreferences(
+        widget.userId,
+      );
+      if (mounted) {
+        setState(() {
+          _notificationPreferences = prefs;
+          _loadingNotifications = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadingNotifications = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading notification preferences: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Settings', style: AppStyles.appBarTitleStyle),
-        backgroundColor: AppTheme.primaryColor,
+        backgroundColor: AppTheme.getAppBarColor(context),
         elevation: 0,
       ),
-      bottomNavigationBar: BottomNavigation(
-        currentIndex: 2, // Settings tab
-        userId: widget.userId,
-        userRole: widget.userRole ?? 'USER',
-        controller: BottomNavigationController(),
-        pendingInvitationsCount:
-            0, // You might want to load and pass actual invitations count
-      ),
-      body: ListView(
-        children: [
-          _buildSectionHeader('Account'),
-          _buildAccountSettings(),
+      body: GradientBackground(
+        child: ListView(
+          children: [
+            _buildSectionHeader('Account'),
+            _buildAccountSettings(),
 
-          _buildSectionHeader('Appearance'),
-          _buildAppearanceSettings(),
+            _buildSectionHeader('Appearance'),
+            _buildAppearanceSettings(),
 
-          _buildSectionHeader('Notifications'),
-          _buildNotificationSettings(),
+            _buildSectionHeader('Notifications'),
+            _buildNotificationSettings(),
 
-          _buildSectionHeader('Content'),
-          _buildContentSettings(),
+            _buildSectionHeader('Content'),
+            _buildContentSettings(),
 
-          _buildSectionHeader('Data & Privacy'),
-          _buildPrivacySettings(),
+            _buildSectionHeader('Data & Privacy'),
+            _buildPrivacySettings(),
 
-          _buildSectionHeader('About'),
-          _buildAboutSettings(),
+            _buildSectionHeader('About'),
+            _buildAboutSettings(),
 
-          const SizedBox(height: 100), // Bottom padding
-        ],
+            const SizedBox(height: 100), // Bottom padding
+          ],
+        ),
       ),
     );
   }
@@ -324,11 +356,11 @@ class SettingsScreenState extends State<SettingsScreen> {
           title: const Text('Dark Mode'),
           subtitle: const Text('Change app appearance'),
           secondary: const Icon(Icons.dark_mode),
-          value: _darkModeEnabled,
+          value: Provider.of<ThemeProvider>(context).isDarkMode,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
           onChanged: (value) {
-            setState(() {
-              _darkModeEnabled = value;
-            });
+            Provider.of<ThemeProvider>(context, listen: false).toggleTheme();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Dark mode ${value ? 'enabled' : 'disabled'}'),
@@ -339,12 +371,12 @@ class SettingsScreenState extends State<SettingsScreen> {
         ListTile(
           leading: const Icon(Icons.text_fields),
           title: const Text('Text Size'),
-          subtitle: const Text('Change font size'),
+          subtitle: Text(
+            Provider.of<TextSizeProvider>(context).textSizeDisplayName,
+          ),
           trailing: const Icon(Icons.arrow_forward_ios, size: 16),
           onTap: () {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('Text Size tapped')));
+            _showTextSizeDialog();
           },
         ),
       ],
@@ -352,43 +384,142 @@ class SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildNotificationSettings() {
+    if (_loadingNotifications) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final globalSettings =
+        _notificationPreferences?['globalNotifications'] ?? {};
+    final dmSettings = _notificationPreferences?['dmNotifications'] ?? {};
+    final invitationSettings =
+        _notificationPreferences?['invitationNotifications'] ?? {};
+
     return Column(
       children: [
+        // Global notification settings
         SwitchListTile(
-          title: const Text('Enable Notifications'),
-          subtitle: const Text('Show app notifications'),
+          title: const Text('Push Notifications'),
+          subtitle: const Text('Receive push notifications'),
           secondary: const Icon(Icons.notifications),
-          value: _notificationsEnabled,
-          onChanged: (value) {
-            setState(() {
-              _notificationsEnabled = value;
-            });
+          value: globalSettings['pushNotificationsEnabled'] ?? true,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
+          onChanged: (value) async {
+            await _updateGlobalNotificationSetting(
+              'pushNotificationsEnabled',
+              value,
+            );
           },
         ),
-        ListTile(
-          leading: const Icon(Icons.message),
-          title: const Text('Message Notifications'),
-          subtitle: Text(_notificationsEnabled ? 'Enabled' : 'Disabled'),
-          enabled: _notificationsEnabled,
-          onTap: () {
-            if (_notificationsEnabled) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Message notifications settings')),
-              );
-            }
+        SwitchListTile(
+          title: const Text('Email Notifications'),
+          subtitle: const Text('Receive email notifications'),
+          secondary: const Icon(Icons.email),
+          value: globalSettings['emailNotificationsEnabled'] ?? true,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
+          onChanged: (value) async {
+            await _updateGlobalNotificationSetting(
+              'emailNotificationsEnabled',
+              value,
+            );
           },
         ),
-        ListTile(
-          leading: const Icon(Icons.family_restroom),
-          title: const Text('Family Updates'),
-          subtitle: Text(_notificationsEnabled ? 'Enabled' : 'Disabled'),
-          enabled: _notificationsEnabled,
-          onTap: () {
-            if (_notificationsEnabled) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Family updates settings')),
-              );
-            }
+
+        const Divider(),
+
+        // DM notification settings
+        SwitchListTile(
+          title: const Text('DM Notifications'),
+          subtitle: const Text('Receive notifications for direct messages'),
+          secondary: const Icon(Icons.message),
+          value: dmSettings['receiveDMNotifications'] ?? true,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
+          onChanged: (value) async {
+            await _updateDMNotificationSetting('receiveDMNotifications', value);
+          },
+        ),
+        SwitchListTile(
+          title: const Text('DM Email Notifications'),
+          subtitle: const Text('Receive email notifications for DMs'),
+          secondary: const Icon(Icons.email_outlined),
+          value: dmSettings['emailDMNotifications'] ?? true,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
+          onChanged: (value) async {
+            await _updateDMNotificationSetting('emailDMNotifications', value);
+          },
+        ),
+
+        const Divider(),
+
+        // Invitation notification settings
+        SwitchListTile(
+          title: const Text('Invitation Notifications'),
+          subtitle: const Text('Receive notifications for invitations'),
+          secondary: const Icon(Icons.family_restroom),
+          value: invitationSettings['receiveInvitationNotifications'] ?? true,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
+          onChanged: (value) async {
+            await _updateInvitationNotificationSetting(
+              'receiveInvitationNotifications',
+              value,
+            );
+          },
+        ),
+        SwitchListTile(
+          title: const Text('Invitation Acceptance Notifications'),
+          subtitle: const Text('Get notified when invitations are accepted'),
+          secondary: const Icon(Icons.check_circle),
+          value: invitationSettings['notifyOnInvitationAccepted'] ?? true,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
+          onChanged: (value) async {
+            await _updateInvitationNotificationSetting(
+              'notifyOnInvitationAccepted',
+              value,
+            );
+          },
+        ),
+
+        const Divider(),
+
+        // Quiet hours settings
+        SwitchListTile(
+          title: const Text('Quiet Hours'),
+          subtitle: const Text('Pause notifications during quiet hours'),
+          secondary: const Icon(Icons.bedtime),
+          value: globalSettings['quietHoursEnabled'] ?? false,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
+          onChanged: (value) async {
+            await _updateGlobalNotificationSetting('quietHoursEnabled', value);
+          },
+        ),
+        if (globalSettings['quietHoursEnabled'] ?? false)
+          ListTile(
+            leading: const Icon(Icons.schedule),
+            title: const Text('Quiet Hours Schedule'),
+            subtitle: Text(
+              '${globalSettings['quietHoursStart'] ?? '22:00'} - ${globalSettings['quietHoursEnd'] ?? '08:00'}',
+            ),
+            onTap: () => _showQuietHoursDialog(),
+          ),
+
+        SwitchListTile(
+          title: const Text('Weekend Notifications'),
+          subtitle: const Text('Receive notifications on weekends'),
+          secondary: const Icon(Icons.weekend),
+          value: globalSettings['weekendNotifications'] ?? true,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
+          onChanged: (value) async {
+            await _updateGlobalNotificationSetting(
+              'weekendNotifications',
+              value,
+            );
           },
         ),
       ],
@@ -403,6 +534,8 @@ class SettingsScreenState extends State<SettingsScreen> {
           subtitle: const Text('Automatically update feeds'),
           secondary: const Icon(Icons.refresh),
           value: _autoRefreshEnabled,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
           onChanged: (value) {
             setState(() {
               _autoRefreshEnabled = value;
@@ -425,6 +558,8 @@ class SettingsScreenState extends State<SettingsScreen> {
           subtitle: const Text('Access content when offline'),
           secondary: const Icon(Icons.offline_pin),
           value: _showOfflineContent,
+          activeColor: Colors.white,
+          activeTrackColor: AppTheme.getSwitchColor(context),
           onChanged: (value) {
             setState(() {
               _showOfflineContent = value;
@@ -466,6 +601,10 @@ class SettingsScreenState extends State<SettingsScreen> {
       title: Text(interval),
       value: interval,
       groupValue: _refreshInterval,
+      activeColor:
+          Theme.of(context).brightness == Brightness.dark
+              ? AppTheme.darkGreenAccent
+              : AppTheme.primaryColor,
       onChanged: (value) {
         if (value != null) {
           setState(() {
@@ -595,5 +734,352 @@ class SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
     );
+  }
+
+  // Notification preference update methods
+  Future<void> _updateGlobalNotificationSetting(String key, bool value) async {
+    final currentGlobal =
+        _notificationPreferences?['globalNotifications'] ?? {};
+
+    try {
+      final success = await widget.apiService
+          .updateGlobalNotificationPreferences(
+            widget.userId,
+            emailNotificationsEnabled:
+                key == 'emailNotificationsEnabled'
+                    ? value
+                    : (currentGlobal['emailNotificationsEnabled'] ?? true),
+            pushNotificationsEnabled:
+                key == 'pushNotificationsEnabled'
+                    ? value
+                    : (currentGlobal['pushNotificationsEnabled'] ?? true),
+            quietHoursEnabled:
+                key == 'quietHoursEnabled'
+                    ? value
+                    : (currentGlobal['quietHoursEnabled'] ?? false),
+            quietHoursStart: currentGlobal['quietHoursStart'] ?? '22:00',
+            quietHoursEnd: currentGlobal['quietHoursEnd'] ?? '08:00',
+            weekendNotifications:
+                key == 'weekendNotifications'
+                    ? value
+                    : (currentGlobal['weekendNotifications'] ?? true),
+          );
+
+      if (success) {
+        // Update local state
+        setState(() {
+          _notificationPreferences = {
+            ..._notificationPreferences ?? {},
+            'globalNotifications': {...currentGlobal, key: value},
+          };
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to update notification setting'),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating notification setting: $e')),
+      );
+    }
+  }
+
+  Future<void> _updateDMNotificationSetting(String key, bool value) async {
+    final currentDM = _notificationPreferences?['dmNotifications'] ?? {};
+
+    try {
+      final success = await widget.apiService.updateDMNotificationPreferences(
+        widget.userId,
+        receiveDMNotifications:
+            key == 'receiveDMNotifications'
+                ? value
+                : (currentDM['receiveDMNotifications'] ?? true),
+        emailDMNotifications:
+            key == 'emailDMNotifications'
+                ? value
+                : (currentDM['emailDMNotifications'] ?? true),
+        pushDMNotifications:
+            key == 'pushDMNotifications'
+                ? value
+                : (currentDM['pushDMNotifications'] ?? true),
+      );
+
+      if (success) {
+        // Update local state
+        setState(() {
+          _notificationPreferences = {
+            ..._notificationPreferences ?? {},
+            'dmNotifications': {...currentDM, key: value},
+          };
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to update DM notification setting'),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating DM notification setting: $e')),
+      );
+    }
+  }
+
+  Future<void> _updateInvitationNotificationSetting(
+    String key,
+    bool value,
+  ) async {
+    final currentInvitation =
+        _notificationPreferences?['invitationNotifications'] ?? {};
+
+    try {
+      final success = await widget.apiService
+          .updateInvitationNotificationPreferences(
+            widget.userId,
+            receiveInvitationNotifications:
+                key == 'receiveInvitationNotifications'
+                    ? value
+                    : (currentInvitation['receiveInvitationNotifications'] ??
+                        true),
+            emailInvitationNotifications:
+                key == 'emailInvitationNotifications'
+                    ? value
+                    : (currentInvitation['emailInvitationNotifications'] ??
+                        true),
+            pushInvitationNotifications:
+                key == 'pushInvitationNotifications'
+                    ? value
+                    : (currentInvitation['pushInvitationNotifications'] ??
+                        true),
+            notifyOnInvitationAccepted:
+                key == 'notifyOnInvitationAccepted'
+                    ? value
+                    : (currentInvitation['notifyOnInvitationAccepted'] ?? true),
+            notifyOnInvitationDeclined:
+                key == 'notifyOnInvitationDeclined'
+                    ? value
+                    : (currentInvitation['notifyOnInvitationDeclined'] ??
+                        false),
+          );
+
+      if (success) {
+        // Update local state
+        setState(() {
+          _notificationPreferences = {
+            ..._notificationPreferences ?? {},
+            'invitationNotifications': {...currentInvitation, key: value},
+          };
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to update invitation notification setting'),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error updating invitation notification setting: $e'),
+        ),
+      );
+    }
+  }
+
+  void _showQuietHoursDialog() {
+    final currentGlobal =
+        _notificationPreferences?['globalNotifications'] ?? {};
+    String startTime = currentGlobal['quietHoursStart'] ?? '22:00';
+    String endTime = currentGlobal['quietHoursEnd'] ?? '08:00';
+
+    showDialog(
+      context: context,
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Quiet Hours'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: const Text('Start Time'),
+                  subtitle: Text(startTime),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: dialogContext,
+                      initialTime: TimeOfDay(
+                        hour: int.parse(startTime.split(':')[0]),
+                        minute: int.parse(startTime.split(':')[1]),
+                      ),
+                    );
+                    if (time != null) {
+                      startTime =
+                          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+                    }
+                  },
+                ),
+                ListTile(
+                  title: const Text('End Time'),
+                  subtitle: Text(endTime),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: dialogContext,
+                      initialTime: TimeOfDay(
+                        hour: int.parse(endTime.split(':')[0]),
+                        minute: int.parse(endTime.split(':')[1]),
+                      ),
+                    );
+                    if (time != null) {
+                      endTime =
+                          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+                    }
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  // Update quiet hours
+                  await _updateQuietHours(startTime, endTime);
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _updateQuietHours(String startTime, String endTime) async {
+    final currentGlobal =
+        _notificationPreferences?['globalNotifications'] ?? {};
+
+    try {
+      final success = await widget.apiService
+          .updateGlobalNotificationPreferences(
+            widget.userId,
+            emailNotificationsEnabled:
+                currentGlobal['emailNotificationsEnabled'] ?? true,
+            pushNotificationsEnabled:
+                currentGlobal['pushNotificationsEnabled'] ?? true,
+            quietHoursEnabled: currentGlobal['quietHoursEnabled'] ?? false,
+            quietHoursStart: startTime,
+            quietHoursEnd: endTime,
+            weekendNotifications: currentGlobal['weekendNotifications'] ?? true,
+          );
+
+      if (success) {
+        // Update local state
+        setState(() {
+          _notificationPreferences = {
+            ..._notificationPreferences ?? {},
+            'globalNotifications': {
+              ...currentGlobal,
+              'quietHoursStart': startTime,
+              'quietHoursEnd': endTime,
+            },
+          };
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update quiet hours')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error updating quiet hours: $e')));
+    }
+  }
+
+  void _showTextSizeDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Text Size'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTextSizeOption(TextSizeOption.small, dialogContext),
+                _buildTextSizeOption(TextSizeOption.medium, dialogContext),
+                _buildTextSizeOption(TextSizeOption.large, dialogContext),
+                _buildTextSizeOption(TextSizeOption.extraLarge, dialogContext),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Widget _buildTextSizeOption(
+    TextSizeOption option,
+    BuildContext dialogContext,
+  ) {
+    final textSizeProvider = Provider.of<TextSizeProvider>(
+      context,
+      listen: false,
+    );
+    return RadioListTile<TextSizeOption>(
+      title: Text(
+        _getTextSizeDisplayName(option),
+        style: TextStyle(fontSize: 16 * _getTextScaleFactor(option)),
+      ),
+      subtitle: Text(
+        'Sample text at this size',
+        style: TextStyle(fontSize: 14 * _getTextScaleFactor(option)),
+      ),
+      value: option,
+      groupValue: textSizeProvider.textSizeOption,
+      activeColor:
+          Theme.of(context).brightness == Brightness.dark
+              ? AppTheme.darkGreenAccent
+              : AppTheme.primaryColor,
+      onChanged: (value) {
+        if (value != null) {
+          textSizeProvider.setTextSize(value);
+          Navigator.pop(dialogContext);
+        }
+      },
+    );
+  }
+
+  String _getTextSizeDisplayName(TextSizeOption option) {
+    switch (option) {
+      case TextSizeOption.small:
+        return 'Small';
+      case TextSizeOption.medium:
+        return 'Medium';
+      case TextSizeOption.large:
+        return 'Large';
+      case TextSizeOption.extraLarge:
+        return 'Extra Large';
+    }
+  }
+
+  double _getTextScaleFactor(TextSizeOption option) {
+    switch (option) {
+      case TextSizeOption.small:
+        return 0.85;
+      case TextSizeOption.medium:
+        return 1.0;
+      case TextSizeOption.large:
+        return 1.15;
+      case TextSizeOption.extraLarge:
+        return 1.30;
+    }
   }
 }

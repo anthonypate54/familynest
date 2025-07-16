@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 class GradientBackground extends StatelessWidget {
   final Widget child;
@@ -7,6 +8,8 @@ class GradientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -14,10 +17,18 @@ class GradientBackground extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Theme.of(context).colorScheme.primary,
-            Theme.of(context).colorScheme.secondary,
-          ],
+          colors:
+              isDarkMode
+                  ? [
+                    // Dark mode: explicitly use AppTheme dark colors
+                    AppTheme.darkBackgroundColor,
+                    AppTheme.darkSurfaceColor,
+                  ]
+                  : [
+                    // Light mode: original bright gradient
+                    AppTheme.primaryColor,
+                    AppTheme.secondaryColor,
+                  ],
         ),
       ),
       child: child,

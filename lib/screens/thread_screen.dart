@@ -818,6 +818,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
     final apiService = Provider.of<ApiService>(context, listen: false);
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: AppTheme.getAppBarColor(context),
         title: const Text('Thread'),
         actions: [
           _buildConnectionStatus(),

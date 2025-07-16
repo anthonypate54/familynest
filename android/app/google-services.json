@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "845930787661",
+    "project_id": "familynest-notifications",
+    "storage_bucket": "familynest-notifications.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:845930787661:android:41091239537b2c996fbd04",
+        "android_client_info": {
+          "package_name": "com.anthony.familynest"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAbrBcPp4TNFFuafDaqQaTBdrmJBe9RzbQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

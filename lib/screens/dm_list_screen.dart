@@ -5,6 +5,7 @@ import '../widgets/gradient_background.dart';
 import 'dm_thread_screen.dart';
 import '../utils/page_transitions.dart';
 import '../models/dm_conversation.dart';
+import '../theme/app_theme.dart';
 
 class ChooseDMRecipientScreen extends StatefulWidget {
   final int userId;
@@ -220,8 +221,8 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: AppTheme.getAppBarColor(context),
         title: const Text('Choose Person to Message'),
-        backgroundColor: Colors.transparent,
         elevation: 0,
       ),
       body: GradientBackground(

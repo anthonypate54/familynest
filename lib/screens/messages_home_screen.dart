@@ -8,6 +8,7 @@ import '../utils/page_transitions.dart';
 import '../models/dm_conversation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'message_search_screen.dart';
+import '../theme/app_theme.dart';
 
 class MessagesHomeScreen extends StatefulWidget {
   final int userId;
@@ -172,7 +173,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        backgroundColor: AppTheme.getAppBarColor(context),
         elevation: 0,
         automaticallyImplyLeading: false, // Remove back button
         title: Row(
@@ -224,10 +225,18 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Theme.of(context).colorScheme.primary,
-                    Theme.of(context).colorScheme.secondary,
-                  ],
+                  colors:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? [
+                            // Dark mode: subtle gradient using dark colors
+                            AppTheme.darkBackgroundColor,
+                            AppTheme.darkSurfaceColor,
+                          ]
+                          : [
+                            // Light mode: original bright gradient
+                            AppTheme.primaryColor,
+                            AppTheme.secondaryColor,
+                          ],
                 ),
               ),
               child:

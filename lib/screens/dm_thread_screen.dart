@@ -12,6 +12,7 @@ import '../dialogs/large_video_dialog.dart';
 import '../widgets/gradient_background.dart';
 import '../widgets/video_message_card.dart';
 import '../widgets/external_video_message_card.dart';
+import '../theme/app_theme.dart';
 import 'package:provider/provider.dart';
 import '../models/dm_message.dart';
 import '../providers/dm_message_provider.dart';
@@ -800,7 +801,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        backgroundColor: AppTheme.getAppBarColor(context),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -1277,8 +1278,12 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
               decoration: BoxDecoration(
                 color:
                     isMe
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.grey.shade200,
+                        ? (Theme.of(context).brightness == Brightness.dark
+                            ? AppTheme.darkGreenAccent
+                            : Theme.of(context).colorScheme.primary)
+                        : (Theme.of(context).brightness == Brightness.dark
+                            ? Theme.of(context).colorScheme.surface
+                            : Colors.grey.shade200),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
@@ -1354,7 +1359,13 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                       content,
                       style: TextStyle(
                         fontSize: 16,
-                        color: isMe ? Colors.white : Colors.black87,
+                        color:
+                            isMe
+                                ? Colors.white
+                                : (Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white
+                                    : Colors.black87),
                       ),
                     ),
                   if (timeString.isNotEmpty) ...[
@@ -1363,7 +1374,13 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                       timeString,
                       style: TextStyle(
                         fontSize: 12,
-                        color: isMe ? Colors.white70 : Colors.grey.shade600,
+                        color:
+                            isMe
+                                ? Colors.white70
+                                : (Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.grey.shade600),
                       ),
                     ),
                   ],

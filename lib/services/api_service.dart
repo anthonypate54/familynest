@@ -630,6 +630,130 @@ Network connection error. Please check:
     }
   }
 
+  // Notification Preferences API methods
+  Future<Map<String, dynamic>?> getNotificationPreferences(int userId) async {
+    try {
+      final headers = {'Content-Type': 'application/json'};
+      if (_token != null) {
+        headers['Authorization'] = 'Bearer $_token';
+      }
+
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/notification-preferences/$userId'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        debugPrint(
+          'Error fetching notification preferences: ${response.statusCode}',
+        );
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error fetching notification preferences: $e');
+      return null;
+    }
+  }
+
+  Future<bool> updateDMNotificationPreferences(
+    int userId, {
+    required bool receiveDMNotifications,
+    required bool emailDMNotifications,
+    required bool pushDMNotifications,
+  }) async {
+    try {
+      final headers = {'Content-Type': 'application/json'};
+      if (_token != null) {
+        headers['Authorization'] = 'Bearer $_token';
+      }
+
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/notification-preferences/$userId/dm'),
+        headers: headers,
+        body: jsonEncode({
+          'receiveDMNotifications': receiveDMNotifications,
+          'emailDMNotifications': emailDMNotifications,
+          'pushDMNotifications': pushDMNotifications,
+        }),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating DM notification preferences: $e');
+      return false;
+    }
+  }
+
+  Future<bool> updateGlobalNotificationPreferences(
+    int userId, {
+    required bool emailNotificationsEnabled,
+    required bool pushNotificationsEnabled,
+    required bool quietHoursEnabled,
+    required String quietHoursStart,
+    required String quietHoursEnd,
+    required bool weekendNotifications,
+  }) async {
+    try {
+      final headers = {'Content-Type': 'application/json'};
+      if (_token != null) {
+        headers['Authorization'] = 'Bearer $_token';
+      }
+
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/notification-preferences/$userId/global'),
+        headers: headers,
+        body: jsonEncode({
+          'emailNotificationsEnabled': emailNotificationsEnabled,
+          'pushNotificationsEnabled': pushNotificationsEnabled,
+          'quietHoursEnabled': quietHoursEnabled,
+          'quietHoursStart': quietHoursStart,
+          'quietHoursEnd': quietHoursEnd,
+          'weekendNotifications': weekendNotifications,
+        }),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating global notification preferences: $e');
+      return false;
+    }
+  }
+
+  Future<bool> updateInvitationNotificationPreferences(
+    int userId, {
+    required bool receiveInvitationNotifications,
+    required bool emailInvitationNotifications,
+    required bool pushInvitationNotifications,
+    required bool notifyOnInvitationAccepted,
+    required bool notifyOnInvitationDeclined,
+  }) async {
+    try {
+      final headers = {'Content-Type': 'application/json'};
+      if (_token != null) {
+        headers['Authorization'] = 'Bearer $_token';
+      }
+
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/notification-preferences/$userId/invitations'),
+        headers: headers,
+        body: jsonEncode({
+          'receiveInvitationNotifications': receiveInvitationNotifications,
+          'emailInvitationNotifications': emailInvitationNotifications,
+          'pushInvitationNotifications': pushInvitationNotifications,
+          'notifyOnInvitationAccepted': notifyOnInvitationAccepted,
+          'notifyOnInvitationDeclined': notifyOnInvitationDeclined,
+        }),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating invitation notification preferences: $e');
+      return false;
+    }
+  }
+
   // Get messages for a user
   Future<List<Map<String, dynamic>>> getMessages(int userId) async {
     final headers = {'Content-Type': 'application/json'};
@@ -2908,6 +3032,34 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('Error fetching multi-year activity: $e');
       return null;
+    }
+  }
+
+  // Enable all notification preferences for onboarding
+  Future<bool> enableAllNotificationPreferences(int userId) async {
+    try {
+      final headers = {'Content-Type': 'application/json'};
+      if (_token != null) {
+        headers['Authorization'] = 'Bearer $_token';
+      }
+
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/notification-preferences/$userId/enable-all'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('✅ All notification preferences enabled for user $userId');
+        return true;
+      } else {
+        debugPrint(
+          '❌ Failed to enable notification preferences: ${response.statusCode}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ Error enabling all notification preferences: $e');
+      return false;
     }
   }
 }

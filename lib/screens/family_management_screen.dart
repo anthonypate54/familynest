@@ -6,6 +6,7 @@ import '../models/family.dart';
 import '../widgets/gradient_background.dart';
 import 'package:intl/intl.dart';
 import '../controllers/bottom_navigation_controller.dart';
+import '../theme/app_theme.dart';
 
 class FamilyManagementScreen extends StatefulWidget {
   final int userId;
@@ -336,7 +337,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Family Management'),
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        backgroundColor: AppTheme.getAppBarColor(context),
       ),
       body: GradientBackground(
         child: LayoutBuilder(
@@ -438,10 +439,10 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                 child: DropdownButton<Family>(
                   value: selectedFamily,
                   isExpanded: true,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                   items:
                       _families.map((family) {
@@ -476,7 +477,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary,
+            color: AppTheme.getAppBarColor(context),
             borderRadius: const BorderRadius.only(
               bottomLeft: Radius.circular(20),
               bottomRight: Radius.circular(20),
@@ -531,7 +532,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     child: DropdownButton<Family?>(
                       value: _selectedFamily,
                       isExpanded: true,
-                      dropdownColor: Theme.of(context).colorScheme.primary,
+                      dropdownColor: AppTheme.getAppBarColor(context),
                       style: const TextStyle(color: Colors.white),
                       hint: const Text(
                         'All Families',
@@ -610,7 +611,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         // Demographics Visibility
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Theme.of(context).colorScheme.surface.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Padding(
@@ -637,6 +638,8 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: true, // TODO: Connect to actual preference
+                  activeColor: Colors.white,
+                  activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged: (value) {
                     // TODO: Implement preference update
                   },
@@ -651,6 +654,8 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: true, // TODO: Connect to actual preference
+                  activeColor: Colors.white,
+                  activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged: (value) {
                     // TODO: Implement preference update
                   },
@@ -665,6 +670,8 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: true, // TODO: Connect to actual preference
+                  activeColor: Colors.white,
+                  activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged: (value) {
                     // TODO: Implement preference update
                   },
@@ -679,7 +686,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         // Notification Preferences
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Theme.of(context).colorScheme.surface.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Padding(
@@ -706,6 +713,8 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: true, // TODO: Connect to actual preference
+                  activeColor: Colors.white,
+                  activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged: (value) {
                     // TODO: Implement preference update
                   },
@@ -720,6 +729,8 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: true, // TODO: Connect to actual preference
+                  activeColor: Colors.white,
+                  activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged: (value) {
                     // TODO: Implement preference update
                   },
@@ -734,6 +745,8 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: true, // TODO: Connect to actual preference
+                  activeColor: Colors.white,
+                  activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged: (value) {
                     // TODO: Implement preference update
                   },
@@ -848,7 +861,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     children: [
                       Text(
                         'Or you can always create a family of your own',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.7),
+                        ),
                       ),
                       const SizedBox(height: 8),
                       TextButton(
@@ -897,7 +915,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                 const SizedBox(height: 8),
                 Text(
                   'Start connecting with your family members',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  style: TextStyle(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.7),
+                    fontSize: 14,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
@@ -961,7 +984,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                   const SizedBox(height: 3),
                   Text(
                     'Created on ${DateFormat('MMM dd, yyyy').format(createdAt)}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    style: TextStyle(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.7),
+                      fontSize: 12,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   // Total members info
@@ -1175,7 +1203,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     const SizedBox(width: 8),
                     Text(
                       'No birthdays in the next 7 days',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                      style: TextStyle(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.7),
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
@@ -1374,7 +1407,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                 child: Center(
                   child: Text(
                     'No activity data available',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    style: TextStyle(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.7),
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               )
@@ -1453,11 +1491,21 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                 children: [
                   Text(
                     'Messages this $periodLabel: $periodTotal',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.7),
+                    ),
                   ),
                   Text(
                     'Total messages: $totalMessages',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.7),
+                    ),
                   ),
                 ],
               ),
@@ -1512,7 +1560,10 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       padding: const EdgeInsets.only(bottom: 2),
       child: Text(
         value,
-        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+        style: TextStyle(
+          fontSize: 10,
+          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+        ),
       ),
     );
   }
@@ -1592,61 +1643,198 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     }
   }
 
+  // Helper method to format birth date like the profile screen
+  String _formatBirthDateFromMap(dynamic birthDate) {
+    if (birthDate == null) return '';
+
+    try {
+      // If it's already a string in a readable format, convert to user-friendly format
+      if (birthDate is String) {
+        final parsedDate = DateTime.tryParse(birthDate);
+        if (parsedDate != null) {
+          return DateFormat('MMMM dd, yyyy').format(parsedDate);
+        }
+        return birthDate;
+      }
+
+      // If it's an integer timestamp, convert it to a date string
+      if (birthDate is int) {
+        final date = DateTime.fromMillisecondsSinceEpoch(birthDate);
+        return DateFormat('MMMM dd, yyyy').format(date);
+      }
+
+      // If it's a double, convert to int first
+      if (birthDate is double) {
+        final date = DateTime.fromMillisecondsSinceEpoch(birthDate.toInt());
+        return DateFormat('MMMM dd, yyyy').format(date);
+      }
+
+      return '';
+    } catch (e) {
+      debugPrint('Error formatting birth date: $e');
+      return '';
+    }
+  }
+
+  // Helper method to format phone number
+  String _formatPhoneNumber(String? phoneNumber) {
+    debugPrint('🔧 PHONE FORMAT INPUT: "$phoneNumber"');
+
+    if (phoneNumber == null || phoneNumber.isEmpty) {
+      debugPrint('🔧 PHONE FORMAT RESULT: empty input');
+      return '';
+    }
+
+    // Remove any existing formatting
+    String cleaned = phoneNumber.replaceAll(RegExp(r'[^\d]'), '');
+    debugPrint(
+      '🔧 PHONE FORMAT CLEANED: "$cleaned" (length: ${cleaned.length})',
+    );
+
+    String result = '';
+
+    // Format based on cleaned digits
+    if (cleaned.length == 10) {
+      // Format as (123) 456-7890
+      result =
+          '(${cleaned.substring(0, 3)}) ${cleaned.substring(3, 6)}-${cleaned.substring(6)}';
+    } else if (cleaned.length == 11 && cleaned.startsWith('1')) {
+      // Format as +1 (123) 456-7890
+      String phoneDigits = cleaned.substring(1);
+      result =
+          '+1 (${phoneDigits.substring(0, 3)}) ${phoneDigits.substring(3, 6)}-${phoneDigits.substring(6)}';
+    } else if (cleaned.length == 7) {
+      // Format as 123-4567
+      result = '${cleaned.substring(0, 3)}-${cleaned.substring(3)}';
+    } else if (cleaned.length > 0) {
+      // For other lengths, try to apply some formatting
+      if (cleaned.length <= 3) {
+        result = cleaned;
+      } else if (cleaned.length <= 6) {
+        result = '${cleaned.substring(0, 3)}-${cleaned.substring(3)}';
+      } else {
+        // Fallback - just return the original
+        result = phoneNumber;
+      }
+    } else {
+      // Return original if no formatting applied
+      result = phoneNumber;
+    }
+
+    debugPrint('🔧 PHONE FORMAT RESULT: "$result"');
+    return result;
+  }
+
   void _showDemographicsDialog(Map<String, dynamic> userDetails) {
+    // Debug print to see what data we're getting
+    debugPrint('Demographics data: $userDetails');
+
     showDialog(
       context: context,
       builder:
           (context) => AlertDialog(
             title: Text(
-              '${userDetails['firstName']} ${userDetails['lastName']}',
+              '${userDetails['firstName'] ?? ''} ${userDetails['lastName'] ?? ''}'
+                  .trim(),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (userDetails['address'] != null) ...[
-                    const Text(
-                      'Address:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(userDetails['address']),
-                    const SizedBox(height: 8),
+            content: Container(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Basic Information Section
+                    _buildDemographicsSection('Basic Information', [
+                      if (userDetails['username'] != null)
+                        _buildDemographicsItem(
+                          'Username',
+                          '@${userDetails['username']}',
+                          Icons.person,
+                        ),
+                      if (userDetails['email'] != null)
+                        _buildDemographicsItem(
+                          'Email',
+                          userDetails['email'],
+                          Icons.email,
+                        ),
+                    ]),
+
+                    // Contact Information Section
+                    _buildDemographicsSection('Contact Information', [
+                      if (userDetails['phoneNumber'] != null &&
+                          userDetails['phoneNumber'].toString().isNotEmpty)
+                        _buildDemographicsItem(
+                          'Phone',
+                          _formatPhoneNumber(userDetails['phoneNumber']),
+                          Icons.phone,
+                        ),
+                    ]),
+
+                    // Address Section - Check for any address-related fields
+                    _buildDemographicsSection('Address', [
+                      if (_hasAddress(userDetails))
+                        _buildDemographicsItem(
+                          'Street Address',
+                          _getAddress(userDetails),
+                          Icons.home,
+                        ),
+                      if (_hasLocation(userDetails))
+                        _buildDemographicsItem(
+                          'Location',
+                          _buildLocationString(userDetails),
+                          Icons.location_on,
+                        ),
+                      if (_hasCountry(userDetails))
+                        _buildDemographicsItem(
+                          'Country',
+                          userDetails['country'],
+                          Icons.public,
+                        ),
+                    ]),
+
+                    // Personal Information Section
+                    _buildDemographicsSection('Personal Information', [
+                      if (userDetails['birthDate'] != null)
+                        _buildDemographicsItem(
+                          'Birthday',
+                          _formatBirthDateFromMap(userDetails['birthDate']),
+                          Icons.cake,
+                        ),
+                      if (_hasBio(userDetails))
+                        _buildDemographicsItem(
+                          'Bio',
+                          userDetails['bio'],
+                          Icons.info_outline,
+                        ),
+                    ]),
+
+                    // Show message if no demographic data available
+                    if (_hasNoDemographicData(userDetails))
+                      const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 48,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'No additional information available',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 16,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
-                  if (userDetails['city'] != null) ...[
-                    const Text(
-                      'City:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      '${userDetails['city']}, ${userDetails['state']} ${userDetails['zipCode']}',
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  if (userDetails['phoneNumber'] != null) ...[
-                    const Text(
-                      'Phone:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(userDetails['phoneNumber']),
-                    const SizedBox(height: 8),
-                  ],
-                  if (userDetails['birthDate'] != null) ...[
-                    const Text(
-                      'Birthday:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(userDetails['birthDate'].toString()),
-                    const SizedBox(height: 8),
-                  ],
-                  if (userDetails['bio'] != null) ...[
-                    const Text(
-                      'Bio:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(userDetails['bio']),
-                  ],
-                ],
+                ),
               ),
             ),
             actions: [
@@ -1657,6 +1845,133 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
             ],
           ),
     );
+  }
+
+  // Helper methods for checking field existence and getting values
+  bool _hasAddress(Map<String, dynamic> userDetails) {
+    final address = userDetails['address'];
+    return address != null && address.toString().trim().isNotEmpty;
+  }
+
+  String _getAddress(Map<String, dynamic> userDetails) {
+    return userDetails['address']?.toString() ?? '';
+  }
+
+  bool _hasLocation(Map<String, dynamic> userDetails) {
+    return (userDetails['city'] != null &&
+            userDetails['city'].toString().trim().isNotEmpty) ||
+        (userDetails['state'] != null &&
+            userDetails['state'].toString().trim().isNotEmpty) ||
+        (userDetails['zipCode'] != null &&
+            userDetails['zipCode'].toString().trim().isNotEmpty);
+  }
+
+  bool _hasCountry(Map<String, dynamic> userDetails) {
+    final country = userDetails['country'];
+    return country != null && country.toString().trim().isNotEmpty;
+  }
+
+  bool _hasBio(Map<String, dynamic> userDetails) {
+    final bio = userDetails['bio'];
+    return bio != null && bio.toString().trim().isNotEmpty;
+  }
+
+  // Helper method to build demographic sections
+  Widget _buildDemographicsSection(String title, List<Widget> items) {
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...items,
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  // Helper method to build individual demographic items
+  Widget _buildDemographicsItem(String label, String value, IconData icon) {
+    if (value.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: Colors.grey[600]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(value, style: const TextStyle(fontSize: 14)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper method to build location string
+  String _buildLocationString(Map<String, dynamic> userDetails) {
+    List<String> locationParts = [];
+
+    if (userDetails['city'] != null &&
+        userDetails['city'].toString().isNotEmpty) {
+      locationParts.add(userDetails['city']);
+    }
+    if (userDetails['state'] != null &&
+        userDetails['state'].toString().isNotEmpty) {
+      locationParts.add(userDetails['state']);
+    }
+    if (userDetails['zipCode'] != null &&
+        userDetails['zipCode'].toString().isNotEmpty) {
+      locationParts.add(userDetails['zipCode']);
+    }
+
+    return locationParts.join(', ');
+  }
+
+  // Helper method to check if there's no demographic data
+  bool _hasNoDemographicData(Map<String, dynamic> userDetails) {
+    final fieldsToCheck = [
+      'phoneNumber',
+      'address',
+      'city',
+      'state',
+      'zipCode',
+      'country',
+      'birthDate',
+      'bio',
+    ];
+
+    for (String field in fieldsToCheck) {
+      final value = userDetails[field];
+      if (value != null && value.toString().isNotEmpty) {
+        return false;
+      }
+    }
+    return true;
   }
 
   void _showCreateFamilyDialog() {
@@ -1955,7 +2270,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     ),
                     Text(
                       '@${member['username']}',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                      style: TextStyle(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.7),
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),

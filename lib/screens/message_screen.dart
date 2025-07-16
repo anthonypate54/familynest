@@ -13,9 +13,9 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import '../theme/app_theme.dart';
 import '../utils/video_thumbnail_util.dart';
 import '../widgets/gradient_background.dart';
-import '../theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/message_provider.dart';
 import '../dialogs/large_video_dialog.dart';
@@ -1004,6 +1004,7 @@ class _MessageScreenState extends State<MessageScreen>
     return Scaffold(
       backgroundColor: UIConfig.useDarkMode ? Colors.black : Colors.white,
       appBar: AppBar(
+        backgroundColor: AppTheme.getAppBarColor(context),
         title: const Text('Messages'),
         actions: [
           _buildConnectionStatus(),

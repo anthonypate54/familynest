@@ -127,8 +127,9 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
     return Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
+          const SizedBox(height: 60), // Controlled top spacing
           // Welcome icon
           Container(
             width: 120,
@@ -189,8 +190,9 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
     return Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
+          const SizedBox(height: 60), // Controlled top spacing
           Container(
             width: 120,
             height: 120,
@@ -267,8 +269,9 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
     return Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
+          const SizedBox(height: 60), // Controlled top spacing
           // Icon and title based on invitation status
           Container(
             width: 120,
@@ -429,13 +432,10 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
   }
 
   void _createFamily() {
-    debugPrint(
-      '🆕 FRESH_USER_ONBOARDING: User wants to create family - closing tour',
-    );
+    debugPrint('🆕 FRESH_USER_ONBOARDING: User wants to create family');
 
-    // Simply close the tour modal
-    // OnboardingService will handle navigation to FamilyManagementScreen
-    Navigator.of(context).pop();
+    // Return 'create_family' result to let CleanOnboardingService handle routing
+    Navigator.of(context).pop('create_family');
   }
 
   void _checkInvitations() {
@@ -443,35 +443,16 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
       '🆕 FRESH_USER_ONBOARDING: Checking invitations for user ${widget.userId}',
     );
 
-    // Close onboarding modal first
-    Navigator.of(context).pop();
-
-    // Then navigate to MainAppContainer with invitations tab
-    Future.delayed(const Duration(milliseconds: 100), () {
-      debugPrint(
-        '🆕 FRESH_USER_ONBOARDING: Navigating to invitations tab for user ${widget.userId}',
-      );
-
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder:
-                (context) => MainAppContainer(
-                  userId: widget.userId,
-                  userRole: widget.userRole,
-                  initialTabIndex: 4, // Invitations tab
-                ),
-          ),
-        );
-      }
-    });
+    // Return 'check_invitations' result to let CleanOnboardingService handle routing
+    Navigator.of(context).pop('check_invitations');
   }
 
   void _exploreApp() {
     debugPrint(
       '🆕 FRESH_USER_ONBOARDING: User ${widget.userId} exploring the app',
     );
-    // Simply close the onboarding and let user explore the main app
-    Navigator.of(context).pop();
+
+    // Return 'explore' result to let CleanOnboardingService handle routing
+    Navigator.of(context).pop('explore');
   }
 }

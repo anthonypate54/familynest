@@ -106,6 +106,9 @@ else
   flutter run -d "$DEVICE_ID"
 fi
 
-# Clean up .env file after run
-echo "Cleaning up .env file..."
-rm -f .env 
+# Restore default .env file after run (for iOS builds and platform detection)
+echo "Restoring default .env file..."
+cat > .env << 'EOF'
+# Default .env file for iOS builds
+# App will use platform detection when this is empty
+EOF 

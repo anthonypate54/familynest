@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api_service.dart';
-import '../services/onboarding_service.dart';
+import '../services/clean_onboarding_service.dart'; // Use clean service
 import '../models/user.dart'; // Import User model
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:provider/provider.dart';
 import '../widgets/gradient_background.dart';
 import '../main.dart';
 
@@ -89,7 +89,7 @@ class LoginScreenState extends State<LoginScreen> {
           );
 
           // Use OnboardingService to route based on onboarding state bitmap
-          await OnboardingService.routeAfterLogin(
+          await CleanOnboardingService.routeAfterLogin(
             context,
             userId,
             userRole,
@@ -150,7 +150,7 @@ class LoginScreenState extends State<LoginScreen> {
           debugPrint('User $userId has onboarding_state: $onboardingState');
 
           // Use OnboardingService to route based on onboarding state bitmap
-          await OnboardingService.routeAfterLogin(
+          await CleanOnboardingService.routeAfterLogin(
             context,
             userId,
             userRole,
@@ -159,7 +159,7 @@ class LoginScreenState extends State<LoginScreen> {
         } else {
           // Fallback to normal flow if we can't get user data
           debugPrint('Could not get user data, falling back to normal flow');
-          OnboardingService.normalFlow(context, userId, userRole);
+          CleanOnboardingService.normalFlow(context, userId, userRole);
         }
       } else {
         if (!mounted) return;

@@ -21,11 +21,23 @@ import 'dart:async'; // For Timer
 import 'package:device_info_plus/device_info_plus.dart'; // For device infoimport 'screens/test_thread_screen.dart';
 import 'package:provider/provider.dart';
 import 'providers/message_provider.dart';
+import 'providers/theme_provider.dart';
+import 'providers/text_size_provider.dart';
 import 'models/message.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'screens/websocket_test_screen.dart';
 import 'services/websocket_service.dart';
-import 'services/onboarding_service.dart'; // Import OnboardingService
+// Firebase imports
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'services/notification_service.dart';
+
+// Firebase background message handler
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint('🌙 Background message received: ${message.messageId}');
+}
 
 // Function to get device model name
 Future<String?> getDeviceModel() async {
@@ -39,6 +51,16 @@ Future<String?> getDeviceModel() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase (without requesting permissions yet)
+  await Firebase.initializeApp();
+  debugPrint('🔥 Firebase initialized');
+
+  // Set up background message handler
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Initialize notification service (without requesting permissions)
+  await NotificationService.initializeBasic();
 
   // Initialize dotenv first
   bool envLoaded = false;
@@ -105,6 +127,8 @@ void main() async {
         ChangeNotifierProvider(create: (_) => DMMessageProvider()),
         ChangeNotifierProvider(create: (_) => CommentProvider()),
         ChangeNotifierProvider(create: (_) => WebSocketService()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => TextSizeProvider()),
       ],
       child: MyApp(initialRoute: '/'),
     ),
@@ -170,6 +194,18 @@ class MyAppState extends State<MyApp> {
     return MaterialApp(
       title: 'FamilyNest',
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: Provider.of<ThemeProvider>(context).themeMode,
+      builder: (context, child) {
+        final textScaleFactor =
+            Provider.of<TextSizeProvider>(context).textScaleFactor;
+        return MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScaleFactor)),
+          child: child!,
+        );
+      },
       onGenerateRoute: (settings) {
         if (settings.name == '/') {
           return null;
@@ -284,6 +320,9 @@ class MainAppContainerState extends State<MainAppContainer> {
           _pageController.jumpToPage(_currentIndex);
         }
       });
+
+      // Start notification check after initial tab is set
+      _finishInitialization();
     } else {
       // Fall back to existing logic
       _checkForExistingDMs();
@@ -308,6 +347,15 @@ class MainAppContainerState extends State<MainAppContainer> {
 
     // Initialize WebSocket service
     _initializeWebSocket();
+
+    // Check for notification permissions
+    debugPrint('🔔 MAIN: Starting notification check');
+    _checkNotificationPermissions();
+  }
+
+  // Called after initial screen check completes
+  void _finishInitialization() {
+    debugPrint('🎯 MAIN: Initial screen check complete');
   }
 
   // Initialize WebSocket service once for the entire app
@@ -496,6 +544,8 @@ class MainAppContainerState extends State<MainAppContainer> {
           }
           _isCheckingInitialScreen = false;
         });
+        // Start notification check after initial screen is determined
+        _finishInitialization();
       }
     } catch (e) {
       debugPrint('❌ Error checking for DMs: $e');
@@ -505,8 +555,72 @@ class MainAppContainerState extends State<MainAppContainer> {
           _currentIndex = 0; // Default to MessageScreen
           _isCheckingInitialScreen = false;
         });
+        // Start notification check even on error
+        _finishInitialization();
       }
     }
+  }
+
+  // Check for notification permissions after user completes onboarding
+  Future<void> _checkNotificationPermissions() async {
+    try {
+      debugPrint('🔔 MAIN: _checkNotificationPermissions() started');
+
+      // Check if we already have notification permissions
+      bool hasPermissions =
+          await NotificationService.hasNotificationPermission();
+      debugPrint('🔔 MAIN: hasPermissions result: $hasPermissions');
+
+      if (!hasPermissions && mounted) {
+        debugPrint(
+          '🔔 MAIN: No notification permissions, showing contextual prompt',
+        );
+        _showNotificationPermissionDialog();
+      } else {
+        debugPrint('✅ MAIN: User already has notification permissions');
+      }
+    } catch (e) {
+      debugPrint('❌ MAIN: Error checking notification permissions: $e');
+    }
+  }
+
+  // Show contextual dialog explaining notification benefits
+  void _showNotificationPermissionDialog() {
+    debugPrint(
+      '🔔 MAIN: _showNotificationPermissionDialog() called - showing dialog',
+    );
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.notifications_outlined, color: Colors.blue),
+                SizedBox(width: 8),
+                Text('Stay Connected'),
+              ],
+            ),
+            content: const Text(
+              'Get notified when family members send messages, photos, or updates '
+              'so you never miss important family moments.\n\n'
+              'You can change this setting anytime in your device settings.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Not Now'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  debugPrint('🔔 MAIN: User chose to enable notifications');
+                  await NotificationService.requestPermissionsAndEnable();
+                },
+                child: const Text('Enable Notifications'),
+              ),
+            ],
+          ),
+    );
   }
 
   @override

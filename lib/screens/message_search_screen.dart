@@ -8,6 +8,7 @@ import '../widgets/gradient_background.dart';
 import '../main.dart'; // Import to access MainAppContainer
 import 'dm_thread_screen.dart'; // Import DMThreadScreen
 import '../models/dm_conversation.dart'; // Import DMConversation model
+import '../theme/app_theme.dart';
 
 class MessageSearchScreen extends StatefulWidget {
   final int userId;
@@ -278,7 +279,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        backgroundColor: AppTheme.getAppBarColor(context),
         elevation: 0,
         title: const Text(
           'Search Messages',
