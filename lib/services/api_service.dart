@@ -2611,6 +2611,39 @@ Network connection error. Please check:
     }
   }
 
+  // ===== NOTIFICATION METHODS =====
+
+  /// Register FCM token for push notifications
+  Future<bool> registerFcmToken(String userId, String fcmToken) async {
+    try {
+      debugPrint('📤 Registering FCM token for user: $userId');
+
+      final headers = {'Content-Type': 'application/json'};
+      if (_token != null) {
+        headers['Authorization'] = 'Bearer $_token';
+      }
+
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/users/$userId/fcm-token'),
+        headers: headers,
+        body: json.encode({'fcmToken': fcmToken}),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('✅ FCM token registered successfully');
+        return true;
+      } else {
+        debugPrint(
+          '⚠️ Failed to register FCM token: ${response.statusCode} ${response.body}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ Error registering FCM token: $e');
+      return false;
+    }
+  }
+
   // ===== SEARCH METHODS =====
 
   /// Get a fresh test token (for development/testing)

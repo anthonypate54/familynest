@@ -26,8 +26,30 @@ class NotificationSetupService {
     bool hasPermission = await NotificationService.hasNotificationPermission();
     if (hasPermission) {
       debugPrint(
-        '🔔 NOTIFICATION_SETUP: Permissions already granted, marking as seen',
+        '🔔 NOTIFICATION_SETUP: Permissions already granted, calling enable-all API directly',
       );
+
+      // Still need to call enable-all API to set database flags
+      try {
+        final apiService = Provider.of<ApiService>(context, listen: false);
+        bool success = await apiService.enableAllNotificationPreferences(
+          userId,
+        );
+        debugPrint('🔔 NOTIFICATION_SETUP: Enable-all API result: $success');
+
+        if (success) {
+          debugPrint(
+            '✅ NOTIFICATION_SETUP: All notification preferences enabled (pre-granted permissions)',
+          );
+        } else {
+          debugPrint(
+            '❌ NOTIFICATION_SETUP: Failed to enable notification preferences',
+          );
+        }
+      } catch (e) {
+        debugPrint('❌ NOTIFICATION_SETUP: Error enabling preferences: $e');
+      }
+
       await markNotificationDialogSeen(userId);
       return true;
     }

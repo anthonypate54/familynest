@@ -116,8 +116,12 @@ class WebSocketService extends ChangeNotifier {
     // Start health monitoring
     _startHealthMonitoring();
 
-    // Resubscribe to all topics
-    _resubscribeToAllTopics();
+    // Resubscribe to all topics with a small delay to ensure connection is fully ready
+    Future.delayed(const Duration(milliseconds: 250), () {
+      if (_isConnected && _stompClient != null) {
+        _resubscribeToAllTopics();
+      }
+    });
   }
 
   /// Enhanced error handler
@@ -301,18 +305,27 @@ class WebSocketService extends ChangeNotifier {
 
   /// Subscribe to a specific topic on the WebSocket
   void _subscribeToTopic(String topic) {
-    if (_stompClient == null || !_isConnected) return;
+    if (_stompClient == null || !_isConnected) {
+      debugPrint('⚠️ WebSocket: Cannot subscribe to $topic - not connected');
+      return;
+    }
 
-    _stompClient!.subscribe(
-      destination: topic,
-      callback: (StompFrame frame) {
-        if (frame.body != null) {
-          _handleMessage(topic, frame.body!);
-        }
-      },
-    );
+    try {
+      _stompClient!.subscribe(
+        destination: topic,
+        callback: (StompFrame frame) {
+          if (frame.body != null) {
+            _handleMessage(topic, frame.body!);
+          }
+        },
+      );
 
-    debugPrint('✅ WebSocket: Subscribed to $topic');
+      debugPrint('✅ WebSocket: Subscribed to $topic');
+    } catch (e) {
+      debugPrint('❌ WebSocket: Failed to subscribe to $topic: $e');
+      // Don't rethrow - this is expected during reconnection race conditions
+      // The subscription will be retried on the next connection cycle
+    }
   }
 
   /// Resubscribe to all topics after reconnection

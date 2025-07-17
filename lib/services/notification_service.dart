@@ -4,8 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
 class NotificationService {
@@ -333,7 +331,10 @@ class NotificationService {
   }
 
   /// Send FCM token to backend (to be called after user login)
-  static Future<void> sendTokenToBackend(String userId) async {
+  static Future<void> sendTokenToBackend(
+    String userId,
+    ApiService apiService,
+  ) async {
     if (_fcmToken == null) {
       debugPrint('⚠️ No FCM token available to send to backend');
       return;
@@ -342,25 +343,15 @@ class NotificationService {
     debugPrint('📤 Sending FCM token to backend for user: $userId');
 
     try {
-      // Import the API service
-      final response = await http.post(
-        Uri.parse('${ApiService.baseUrl}/users/$userId/fcm-token'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${ApiService.getToken()}',
-        },
-        body: json.encode({'fcmToken': _fcmToken}),
-      );
-
-      if (response.statusCode == 200) {
+      final success = await apiService.registerFcmToken(userId, _fcmToken!);
+      if (success) {
         debugPrint('✅ FCM token sent to backend successfully');
       } else {
-        debugPrint(
-          '❌ Failed to send FCM token: ${response.statusCode} - ${response.body}',
-        );
+        debugPrint('⚠️ Failed to send FCM token to backend');
       }
     } catch (e) {
       debugPrint('❌ Error sending FCM token to backend: $e');
+      rethrow; // Let caller handle the error
     }
   }
 

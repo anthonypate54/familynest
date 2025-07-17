@@ -91,7 +91,11 @@ class LoginScreenState extends State<LoginScreen> {
 
           // Register FCM token with backend after successful auto-login
           try {
-            await NotificationService.sendTokenToBackend(userId.toString());
+            final apiService = Provider.of<ApiService>(context, listen: false);
+            await NotificationService.sendTokenToBackend(
+              userId.toString(),
+              apiService,
+            );
             debugPrint(
               '✅ FCM token registered with backend for auto-login user $userId',
             );
@@ -163,7 +167,10 @@ class LoginScreenState extends State<LoginScreen> {
 
           // Register FCM token with backend after successful login
           try {
-            await NotificationService.sendTokenToBackend(userId.toString());
+            await NotificationService.sendTokenToBackend(
+              userId.toString(),
+              apiService,
+            );
             debugPrint('✅ FCM token registered with backend for user $userId');
           } catch (e) {
             debugPrint('⚠️ Failed to register FCM token: $e');
@@ -183,7 +190,11 @@ class LoginScreenState extends State<LoginScreen> {
 
           // Still try to register FCM token even in fallback
           try {
-            await NotificationService.sendTokenToBackend(userId.toString());
+            final apiService = Provider.of<ApiService>(context, listen: false);
+            await NotificationService.sendTokenToBackend(
+              userId.toString(),
+              apiService,
+            );
             debugPrint(
               '✅ FCM token registered with backend for user $userId (fallback)',
             );
