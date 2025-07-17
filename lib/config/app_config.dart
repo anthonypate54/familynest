@@ -119,11 +119,9 @@ class AppConfig {
 
       case Environment.development:
       default:
-        if (Platform.isAndroid) {
-          return _devBaseUrl;
-        } else {
-          return _localDevBaseUrl;
-        }
+        // For development, always use platform-specific defaults to avoid iOS/Android URL conflicts
+        print('🔧 Using platform-specific URL for API in development mode');
+        return _getPlatformDefaultUrl();
     }
   }
 
@@ -140,27 +138,9 @@ class AppConfig {
 
       case Environment.development:
       default:
-        try {
-          if (!dotenv.isInitialized) {
-            print(
-              '⚠️ dotenv not initialized for media URL, using platform default',
-            );
-            return _getPlatformDefaultUrl();
-          }
-          final mediaUrl = dotenv.env['MEDIA_URL'];
-          if (mediaUrl == null || mediaUrl.isEmpty) {
-            print(
-              '⚠️ MEDIA_URL not found in environment variables, using platform default',
-            );
-            return _getPlatformDefaultUrl();
-          }
-          return mediaUrl;
-        } catch (e) {
-          print(
-            '⚠️ Error reading MEDIA_URL from environment, using platform default: $e',
-          );
-          return _getPlatformDefaultUrl();
-        }
+        // For development, always use platform-specific defaults to avoid iOS/Android URL conflicts
+        print('🔧 Using platform-specific URL for media in development mode');
+        return _getPlatformDefaultUrl();
     }
   }
 
