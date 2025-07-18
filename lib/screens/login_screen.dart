@@ -73,7 +73,7 @@ class LoginScreenState extends State<LoginScreen> {
     _usernameFocusNode.addListener(() {
       if (_usernameFocusNode.hasFocus) {
         _usernameFocused = true;
-      } else if (_usernameFocused) {
+      } else if (_usernameFocused && _usernameController.text.isNotEmpty) {
         _validateUsername();
       }
     });
@@ -81,7 +81,7 @@ class LoginScreenState extends State<LoginScreen> {
     _firstNameFocusNode.addListener(() {
       if (_firstNameFocusNode.hasFocus) {
         _firstNameFocused = true;
-      } else if (_firstNameFocused) {
+      } else if (_firstNameFocused && _firstNameController.text.isNotEmpty) {
         _validateFirstName();
       }
     });
@@ -89,7 +89,7 @@ class LoginScreenState extends State<LoginScreen> {
     _lastNameFocusNode.addListener(() {
       if (_lastNameFocusNode.hasFocus) {
         _lastNameFocused = true;
-      } else if (_lastNameFocused) {
+      } else if (_lastNameFocused && _lastNameController.text.isNotEmpty) {
         _validateLastName();
       }
     });
@@ -97,7 +97,7 @@ class LoginScreenState extends State<LoginScreen> {
     _emailFocusNode.addListener(() {
       if (_emailFocusNode.hasFocus) {
         _emailFocused = true;
-      } else if (_emailFocused) {
+      } else if (_emailFocused && _regEmailController.text.isNotEmpty) {
         _validateEmail();
       }
     });
@@ -105,7 +105,7 @@ class LoginScreenState extends State<LoginScreen> {
     _passwordFocusNode.addListener(() {
       if (_passwordFocusNode.hasFocus) {
         _passwordFocused = true;
-      } else if (_passwordFocused) {
+      } else if (_passwordFocused && _regPasswordController.text.isNotEmpty) {
         _validatePassword();
       }
     });
@@ -113,7 +113,8 @@ class LoginScreenState extends State<LoginScreen> {
     _confirmPasswordFocusNode.addListener(() {
       if (_confirmPasswordFocusNode.hasFocus) {
         _confirmPasswordFocused = true;
-      } else if (_confirmPasswordFocused) {
+      } else if (_confirmPasswordFocused &&
+          _confirmPasswordController.text.isNotEmpty) {
         _validateConfirmPassword();
       }
     });
