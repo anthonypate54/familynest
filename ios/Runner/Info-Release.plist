@@ -58,11 +58,5 @@
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>This app needs notification permission to send you alerts about family messages, photos, and updates.</string>
 	
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Your app needs local network access to enable debugging and hot reload features.</string>
-	<key>NSBonjourServices</key>
-	<array>
-  	<string>_dartobservatory._tcp</string>
-</array>
 </dict>
 </plist>

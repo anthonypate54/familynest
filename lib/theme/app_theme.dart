@@ -118,6 +118,13 @@ class AppTheme {
         borderSide: const BorderSide(color: primaryColor, width: 2),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      labelStyle: const TextStyle(color: Colors.black87),
+      hintStyle: const TextStyle(color: Colors.black54),
+    ),
+    textSelectionTheme: const TextSelectionThemeData(
+      cursorColor: primaryColor,
+      selectionColor: Color(0xFF4CAF50),
+      selectionHandleColor: primaryColor,
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
@@ -216,6 +223,13 @@ class AppTheme {
         borderSide: const BorderSide(color: darkGreenAccent, width: 2),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      labelStyle: const TextStyle(color: Colors.white70),
+      hintStyle: const TextStyle(color: Colors.white54),
+    ),
+    textSelectionTheme: const TextSelectionThemeData(
+      cursorColor: darkGreenAccent,
+      selectionColor: Color(0xFF66BB6A),
+      selectionHandleColor: darkGreenAccent,
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(

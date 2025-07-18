@@ -7,6 +7,7 @@ import '../models/user.dart'; // Import User model
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/gradient_background.dart';
 import '../main.dart';
+import '../utils/error_codes.dart'; // Add error codes import
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,20 +17,114 @@ class LoginScreen extends StatefulWidget {
 }
 
 class LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _loginFormKey = GlobalKey<FormState>();
+  final _registrationFormKey = GlobalKey<FormState>();
+
+  // Login form controllers
+  final _loginEmailController = TextEditingController();
+  final _loginPasswordController = TextEditingController();
+
+  // Registration form controllers
+  final _regEmailController = TextEditingController();
+  final _regPasswordController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+
   bool _isLoading = false;
   bool _isRegistering = false;
   final String _selectedRole = 'USER';
   String? _errorMessage;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword =
+      true; // Separate visibility for confirm password
+
+  // Per-field error states
+  String? _usernameError;
+  String? _firstNameError;
+  String? _lastNameError;
+  String? _emailError;
+  String? _passwordError;
+  String? _confirmPasswordError;
+
+  // Track which fields have been focused
+  bool _usernameFocused = false;
+  bool _firstNameFocused = false;
+  bool _lastNameFocused = false;
+  bool _emailFocused = false;
+  bool _passwordFocused = false;
+  bool _confirmPasswordFocused = false;
+
+  // Focus nodes for focus-loss detection
+  final FocusNode _usernameFocusNode = FocusNode();
+  final FocusNode _firstNameFocusNode = FocusNode();
+  final FocusNode _lastNameFocusNode = FocusNode();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
+  final FocusNode _confirmPasswordFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
+
+    // Simple focus-loss validation for each field
+    _usernameFocusNode.addListener(() {
+      if (_usernameFocusNode.hasFocus) {
+        _usernameFocused = true;
+      } else if (_usernameFocused) {
+        _validateUsername();
+      }
+    });
+
+    _firstNameFocusNode.addListener(() {
+      if (_firstNameFocusNode.hasFocus) {
+        _firstNameFocused = true;
+      } else if (_firstNameFocused) {
+        _validateFirstName();
+      }
+    });
+
+    _lastNameFocusNode.addListener(() {
+      if (_lastNameFocusNode.hasFocus) {
+        _lastNameFocused = true;
+      } else if (_lastNameFocused) {
+        _validateLastName();
+      }
+    });
+
+    _emailFocusNode.addListener(() {
+      if (_emailFocusNode.hasFocus) {
+        _emailFocused = true;
+      } else if (_emailFocused) {
+        _validateEmail();
+      }
+    });
+
+    _passwordFocusNode.addListener(() {
+      if (_passwordFocusNode.hasFocus) {
+        _passwordFocused = true;
+      } else if (_passwordFocused) {
+        _validatePassword();
+      }
+    });
+
+    _confirmPasswordFocusNode.addListener(() {
+      if (_confirmPasswordFocusNode.hasFocus) {
+        _confirmPasswordFocused = true;
+      } else if (_confirmPasswordFocused) {
+        _validateConfirmPassword();
+      }
+    });
+
+    // Re-validate confirm password when password changes
+    _regPasswordController.addListener(() {
+      if (_confirmPasswordController.text.isNotEmpty) {
+        _validateConfirmPassword();
+      }
+    });
+
     // Add a slight delay to let the UI initialize before checking login
     Future.delayed(Duration(milliseconds: 300), () {
       if (mounted) {
@@ -40,11 +135,23 @@ class LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
+    _loginEmailController.dispose();
+    _loginPasswordController.dispose();
+    _regEmailController.dispose();
+    _regPasswordController.dispose();
     _usernameController.dispose();
     _firstNameController.dispose();
     _lastNameController.dispose();
+    _confirmPasswordController.dispose();
+
+    // Dispose focus nodes
+    _usernameFocusNode.dispose();
+    _firstNameFocusNode.dispose();
+    _lastNameFocusNode.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _confirmPasswordFocusNode.dispose();
+
     super.dispose();
   }
 
@@ -127,8 +234,100 @@ class LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // Individual field validation methods
+  void _validateUsername() {
+    final value = _usernameController.text;
+    String? error;
+
+    if (value.isEmpty) {
+      error = 'Please enter a username';
+    } else if (value.length < 3) {
+      error = 'Username must be at least 3 characters';
+    }
+
+    setState(() {
+      _usernameError = error;
+    });
+  }
+
+  void _validateFirstName() {
+    final value = _firstNameController.text;
+    String? error;
+
+    if (value.isEmpty) {
+      error = 'Please enter your first name';
+    }
+
+    setState(() {
+      _firstNameError = error;
+    });
+  }
+
+  void _validateLastName() {
+    final value = _lastNameController.text;
+    String? error;
+
+    if (value.isEmpty) {
+      error = 'Please enter your last name';
+    }
+
+    setState(() {
+      _lastNameError = error;
+    });
+  }
+
+  void _validateEmail() {
+    final value = _regEmailController.text;
+    String? error;
+
+    if (value.isEmpty) {
+      error = 'Please enter your email';
+    } else {
+      final emailRegex = RegExp(
+        r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+      );
+      if (!emailRegex.hasMatch(value)) {
+        error = 'Please enter a valid email address';
+      }
+    }
+
+    setState(() {
+      _emailError = error;
+    });
+  }
+
+  void _validatePassword() {
+    final value = _regPasswordController.text;
+    String? error;
+
+    if (value.isEmpty) {
+      error = 'Please enter your password';
+    } else if (value.length < 6) {
+      error = 'Password must be at least 6 characters long';
+    }
+
+    setState(() {
+      _passwordError = error;
+    });
+  }
+
+  void _validateConfirmPassword() {
+    final value = _confirmPasswordController.text;
+    String? error;
+
+    if (value.isEmpty) {
+      error = 'Please confirm your password';
+    } else if (value != _regPasswordController.text) {
+      error = 'Passwords do not match';
+    }
+
+    setState(() {
+      _confirmPasswordError = error;
+    });
+  }
+
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_loginFormKey.currentState!.validate()) return;
 
     try {
       setState(() {
@@ -139,7 +338,7 @@ class LoginScreenState extends State<LoginScreen> {
       final response = await Provider.of<ApiService>(
         context,
         listen: false,
-      ).login(_emailController.text, _passwordController.text);
+      ).login(_loginEmailController.text, _loginPasswordController.text);
 
       if (response != null) {
         if (!mounted) return;
@@ -225,6 +424,24 @@ class LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _register() async {
+    // Validate all fields manually
+    _validateUsername();
+    _validateFirstName();
+    _validateLastName();
+    _validateEmail();
+    _validatePassword();
+    _validateConfirmPassword();
+
+    // Check if any field has an error
+    if (_usernameError != null ||
+        _firstNameError != null ||
+        _lastNameError != null ||
+        _emailError != null ||
+        _passwordError != null ||
+        _confirmPasswordError != null) {
+      return; // Don't proceed if there are validation errors
+    }
+
     setState(() => _isLoading = true);
     try {
       final result = await Provider.of<ApiService>(
@@ -232,8 +449,8 @@ class LoginScreenState extends State<LoginScreen> {
         listen: false,
       ).registerUser(
         username: _usernameController.text,
-        email: _emailController.text,
-        password: _passwordController.text,
+        email: _regEmailController.text,
+        password: _regPasswordController.text,
         firstName: _firstNameController.text,
         lastName: _lastNameController.text,
         userRole: _selectedRole,
@@ -253,10 +470,42 @@ class LoginScreenState extends State<LoginScreen> {
                   onPressed: () {
                     Navigator.pop(context);
                     setState(() {
+                      // Copy registration credentials to login form
+                      _loginEmailController.text = _regEmailController.text;
+                      _loginPasswordController.text =
+                          _regPasswordController.text;
+
+                      // Switch to login mode
                       _isRegistering = false;
+
+                      // Clear registration form
+                      _regEmailController.clear();
+                      _regPasswordController.clear();
                       _usernameController.clear();
                       _firstNameController.clear();
                       _lastNameController.clear();
+                      _confirmPasswordController.clear();
+                      _errorMessage = null;
+
+                      // Clear all field errors
+                      _usernameError = null;
+                      _firstNameError = null;
+                      _lastNameError = null;
+                      _emailError = null;
+                      _passwordError = null;
+                      _confirmPasswordError = null;
+
+                      // Reset focused flags
+                      _usernameFocused = false;
+                      _firstNameFocused = false;
+                      _lastNameFocused = false;
+                      _emailFocused = false;
+                      _passwordFocused = false;
+                      _confirmPasswordFocused = false;
+
+                      // Reset both form validation states
+                      _loginFormKey.currentState?.reset();
+                      _registrationFormKey.currentState?.reset();
                     });
                   },
                   child: const Text('OK'),
@@ -265,15 +514,21 @@ class LoginScreenState extends State<LoginScreen> {
             ),
       );
     } catch (e) {
-      debugPrint('Error registering: $e');
+      debugPrint('🔴 REGISTRATION_ERROR: Raw exception: $e');
+      debugPrint('🔴 REGISTRATION_ERROR: Exception type: ${e.runtimeType}');
       if (!mounted) return;
       setState(() => _isLoading = false);
+
+      // Use the new clean error code parsing approach
+      String errorMessage = ErrorCodeMapper.parseErrorMessage(e);
+      debugPrint('🔴 REGISTRATION_ERROR: Final error message: $errorMessage');
+
       showDialog(
         context: context,
         builder:
             (context) => AlertDialog(
               title: const Text('Registration Failed'),
-              content: Text('Error registering: $e'),
+              content: Text(errorMessage),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -283,6 +538,299 @@ class LoginScreenState extends State<LoginScreen> {
             ),
       );
     }
+  }
+
+  Widget _buildLoginForm() {
+    return Form(
+      key: _loginFormKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Login',
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 24),
+          if (_errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+          TextFormField(
+            controller: _loginEmailController,
+            keyboardType: TextInputType.emailAddress,
+            textCapitalization: TextCapitalization.none,
+            autocorrect: false,
+            decoration: const InputDecoration(labelText: 'Email *'),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter your email';
+              }
+              final emailRegex = RegExp(
+                r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+              );
+              if (!emailRegex.hasMatch(value)) {
+                return 'Please enter a valid email address';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _loginPasswordController,
+            decoration: const InputDecoration(labelText: 'Password *'),
+            obscureText: true,
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter your password';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 24),
+          _isLoading
+              ? const CircularProgressIndicator()
+              : ElevatedButton(
+                onPressed: _login,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  'Login',
+                  style: const TextStyle(fontSize: 16, color: Colors.white),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegistrationForm() {
+    return Form(
+      key: _registrationFormKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Register',
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 24),
+          if (_errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+          // Username field
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _usernameController,
+                focusNode: _usernameFocusNode,
+                decoration: const InputDecoration(labelText: 'Username *'),
+              ),
+              if (_usernameError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0, left: 12.0),
+                  child: Text(
+                    _usernameError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // First Name field
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _firstNameController,
+                focusNode: _firstNameFocusNode,
+                decoration: const InputDecoration(labelText: 'First Name *'),
+              ),
+              if (_firstNameError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0, left: 12.0),
+                  child: Text(
+                    _firstNameError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Last Name field
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _lastNameController,
+                focusNode: _lastNameFocusNode,
+                decoration: const InputDecoration(labelText: 'Last Name *'),
+              ),
+              if (_lastNameError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0, left: 12.0),
+                  child: Text(
+                    _lastNameError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Email field
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _regEmailController,
+                focusNode: _emailFocusNode,
+                keyboardType: TextInputType.emailAddress,
+                textCapitalization: TextCapitalization.none,
+                autocorrect: false,
+                decoration: const InputDecoration(labelText: 'Email *'),
+              ),
+              if (_emailError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0, left: 12.0),
+                  child: Text(
+                    _emailError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Password field
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _regPasswordController,
+                focusNode: _passwordFocusNode,
+                decoration: InputDecoration(
+                  labelText: 'Password *',
+                  suffixIcon: ExcludeFocus(
+                    child: IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                    ),
+                  ),
+                ),
+                obscureText: _obscurePassword,
+              ),
+              if (_passwordError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0, left: 12.0),
+                  child: Text(
+                    _passwordError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Confirm Password field
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _confirmPasswordController,
+                focusNode: _confirmPasswordFocusNode,
+                decoration: InputDecoration(
+                  labelText: 'Confirm Password *',
+                  suffixIcon: ExcludeFocus(
+                    child: IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _obscureConfirmPassword = !_obscureConfirmPassword;
+                        });
+                      },
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                    ),
+                  ),
+                ),
+                obscureText: _obscureConfirmPassword,
+              ),
+              if (_confirmPasswordError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0, left: 12.0),
+                  child: Text(
+                    _confirmPasswordError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          _isLoading
+              ? const CircularProgressIndicator()
+              : ElevatedButton(
+                onPressed: _register,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  'Create Account',
+                  style: const TextStyle(fontSize: 16, color: Colors.white),
+                ),
+              ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -300,165 +848,64 @@ class LoginScreenState extends State<LoginScreen> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(24.0),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _isRegistering ? 'Register' : 'Login',
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        if (_errorMessage != null)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16.0),
-                            child: Text(
-                              _errorMessage!,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        if (_isRegistering)
-                          TextFormField(
-                            controller: _usernameController,
-                            decoration: const InputDecoration(
-                              labelText: 'Username',
-                              border: OutlineInputBorder(),
-                            ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Show either login or registration form
+                      _isRegistering
+                          ? _buildRegistrationForm()
+                          : _buildLoginForm(),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _isRegistering = !_isRegistering;
+                            _errorMessage = null;
 
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter a username';
-                              }
-                              if (value.length < 3) {
-                                return 'Username must be at least 3 characters';
-                              }
-                              return null;
-                            },
-                          ),
-                        if (_isRegistering) const SizedBox(height: 16),
-                        if (_isRegistering)
-                          TextFormField(
-                            controller: _firstNameController,
-                            decoration: const InputDecoration(
-                              labelText: 'First Name',
-                              border: OutlineInputBorder(),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your first name';
-                              }
-                              return null;
-                            },
-                          ),
-                        if (_isRegistering) const SizedBox(height: 16),
-                        if (_isRegistering)
-                          TextFormField(
-                            controller: _lastNameController,
-                            decoration: const InputDecoration(
-                              labelText: 'Last Name',
-                              border: OutlineInputBorder(),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your last name';
-                              }
-                              return null;
-                            },
-                          ),
-                        if (_isRegistering) const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          textCapitalization: TextCapitalization.none,
-                          autocorrect: false,
-                          decoration: const InputDecoration(
-                            labelText: 'Email',
-                            border: OutlineInputBorder(),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your email';
-                            }
-                            if (!RegExp(
-                              r'^[^@]+@[^@]+\.[^@]+',
-                            ).hasMatch(value)) {
-                              return 'Please enter a valid email address';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _passwordController,
-                          decoration: const InputDecoration(
-                            labelText: 'Password',
-                            border: OutlineInputBorder(),
-                          ),
-                          obscureText: true,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your password';
-                            }
-                            if (_isRegistering && value.length < 6) {
-                              return 'Password must be at least 6 characters long';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 24),
-                        _isLoading
-                            ? const CircularProgressIndicator()
-                            : ElevatedButton(
-                              onPressed: _isRegistering ? _register : _login,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor:
-                                    Theme.of(context).colorScheme.primary,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 48,
-                                  vertical: 16,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: Text(
-                                _isRegistering ? 'Create Account' : 'Login',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                        const SizedBox(height: 16),
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _isRegistering = !_isRegistering;
-                              _errorMessage = null;
-                              _emailController.clear();
-                              _passwordController.clear();
-                              _usernameController.clear();
-                              if (!_isRegistering) {
-                                _firstNameController.clear();
-                                _lastNameController.clear();
-                              }
-                            });
-                          },
-                          child: Text(
-                            _isRegistering
-                                ? 'Already have an account? Login'
-                                : 'Don\'t have an account? Register',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
+                            // Clear all controllers
+                            _loginEmailController.clear();
+                            _loginPasswordController.clear();
+                            _regEmailController.clear();
+                            _regPasswordController.clear();
+                            _usernameController.clear();
+                            _confirmPasswordController.clear();
+                            _firstNameController.clear();
+                            _lastNameController.clear();
+
+                            // Clear all field errors
+                            _usernameError = null;
+                            _firstNameError = null;
+                            _lastNameError = null;
+                            _emailError = null;
+                            _passwordError = null;
+                            _confirmPasswordError = null;
+
+                            // Reset focused flags
+                            _usernameFocused = false;
+                            _firstNameFocused = false;
+                            _lastNameFocused = false;
+                            _emailFocused = false;
+                            _passwordFocused = false;
+                            _confirmPasswordFocused = false;
+
+                            // Reset both form validation states
+                            _loginFormKey.currentState?.reset();
+                            _registrationFormKey.currentState?.reset();
+                          });
+                        },
+                        child: Text(
+                          _isRegistering
+                              ? 'Already have an account? Login'
+                              : 'Don\'t have an account? Register',
+                          style: TextStyle(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? const Color(0xFF66BB6A) // darkGreenAccent
+                                    : Theme.of(context).colorScheme.primary,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
