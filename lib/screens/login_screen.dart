@@ -21,7 +21,7 @@ class LoginScreenState extends State<LoginScreen> {
   final _registrationFormKey = GlobalKey<FormState>();
 
   // Login form controllers
-  final _loginEmailController = TextEditingController();
+  final _loginUsernameController = TextEditingController();
   final _loginPasswordController = TextEditingController();
 
   // Registration form controllers
@@ -136,7 +136,7 @@ class LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _loginEmailController.dispose();
+    _loginUsernameController.dispose();
     _loginPasswordController.dispose();
     _regEmailController.dispose();
     _regPasswordController.dispose();
@@ -339,7 +339,7 @@ class LoginScreenState extends State<LoginScreen> {
       final response = await Provider.of<ApiService>(
         context,
         listen: false,
-      ).login(_loginEmailController.text, _loginPasswordController.text);
+      ).login(_loginUsernameController.text, _loginPasswordController.text);
 
       if (response != null) {
         if (!mounted) return;
@@ -407,7 +407,7 @@ class LoginScreenState extends State<LoginScreen> {
       } else {
         if (!mounted) return;
         setState(() {
-          _errorMessage = 'Invalid email or password';
+          _errorMessage = 'Invalid username or password';
         });
       }
     } catch (e) {
@@ -472,7 +472,7 @@ class LoginScreenState extends State<LoginScreen> {
                     Navigator.pop(context);
                     setState(() {
                       // Copy registration credentials to login form
-                      _loginEmailController.text = _regEmailController.text;
+                      _loginUsernameController.text = _usernameController.text;
                       _loginPasswordController.text =
                           _regPasswordController.text;
 
@@ -561,20 +561,14 @@ class LoginScreenState extends State<LoginScreen> {
               ),
             ),
           TextFormField(
-            controller: _loginEmailController,
-            keyboardType: TextInputType.emailAddress,
+            controller: _loginUsernameController,
             textCapitalization: TextCapitalization.none,
             autocorrect: false,
-            decoration: const InputDecoration(labelText: 'Email *'),
+            decoration: const InputDecoration(labelText: 'Username *'),
+            onFieldSubmitted: (value) => _login(),
             validator: (value) {
               if (value == null || value.isEmpty) {
-                return 'Please enter your email';
-              }
-              final emailRegex = RegExp(
-                r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
-              );
-              if (!emailRegex.hasMatch(value)) {
-                return 'Please enter a valid email address';
+                return 'Please enter your username';
               }
               return null;
             },
@@ -584,6 +578,7 @@ class LoginScreenState extends State<LoginScreen> {
             controller: _loginPasswordController,
             decoration: const InputDecoration(labelText: 'Password *'),
             obscureText: true,
+            onFieldSubmitted: (value) => _login(),
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'Please enter your password';
@@ -611,6 +606,19 @@ class LoginScreenState extends State<LoginScreen> {
                   style: const TextStyle(fontSize: 16, color: Colors.white),
                 ),
               ),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: () {
+              _showForgotPasswordDialog();
+            },
+            child: const Text('Forgot Password?'),
+          ),
+          TextButton(
+            onPressed: () {
+              _showForgotUsernameDialog();
+            },
+            child: const Text('Forgot Username?'),
+          ),
         ],
       ),
     );
@@ -834,6 +842,172 @@ class LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  void _showForgotPasswordDialog() {
+    final TextEditingController _forgotEmailController =
+        TextEditingController();
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Forgot Password'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Enter your email to receive a password reset link.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _forgotEmailController,
+                  keyboardType: TextInputType.emailAddress,
+                  textCapitalization: TextCapitalization.none,
+                  autocorrect: false,
+                  decoration: const InputDecoration(labelText: 'Email *'),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  String email = _forgotEmailController.text.trim();
+                  if (email.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please enter your email')),
+                    );
+                    return;
+                  }
+                  Navigator.pop(context);
+                  await _sendPasswordResetRequest(email);
+                },
+                child: const Text('Send Reset Link'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _sendPasswordResetRequest(String email) async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final response = await apiService.forgotPassword(email);
+      if (response != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'If an account exists with this email, a password reset link has been sent.',
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('An error occurred. Please try again.')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error sending password reset request: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('An error occurred. Please try again.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showForgotUsernameDialog() {
+    final TextEditingController _forgotEmailController =
+        TextEditingController();
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Forgot Username'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Enter your email to receive a username reminder.'),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _forgotEmailController,
+                  keyboardType: TextInputType.emailAddress,
+                  textCapitalization: TextCapitalization.none,
+                  autocorrect: false,
+                  decoration: const InputDecoration(labelText: 'Email *'),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  String email = _forgotEmailController.text.trim();
+                  if (email.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please enter your email')),
+                    );
+                    return;
+                  }
+                  Navigator.pop(context);
+                  await _sendUsernameReminderRequest(email);
+                },
+                child: const Text('Send Username'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _sendUsernameReminderRequest(String email) async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final response = await apiService.forgotUsername(email);
+      if (response != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'If an account exists with this email, a username reminder has been sent.',
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('An error occurred. Please try again.')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error sending username reminder request: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('An error occurred. Please try again.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -864,7 +1038,7 @@ class LoginScreenState extends State<LoginScreen> {
                             _errorMessage = null;
 
                             // Clear all controllers
-                            _loginEmailController.clear();
+                            _loginUsernameController.clear();
                             _loginPasswordController.clear();
                             _regEmailController.clear();
                             _regPasswordController.clear();

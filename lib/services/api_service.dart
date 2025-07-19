@@ -377,9 +377,9 @@ Network connection error. Please check:
   // Helper method to safely set a value in SharedPreferences with verification
 
   // Login method to authenticate a user
-  Future<Map<String, dynamic>?> login(String email, String password) async {
+  Future<Map<String, dynamic>?> login(String username, String password) async {
     try {
-      debugPrint('Attempting login for email: $email');
+      debugPrint('Attempting login for username: $username');
 
       // Get SharedPreferences instance
       final prefs = await SharedPreferences.getInstance();
@@ -391,7 +391,7 @@ Network connection error. Please check:
       final response = await http.post(
         Uri.parse('$baseUrl/api/users/login'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({'email': email, 'password': password}),
+        body: json.encode({'username': username, 'password': password}),
       );
 
       if (response.statusCode == 200) {
@@ -3130,6 +3130,80 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('Error updating notification preferences: $e');
       return false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> forgotPassword(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/users/forgot-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error in forgotPassword: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> forgotUsername(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/users/forgot-username'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error in forgotUsername: $e');
+      return null;
+    }
+  }
+
+  /// Change user password
+  Future<Map<String, dynamic>?> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      debugPrint('Attempting to change password');
+
+      final headers = {'Content-Type': 'application/json'};
+      if (_token != null) {
+        headers['Authorization'] = 'Bearer $_token';
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/users/change-password'),
+        headers: headers,
+        body: json.encode({
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+        }),
+      );
+
+      debugPrint('Change password response status: ${response.statusCode}');
+      debugPrint('Change password response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else if (response.statusCode == 400) {
+        // Return the error message from the backend
+        final errorData = jsonDecode(response.body);
+        return {'error': errorData['error']};
+      } else {
+        return {'error': 'Failed to change password. Please try again.'};
+      }
+    } catch (e) {
+      debugPrint('Error in changePassword: $e');
+      return {'error': 'An error occurred while changing password.'};
     }
   }
 }
