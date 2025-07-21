@@ -1095,6 +1095,14 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                     Expanded(
                       child: TextField(
                         controller: _messageController,
+                        style: TextStyle(
+                          color:
+                              Theme.of(context).brightness == Brightness.dark
+                                  ? Colors
+                                      .black87 // Dark text on white background in dark mode
+                                  : Colors
+                                      .black87, // Dark text on white background in light mode
+                        ),
                         decoration: InputDecoration(
                           hintText: 'Message ${widget.otherUserName}...',
                           hintStyle: TextStyle(color: Colors.grey.shade600),

@@ -58,6 +58,12 @@
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>This app needs notification permission to send you alerts about family messages, photos, and updates.</string>
 	
+	<!-- Firebase Configuration -->
+	<key>FirebaseMessagingAutoInitEnabled</key>
+	<true/>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<true/>
+	
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Your app needs local network access to enable debugging and hot reload features.</string>
 	<key>NSBonjourServices</key>

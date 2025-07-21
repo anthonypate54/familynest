@@ -306,7 +306,7 @@ Network connection error. Please check:
 
   /// Logout the current user and clear all session data
   Future<void> logout() async {
-    debugPrint('Logging out user...');
+    debugPrint('🚪 LOGOUT: Starting logout process...');
 
     try {
       // Clear token from memory
@@ -315,28 +315,50 @@ Network connection error. Please check:
       // Clear all auth-related data from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
 
+      // Debug: Show what exists before clearing
+      final beforeKeys = prefs.getKeys();
+      debugPrint('🚪 LOGOUT: SharedPreferences before clearing: $beforeKeys');
+      debugPrint('🚪 LOGOUT: user_id before = "${prefs.getString('user_id')}"');
+
       // Remove all authentication data
+      debugPrint('🚪 LOGOUT: Removing auth_token...');
       await prefs.remove('auth_token');
+      debugPrint('🚪 LOGOUT: Removing auth_token_backup...');
       await prefs.remove('auth_token_backup');
+      debugPrint('🚪 LOGOUT: Removing user_id...');
       await prefs.remove('user_id');
+      debugPrint('🚪 LOGOUT: Removing user_role...');
       await prefs.remove('user_role');
+      debugPrint('🚪 LOGOUT: Removing is_logged_in...');
       await prefs.remove('is_logged_in');
+      debugPrint('🚪 LOGOUT: Removing login_time...');
       await prefs.remove('login_time');
 
       // For backward compatibility, still set this flag
+      debugPrint('🚪 LOGOUT: Setting explicitly_logged_out flag...');
       await prefs.setBool('explicitly_logged_out', true);
 
-      debugPrint('✅ User successfully logged out - all auth data cleared');
+      // Debug: Verify what was actually removed
+      final afterKeys = prefs.getKeys();
+      debugPrint('🚪 LOGOUT: SharedPreferences after clearing: $afterKeys');
+      debugPrint('🚪 LOGOUT: user_id after = "${prefs.getString('user_id')}"');
+      debugPrint(
+        '🚪 LOGOUT: auth_token exists after = ${prefs.containsKey('auth_token')}',
+      );
+
+      debugPrint(
+        '✅ LOGOUT: User successfully logged out - all auth data cleared',
+      );
     } catch (e) {
-      debugPrint('❌ Error during logout: $e');
+      debugPrint('❌ LOGOUT: Error during logout: $e');
       // Simple fallback in case of error
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('auth_token');
         _token = null;
-        debugPrint('✅ User logged out through fallback method');
+        debugPrint('✅ LOGOUT: User logged out through fallback method');
       } catch (secondError) {
-        debugPrint('❌ Fatal error during logout: $secondError');
+        debugPrint('❌ LOGOUT: Fatal error during logout: $secondError');
       }
     }
   }
@@ -3204,6 +3226,144 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('Error in changePassword: $e');
       return {'error': 'An error occurred while changing password.'};
+    }
+  }
+
+  /// Force clear ALL authentication data (for debugging corrupted state)
+  Future<void> forceClearAuthData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      debugPrint('🧹 FORCE CLEARING: Starting complete auth data wipe...');
+
+      // Clear all auth-related keys
+      await prefs.remove('auth_token');
+      await prefs.remove('auth_token_backup');
+      await prefs.remove('user_id');
+      await prefs.remove('user_role');
+      await prefs.remove('is_logged_in');
+      await prefs.remove('login_time');
+      await prefs.remove('last_token_validation');
+      await prefs.setBool('explicitly_logged_out', true);
+
+      // Clear token from memory
+      _token = null;
+
+      debugPrint('🧹 FORCE CLEARING: All auth data cleared');
+
+      // Verify clearing worked
+      final remainingKeys = prefs.getKeys();
+      final authKeys =
+          remainingKeys
+              .where(
+                (key) =>
+                    key.contains('auth_token') ||
+                    key.contains('user_id') ||
+                    key.contains('user_role') ||
+                    key.contains('is_logged_in'),
+              )
+              .toList();
+
+      if (authKeys.isEmpty) {
+        debugPrint(
+          '✅ FORCE CLEARING: Verification successful - no auth keys remain',
+        );
+      } else {
+        debugPrint(
+          '❌ FORCE CLEARING: Warning - some auth keys still exist: $authKeys',
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ FORCE CLEARING: Error: $e');
+    }
+  }
+
+  /// Get just the current user ID (for notification filtering)
+  Future<String?> getCurrentUserId() async {
+    try {
+      final userData = await getCurrentUser();
+      if (userData != null && userData['userId'] != null) {
+        return userData['userId'].toString();
+      }
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error getting current user ID: $e');
+      return null;
+    }
+  }
+
+  /// Debug FCM token (just logs, no database changes)
+  Future<bool> debugFcmToken(String userId, String fcmToken) async {
+    try {
+      debugPrint('🔍 API_DEBUG: Calling FCM debug endpoint for user: $userId');
+      debugPrint('🔍 API_DEBUG: Token length: ${fcmToken.length}');
+      debugPrint('🔍 API_DEBUG: Full FCM token being sent: $fcmToken');
+
+      final headers = {'Content-Type': 'application/json'};
+      if (_token != null) {
+        headers['Authorization'] = 'Bearer $_token';
+      }
+
+      final requestBody = json.encode({'fcmToken': fcmToken});
+      debugPrint('🔍 API_DEBUG: Request body: $requestBody');
+      debugPrint(
+        '🔍 API_DEBUG: Sending to URL: $baseUrl/api/users/$userId/fcm-token-debug',
+      );
+
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/users/$userId/fcm-token-debug'),
+        headers: headers,
+        body: requestBody,
+      );
+
+      debugPrint('🔍 API_DEBUG: Response status: ${response.statusCode}');
+      debugPrint('🔍 API_DEBUG: Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('✅ API_DEBUG: Debug endpoint call successful');
+        return true;
+      } else {
+        debugPrint(
+          '⚠️ API_DEBUG: Debug endpoint failed: ${response.statusCode} ${response.body}',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ API_DEBUG: Error calling debug endpoint: $e');
+      return false;
+    }
+  }
+
+  /// Simple debug print to backend logs
+  Future<bool> printToBackend(String message) async {
+    try {
+      final headers = {'Content-Type': 'application/json'};
+
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/users/test/print'),
+        headers: headers,
+        body: json.encode({'message': message}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('❌ Error sending debug message to backend: $e');
+      return false;
+    }
+  }
+
+  /// Simple function to print a string to backend logs
+  Future<void> backendDebugPrint(String message) async {
+    try {
+      final headers = {'Content-Type': 'application/json'};
+
+      await client.post(
+        Uri.parse('$baseUrl/public/print'),
+        headers: headers,
+        body: json.encode({'message': message}),
+      );
+    } catch (e) {
+      debugPrint('❌ backendDebugPrint error: $e');
     }
   }
 }

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>FamilyNest</string>
+	<string>Familynest</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,6 +26,20 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dartobservatory._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access to take photos and videos for sharing with family members.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Your app needs local network access to enable debugging and hot reload features.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs microphone access to record videos with audio.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs photo library access to share photos and videos with family members.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>This app needs notification permission to send you alerts about family messages, photos, and updates.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

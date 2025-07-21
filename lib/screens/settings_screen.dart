@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_styles.dart';
 import '../providers/theme_provider.dart';
@@ -25,7 +26,8 @@ class SettingsScreen extends StatefulWidget {
   SettingsScreenState createState() => SettingsScreenState();
 }
 
-class SettingsScreenState extends State<SettingsScreen> {
+class SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   Map<String, dynamic>? _notificationPreferences;
   bool _loadingNotifications = false;
 
@@ -33,6 +35,27 @@ class SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadNotificationPreferences();
+    // Add observer to detect when app returns from background
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Refresh notification preferences when app becomes active
+    // This catches cases where user granted permission via system settings
+    if (state == AppLifecycleState.resumed) {
+      debugPrint(
+        '🔔 SETTINGS: App resumed, refreshing notification preferences',
+      );
+      _loadNotificationPreferences();
+    }
   }
 
   Future<void> _loadNotificationPreferences() async {
@@ -316,6 +339,53 @@ class SettingsScreenState extends State<SettingsScreen> {
           subtitle: const Text('Update your login credentials'),
           onTap: () {
             _showChangePasswordDialog();
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.refresh, color: Colors.orange),
+          title: const Text(
+            'Refresh Notification Token',
+            style: TextStyle(color: Colors.orange),
+          ),
+          subtitle: const Text('Debug: Force refresh FCM token'),
+          onTap: () async {
+            try {
+              // Show loading
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Refreshing notification token...'),
+                  backgroundColor: Colors.orange,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+
+              // Force refresh token
+              final success = await NotificationService.forceRefreshToken();
+
+              if (!mounted) return;
+
+              // Show result
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    success
+                        ? '✅ Notification token refreshed successfully!'
+                        : '❌ Failed to refresh notification token',
+                  ),
+                  backgroundColor: success ? Colors.green : Colors.red,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            } catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error refreshing token: $e'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
           },
         ),
         ListTile(

@@ -51,9 +51,9 @@ class AppConfig {
       );
       return 'http://10.0.2.2:8080';
     } else if (Platform.isIOS) {
-      // iOS simulator default
-      print('📱 iOS detected - using simulator default: http://localhost:8080');
-      return 'http://localhost:8080';
+      // iOS - use network IP for real devices, localhost for simulator
+      print('📱 iOS detected - using network IP: http://10.0.0.9:8080');
+      return 'http://10.0.0.9:8080';
     } else {
       // Web/Desktop default
       print('💻 Web/Desktop detected - using localhost:8080');
