@@ -488,9 +488,14 @@ class NotificationService {
       return;
     }
 
-    debugPrint('✅ Showing notification - different user');
-    // Show local notification when app is in foreground
-    await _showLocalNotification(message);
+    // App is in foreground - don't show notification bubbles
+    // WebSocket handles real-time UI updates when app is active
+    debugPrint(
+      '🔕 App in foreground - skipping notification bubble (WebSocket handles UI updates)',
+    );
+
+    // Optional: Handle any silent data processing here if needed
+    // For now, we rely on WebSocket for all foreground updates
   }
 
   /// Handle messages when app is opened from background/terminated

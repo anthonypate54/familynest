@@ -25,8 +25,22 @@ class DMMessageProvider extends ChangeNotifier {
     );
 
     if (!isDuplicate) {
+      debugPrint(
+        '📝 DMMessageProvider: Adding message ${message.id} to conversation $conversationId',
+      );
+      debugPrint(
+        '📝 DMMessageProvider: Current message count: ${existingMessages.length}',
+      );
       _conversationMessages[conversationId]!.insert(0, message);
+      debugPrint(
+        '📝 DMMessageProvider: New message count: ${_conversationMessages[conversationId]!.length}',
+      );
+      debugPrint('📝 DMMessageProvider: Calling notifyListeners()');
       notifyListeners();
+    } else {
+      debugPrint(
+        '⚠️ DMMessageProvider: Duplicate message ${message.id}, not adding',
+      );
     }
   }
 

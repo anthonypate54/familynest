@@ -22,6 +22,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../config/app_config.dart';
 import '../dialogs/large_video_dialog.dart';
 import '../services/share_service.dart';
+import '../services/comment_notification_tracker.dart';
 
 class ThreadScreen extends StatefulWidget {
   final int userId;
@@ -235,6 +236,14 @@ class _ThreadScreenState extends State<ThreadScreen> {
           Message.fromJson(widget.message), // Add parent message at the start
           ...comments,
         ]);
+
+        // Mark comments as seen (for comment notification tracking)
+        final totalCommentCount = comments.length; // Don't count parent message
+        await CommentNotificationTracker().markCommentsAsSeen(
+          widget.message['id'].toString(),
+          totalCommentCount,
+        );
+
         setState(() {
           _isLoading = false;
         });

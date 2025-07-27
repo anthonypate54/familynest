@@ -6,6 +6,7 @@ import 'package:chewie/chewie.dart';
 import 'dart:io';
 import '../services/api_service.dart';
 import '../services/share_service.dart';
+import '../services/dm_message_view_tracker.dart';
 import '../utils/video_thumbnail_util.dart';
 import '../config/app_config.dart';
 import '../dialogs/large_video_dialog.dart';
@@ -18,6 +19,7 @@ import '../models/dm_message.dart';
 import '../providers/dm_message_provider.dart';
 import '../services/websocket_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
@@ -71,6 +73,11 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
     // Store DMMessageProvider reference early
     _dmMessageProvider = Provider.of<DMMessageProvider>(context, listen: false);
+
+    // Initialize DM message view tracker
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    DMMessageViewTracker().setApiService(apiService);
+
     _loadMessages();
     // Delay WebSocket initialization until after first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1264,7 +1271,8 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
       timeString = '${difference.inDays}d ago';
     }
 
-    return Padding(
+    // Wrap with VisibilityDetector for read tracking (only for messages from other users)
+    Widget messageContent = Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         children: [
@@ -1367,6 +1375,10 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                       content,
                       style: TextStyle(
                         fontSize: 16,
+                        fontWeight:
+                            (!isMe && !message.isRead)
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                         color:
                             isMe
                                 ? Colors.white
@@ -1403,5 +1415,36 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         ],
       ),
     );
+
+    // Only wrap with VisibilityDetector for messages from other users
+    if (!isMe) {
+      return VisibilityDetector(
+        key: Key('dm_message_${message.id}'),
+        onVisibilityChanged: (visibilityInfo) {
+          final dmMessageId = message.id.toString();
+          final visibleFraction = visibilityInfo.visibleFraction;
+
+          debugPrint(
+            '👁️ DM_VISIBILITY: DM Message $dmMessageId visibility changed to ${(visibleFraction * 100).toInt()}%',
+          );
+
+          if (visibleFraction > 0) {
+            DMMessageViewTracker().onMessageVisible(
+              dmMessageId,
+              visibleFraction,
+            );
+          } else {
+            DMMessageViewTracker().onMessageInvisible(dmMessageId);
+          }
+        },
+        child: messageContent,
+      );
+    } else {
+      // For current user's messages, just return the content without tracking
+      debugPrint(
+        '👁️ DM_VISIBILITY: Skipping DM message ${message.id} - current user\'s message',
+      );
+      return messageContent;
+    }
   }
 }

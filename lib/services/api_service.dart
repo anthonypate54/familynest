@@ -3366,4 +3366,235 @@ Network connection error. Please check:
       debugPrint('❌ backendDebugPrint error: $e');
     }
   }
+
+  // Mark multiple messages as viewed in a single API call (batch operation)
+  Future<Map<String, dynamic>> markMultipleMessagesAsViewed(
+    List<int> messageIds,
+  ) async {
+    if (messageIds.isEmpty) {
+      debugPrint(
+        'Error: Cannot mark messages as viewed - Message IDs list is empty',
+      );
+      return {'error': 'Message IDs list is empty'};
+    }
+
+    if (messageIds.length > 50) {
+      debugPrint('Error: Cannot mark more than 50 messages at once');
+      return {'error': 'Too many message IDs'};
+    }
+
+    debugPrint(
+      'Batch marking ${messageIds.length} messages as viewed: $messageIds',
+    );
+
+    try {
+      final url = Uri.parse('$baseUrl/api/messages/batch-views');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final requestBody = {'messageIds': messageIds};
+
+      final response = await client.post(
+        url,
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      debugPrint(
+        'Batch mark messages as viewed response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception(
+          'Failed to batch mark messages as viewed: ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error batch marking messages as viewed: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  // Get unread message count for user (optionally for specific family)
+  Future<Map<String, dynamic>> getUnreadMessageCount({int? familyId}) async {
+    debugPrint(
+      'Getting unread message count${familyId != null ? ' for family $familyId' : ''}',
+    );
+
+    try {
+      String url = '$baseUrl/api/messages/unread-count';
+      if (familyId != null) {
+        url += '?familyId=$familyId';
+      }
+
+      final response = await client.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+      );
+
+      debugPrint(
+        'Unread count response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to get unread count: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error getting unread count: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  // Get unread message count breakdown by family
+  Future<Map<String, dynamic>> getUnreadMessageCountByFamily() async {
+    debugPrint('Getting unread message count by family');
+
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/messages/unread-by-family'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+      );
+
+      debugPrint(
+        'Unread by family response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception(
+          'Failed to get unread count by family: ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error getting unread count by family: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  // =================================
+  // DM Message View Tracking Methods
+  // =================================
+
+  // Mark multiple DM messages as viewed in a single API call (batch operation)
+  Future<Map<String, dynamic>> markMultipleDMMessagesAsViewed(
+    List<int> dmMessageIds,
+  ) async {
+    if (dmMessageIds.isEmpty) {
+      debugPrint(
+        'Error: Cannot mark DM messages as viewed - Message IDs list is empty',
+      );
+      return {'error': 'DM Message IDs list is empty'};
+    }
+
+    if (dmMessageIds.length > 50) {
+      debugPrint('Error: Cannot mark more than 50 DM messages at once');
+      return {'error': 'Too many DM message IDs'};
+    }
+
+    debugPrint(
+      'Batch marking ${dmMessageIds.length} DM messages as viewed: $dmMessageIds',
+    );
+
+    try {
+      final url = Uri.parse('$baseUrl/api/messages/dm/batch-views');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final requestBody = {'dmMessageIds': dmMessageIds};
+
+      final response = await client.post(
+        url,
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      debugPrint(
+        'Batch mark DM messages as viewed response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception(
+          'Failed to batch mark DM messages as viewed: ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error batch marking DM messages as viewed: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  // Mark single DM message as viewed
+  Future<Map<String, dynamic>> markDMMessageAsViewed(int dmMessageId) async {
+    debugPrint('Marking DM message $dmMessageId as viewed');
+
+    try {
+      final url = Uri.parse('$baseUrl/api/messages/dm/$dmMessageId/views');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      };
+
+      final response = await client.post(url, headers: headers);
+
+      debugPrint(
+        'Mark DM message as viewed response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception(
+          'Failed to mark DM message as viewed: ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error marking DM message as viewed: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  // Get unread DM message count for user
+  Future<Map<String, dynamic>> getUnreadDMMessageCount() async {
+    debugPrint('Getting unread DM message count');
+
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/api/messages/dm/unread-count'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+      );
+
+      debugPrint(
+        'Unread DM count response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to get unread DM count: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error getting unread DM count: $e');
+      return {'error': e.toString()};
+    }
+  }
 }

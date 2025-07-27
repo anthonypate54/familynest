@@ -8,10 +8,10 @@ import '../widgets/video_message_card.dart';
 import '../widgets/external_video_message_card.dart';
 import '../screens/thread_screen.dart';
 import '../utils/page_transitions.dart';
-import 'package:provider/provider.dart';
-import '../providers/message_provider.dart';
 import '../services/share_service.dart';
-import '../providers/comment_provider.dart';
+import 'package:visibility_detector/visibility_detector.dart';
+import '../services/message_view_tracker.dart';
+import '../services/comment_notification_tracker.dart';
 
 class MessageService {
   static Widget buildMessageListView(
@@ -53,16 +53,36 @@ class MessageService {
         final currentMessage = messages[index];
         final currentDate = currentMessage.createdAt;
 
-        // Only show the separator if this is the oldest message for the day
-        if (index == messages.length - 1) {
-          shouldShowDateSeparator = true;
-        } else {
-          final nextMessage = messages[index + 1];
-          final nextDate = nextMessage.createdAt;
-          if (currentDate != null &&
-              nextDate != null &&
-              !_isSameDay(currentDate, nextDate)) {
+        // Show separator logic depends on whether ListView is reversed
+        if (!isThreadView) {
+          // Main screen: ListView is reversed (newest at bottom visually, but top of array)
+          // We want separators at the END of each day group (bottom of visual day)
+          if (index == messages.length - 1) {
+            // Last item in array (visually first/newest)
             shouldShowDateSeparator = true;
+          } else {
+            final nextMessage = messages[index + 1];
+            final nextDate = nextMessage.createdAt;
+            if (currentDate != null &&
+                nextDate != null &&
+                !_isSameDay(currentDate, nextDate)) {
+              // Next message is from different day
+              shouldShowDateSeparator = true;
+            }
+          }
+        } else {
+          // Thread view: ListView is normal order (newest at top)
+          if (index == 0) {
+            // First message (newest)
+            shouldShowDateSeparator = true;
+          } else {
+            final previousMessage = messages[index - 1];
+            final previousDate = previousMessage.createdAt;
+            if (currentDate != null &&
+                previousDate != null &&
+                !_isSameDay(currentDate, previousDate)) {
+              shouldShowDateSeparator = true;
+            }
           }
         }
         if (shouldShowDateSeparator && messageDateTime != null) {
@@ -74,6 +94,7 @@ class MessageService {
             messageDateTime.month,
             messageDateTime.day,
           );
+
           if (messageDate == today) {
             dateSeparatorText = 'Today';
           } else if (messageDate == yesterday) {
@@ -89,6 +110,7 @@ class MessageService {
           }
         }
         final suppressDateSeparator = isThreadView && index == 0;
+
         return Column(
           children: [
             if (!suppressDateSeparator &&
@@ -185,7 +207,7 @@ class MessageService {
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -228,7 +250,7 @@ class MessageService {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -309,7 +331,7 @@ class MessageService {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
+                color: Colors.blue.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Icon(icon, color: Colors.blue, size: 18),
@@ -326,12 +348,12 @@ class MessageService {
             ),
             TextButton(
               onPressed: onTap,
-              child: Text(actionText, style: const TextStyle(fontSize: 12)),
               style: TextButton.styleFrom(
                 foregroundColor: Colors.blue,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 minimumSize: const Size(0, 32),
               ),
+              child: Text(actionText, style: const TextStyle(fontSize: 12)),
             ),
           ],
         ),
@@ -660,15 +682,82 @@ class _MessageCardState extends State<MessageCard> {
         widget.message.senderId == widget.currentUserId;
     final String displayName =
         widget.message.senderUserName ?? widget.message.senderId ?? '?';
-    final String initials = _getInitials(displayName);
     final String displayTime = widget.timeText ?? '';
 
     final String displayDay = widget.dayText ?? '';
-    final String? mediaType = widget.message.mediaType;
     final String? mediaUrl = widget.message.mediaUrl;
+
     if (displayDay.isEmpty) {
       debugPrint('Message is null: widget.dayText = $widget.dayText');
     }
+
+    return ValueListenableBuilder<int>(
+      valueListenable: MessageViewTracker().viewedMessagesNotifier,
+      builder: (context, _, __) {
+        final bool isMessageViewed = MessageViewTracker().isMessageViewed(
+          widget.message.id,
+        );
+        final bool isReadOrOwnMessage = isMessageViewed || isCurrentUser;
+
+        // Debug logging for thread view issues
+        if (isCurrentUser) {
+          debugPrint(
+            '🔍 READ_TRACKING: Message ${widget.message.id} is current user\'s message - treating as read (currentUserId: ${widget.currentUserId}, senderId: ${widget.message.senderId})',
+          );
+        }
+
+        return VisibilityDetector(
+          key: Key('message_${widget.message.id}'),
+          onVisibilityChanged: (VisibilityInfo info) {
+            // Don't track own messages as viewed
+            if (!isCurrentUser && widget.message.id.isNotEmpty) {
+              final messageId = widget.message.id;
+              final viewTracker = MessageViewTracker();
+              // Set the authenticated ApiService instance
+              viewTracker.setApiService(widget.apiService);
+
+              debugPrint(
+                '👁️ VISIBILITY: Message $messageId visibility changed to ${(info.visibleFraction * 100).toInt()}% (isCurrentUser: $isCurrentUser)',
+              );
+
+              if (info.visibleFraction > 0) {
+                // Message became visible
+                viewTracker.onMessageVisible(messageId, info.visibleFraction);
+              } else {
+                // Message became invisible
+                viewTracker.onMessageInvisible(messageId);
+              }
+            } else {
+              if (isCurrentUser) {
+                debugPrint(
+                  '👁️ VISIBILITY: Skipping message ${widget.message.id} - current user\'s message',
+                );
+              }
+            }
+          },
+          child: _buildMessageContent(
+            context,
+            isCurrentUser,
+            displayName,
+            displayTime,
+            displayDay,
+            mediaUrl,
+            isReadOrOwnMessage,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMessageContent(
+    BuildContext context,
+    bool isCurrentUser,
+    String displayName,
+    String displayTime,
+    String displayDay,
+    String? mediaUrl,
+    bool isReadOrOwnMessage,
+  ) {
     return Column(
       children: [
         // Message card
@@ -695,8 +784,22 @@ class _MessageCardState extends State<MessageCard> {
                           decoration: BoxDecoration(
                             color: Theme.of(
                               context,
-                            ).colorScheme.background.withAlpha(220),
+                            ).colorScheme.surface.withAlpha(220),
                             borderRadius: BorderRadius.circular(12),
+                            // Add left border for unread messages
+                            border:
+                                !isReadOrOwnMessage
+                                    ? Border(
+                                      left: BorderSide(
+                                        color:
+                                            Theme.of(context).brightness ==
+                                                    Brightness.light
+                                                ? Colors.indigo[800]!
+                                                : Colors.white,
+                                        width: 4.0,
+                                      ),
+                                    )
+                                    : null,
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.05),
@@ -706,40 +809,92 @@ class _MessageCardState extends State<MessageCard> {
                               ),
                             ],
                           ),
-                          child: SelectableText(
-                            widget.message.content,
-                            style: Theme.of(context).textTheme.bodyLarge,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.message.content,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodyMedium?.copyWith(
+                                  color:
+                                      !isReadOrOwnMessage
+                                          ? (Theme.of(context).brightness ==
+                                                  Brightness.light
+                                              ? Colors.indigo[800]!
+                                              : Colors.white)
+                                          : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurface,
+                                  fontWeight:
+                                      !isReadOrOwnMessage
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                ),
+                              ),
+                              if (mediaUrl != null && mediaUrl.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width:
+                                          MediaQuery.of(context).size.width *
+                                          0.9,
+                                      child: _buildMediaWidgetAligned(
+                                        context,
+                                        widget.apiService,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Align(
                         alignment: Alignment.center,
-                        child: Text(
-                          displayDay.isNotEmpty ? displayDay : '',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey[800],
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Unread indicator dot
+                            if (!isReadOrOwnMessage)
+                              Container(
+                                width: 8,
+                                height: 8,
+                                margin: const EdgeInsets.only(right: 4),
+                                decoration: BoxDecoration(
+                                  color:
+                                      Theme.of(context).brightness ==
+                                              Brightness.light
+                                          ? Colors.indigo[800]!
+                                          : Colors.white,
+                                  shape: BoxShape.circle,
+                                  // Add a subtle shadow to make it more visible
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      blurRadius: 2,
+                                      spreadRadius: 0.5,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            Text(
+                              displayDay.isNotEmpty ? displayDay : '',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey[800],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                  // Row 2: Media (if present)
-                  if (mediaUrl != null && mediaUrl.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Center(
-                        child: Container(
-                          width: MediaQuery.of(context).size.width * 0.9,
-                          child: _buildMediaWidgetAligned(
-                            context,
-                            widget.apiService,
-                          ),
-                        ),
-                      ),
-                    ),
                   // Row 3: Timestamp (centered)
                   Padding(
                     padding: const EdgeInsets.only(top: 4.0),
@@ -776,16 +931,6 @@ class _MessageCardState extends State<MessageCard> {
         ),
       ],
     );
-  }
-
-  String _getInitials(String name) {
-    final words = name.split(' ');
-    if (words.length == 1) {
-      return words[0][0].toUpperCase();
-    } else if (words.length > 1) {
-      return words[0][0].toUpperCase() + words[1][0].toUpperCase();
-    }
-    return '?';
   }
 
   Widget _buildAvatarForSender(String? senderPhoto, String displayName) {
@@ -983,18 +1128,56 @@ class _MessageCardState extends State<MessageCard> {
           child: Row(
             children: [
               if (showCommentIcon)
-                Icon(
-                  Icons.comment_outlined,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.onSurface,
+                FutureBuilder<bool>(
+                  future: CommentNotificationTracker().hasNewComments(
+                    message['id'].toString(),
+                    commentCount,
+                  ),
+                  builder: (context, snapshot) {
+                    final hasNewComments = snapshot.data ?? false;
+                    final Color commentColor =
+                        hasNewComments
+                            ? (Theme.of(context).brightness == Brightness.light
+                                ? Colors.indigo[800]!
+                                : Colors.white)
+                            : Theme.of(context).colorScheme.onSurface;
+                    final IconData commentIcon =
+                        hasNewComments
+                            ? Icons
+                                .comment // filled = "bolder"
+                            : Icons.comment_outlined; // outlined = normal
+
+                    return Icon(commentIcon, size: 16, color: commentColor);
+                  },
                 ),
               const SizedBox(width: 2),
               if (showCommentIcon)
-                Text(
-                  commentCount.toString(),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelSmall?.copyWith(fontSize: 12),
+                FutureBuilder<bool>(
+                  future: CommentNotificationTracker().hasNewComments(
+                    message['id'].toString(),
+                    commentCount,
+                  ),
+                  builder: (context, snapshot) {
+                    final hasNewComments = snapshot.data ?? false;
+                    final Color textColor =
+                        hasNewComments
+                            ? (Theme.of(context).brightness == Brightness.light
+                                ? Colors.indigo[800]!
+                                : Colors.white)
+                            : Theme.of(context).colorScheme.onSurface;
+
+                    return Text(
+                      commentCount.toString(),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        fontSize: 12,
+                        color: textColor,
+                        fontWeight:
+                            hasNewComments
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                      ),
+                    );
+                  },
                 ),
             ],
           ),

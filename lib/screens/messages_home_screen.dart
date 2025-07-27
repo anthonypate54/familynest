@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
+import '../services/websocket_service.dart';
 import '../widgets/gradient_background.dart';
 import 'dm_thread_screen.dart';
 import 'choose_dm_recipient_screen.dart';
 import '../utils/page_transitions.dart';
 import '../models/dm_conversation.dart';
+import '../models/dm_message.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'message_search_screen.dart';
 import '../theme/app_theme.dart';
@@ -28,18 +30,44 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<DMConversation> _filteredConversations = [];
 
+  // WebSocket state variables
+  WebSocketMessageHandler? _dmMessageHandler;
+  bool _isWebSocketConnected = false;
+  ConnectionStatusHandler? _connectionListener;
+  WebSocketService? _webSocketService;
+
   @override
   void initState() {
     super.initState();
+    // Store WebSocket service reference early
+    _webSocketService = Provider.of<WebSocketService>(context, listen: false);
+
     _loadConversations();
 
     // Initialize filtered conversations to show all when screen loads
     _filteredConversations = _conversations;
+
+    // Delay WebSocket initialization until after first build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initWebSocket();
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+
+    // Clean up WebSocket subscriptions
+    if (_webSocketService != null && _dmMessageHandler != null) {
+      _webSocketService!.unsubscribe(
+        '/topic/dm/${widget.userId}',
+        _dmMessageHandler!,
+      );
+    }
+    if (_webSocketService != null && _connectionListener != null) {
+      _webSocketService!.removeConnectionListener(_connectionListener!);
+    }
+
     super.dispose();
   }
 
@@ -500,5 +528,122 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen> {
                 ),
       ),
     );
+  }
+
+  // Initialize WebSocket for DM message updates
+  void _initWebSocket() {
+    if (_webSocketService == null) return;
+
+    // Create message handler for DM messages
+    _dmMessageHandler = (Map<String, dynamic> data) {
+      _handleIncomingDMMessage(data);
+    };
+
+    // Create connection status listener
+    _connectionListener = (isConnected) {
+      if (mounted) {
+        // Use post-frame callback to avoid setState during build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isWebSocketConnected = isConnected;
+            });
+          }
+        });
+      }
+    };
+
+    // Subscribe to DM messages for this user
+    _webSocketService!.subscribe(
+      '/topic/dm/${widget.userId}',
+      _dmMessageHandler!,
+    );
+
+    // Listen for connection status changes
+    _webSocketService!.addConnectionListener(_connectionListener!);
+
+    // Initialize WebSocket connection if not already connected
+    _webSocketService!.initialize();
+  }
+
+  // Handle incoming DM messages from WebSocket
+  void _handleIncomingDMMessage(Map<String, dynamic> data) {
+    try {
+      debugPrint('📨 MESSAGES_HOME: Received WebSocket message: $data');
+
+      // Check if this is a DM message type
+      final messageType = data['type'] as String?;
+      if (messageType != null && messageType != 'DM_MESSAGE') {
+        debugPrint('⚠️ MESSAGES_HOME: Not a DM message, ignoring');
+        return;
+      }
+
+      final message = DMMessage.fromJson(data);
+      debugPrint('📨 MESSAGES_HOME: Parsed message: ${message.content}');
+
+      // Update the conversation list with the new message
+      _updateConversationWithNewMessage(message);
+    } catch (e, stackTrace) {
+      debugPrint('❌ MESSAGES_HOME: Error handling WebSocket message: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
+  // Update conversation list when new message arrives
+  void _updateConversationWithNewMessage(DMMessage message) {
+    if (!mounted) return;
+
+    setState(() {
+      // Find the conversation this message belongs to
+      final conversationIndex = _conversations.indexWhere(
+        (conv) => conv.id == message.conversationId,
+      );
+
+      if (conversationIndex != -1) {
+        // Update existing conversation
+        final conversation = _conversations[conversationIndex];
+
+        // Create updated conversation with new message info
+        final updatedConversation = DMConversation(
+          id: conversation.id,
+          user1Id: conversation.user1Id,
+          user2Id: conversation.user2Id,
+          familyContextId: conversation.familyContextId,
+          createdAt: conversation.createdAt,
+          updatedAt: DateTime.now(), // Update timestamp
+          otherUserName: conversation.otherUserName,
+          otherUserPhoto: conversation.otherUserPhoto,
+          otherUserFirstName: conversation.otherUserFirstName,
+          otherUserLastName: conversation.otherUserLastName,
+          lastMessageContent: message.content, // Update last message
+          lastMessageTime: message.createdAt, // Update last message time
+          lastMessageSenderId: message.senderId, // Set sender ID
+          hasUnreadMessages: true, // Mark as having unread messages
+          unreadCount:
+              (conversation.unreadCount ?? 0) + 1, // Increment unread count
+        );
+
+        // Remove old conversation and add updated one at the top
+        _conversations.removeAt(conversationIndex);
+        _conversations.insert(0, updatedConversation);
+
+        // Update filtered conversations if search is active
+        if (_searchController.text.isNotEmpty) {
+          _filterConversations(_searchController.text);
+        } else {
+          _filteredConversations = List.from(_conversations);
+        }
+
+        debugPrint(
+          '✅ MESSAGES_HOME: Updated conversation ${message.conversationId} with new message',
+        );
+      } else {
+        debugPrint(
+          '⚠️ MESSAGES_HOME: Conversation ${message.conversationId} not found, refreshing list',
+        );
+        // If conversation not found, refresh the entire list
+        _loadConversations();
+      }
+    });
   }
 }

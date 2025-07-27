@@ -90,8 +90,14 @@ class _BottomNavigationState extends State<BottomNavigation> {
         ),
       ],
       type: BottomNavigationBarType.fixed,
-      selectedItemColor: Theme.of(context).primaryColor,
-      unselectedItemColor: Colors.grey,
+      selectedItemColor:
+          Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : Theme.of(context).primaryColor,
+      unselectedItemColor:
+          Theme.of(context).brightness == Brightness.dark
+              ? Colors.white54
+              : Colors.grey,
     );
   }
 }
