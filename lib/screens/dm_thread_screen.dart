@@ -20,6 +20,8 @@ import '../providers/dm_message_provider.dart';
 import '../services/websocket_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'group_management_screen.dart';
+import '../screens/messages_home_screen.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
@@ -28,6 +30,13 @@ class DMThreadScreen extends StatefulWidget {
   final String? otherUserPhoto;
   final int conversationId;
 
+  // Group chat specific fields
+  final bool isGroup;
+  final int? participantCount;
+  final List<Map<String, dynamic>>? participants;
+  final VoidCallback?
+  onMarkAsRead; // Callback when conversation is marked as read
+
   const DMThreadScreen({
     super.key,
     required this.currentUserId,
@@ -35,6 +44,10 @@ class DMThreadScreen extends StatefulWidget {
     required this.otherUserName,
     this.otherUserPhoto,
     required this.conversationId,
+    this.isGroup = false,
+    this.participantCount,
+    this.participants,
+    this.onMarkAsRead,
   });
 
   @override
@@ -131,6 +144,9 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _scrollToBottomIfNeeded();
           });
+
+          // Mark all messages in this conversation as read
+          _markConversationAsRead();
         } else {
           if (mounted) {
             setState(() {
@@ -165,7 +181,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     // Clean up WebSocket subscription
     if (_dmMessageHandler != null && _webSocketService != null) {
       _webSocketService!.unsubscribe(
-        '/topic/dm/${widget.currentUserId}',
+        '/topic/dm-thread/${widget.currentUserId}',
         _dmMessageHandler!,
       );
     }
@@ -230,6 +246,12 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         // WebSocket will only broadcast to the recipient, not the sender
         final sentMessage = DMMessage.fromJson(result);
         _dmMessageProvider?.addMessage(widget.conversationId, sentMessage);
+
+        // Update the conversation list immediately with the new message
+        // Call the static callback to MessagesHomeScreen
+        if (MessagesHomeScreen.updateConversationWithMessage != null) {
+          MessagesHomeScreen.updateConversationWithMessage!(sentMessage);
+        }
 
         // Scroll to show the new message
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -724,7 +746,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
 
     // Subscribe to DM messages for this user
     _webSocketService!.subscribe(
-      '/topic/dm/${widget.currentUserId}',
+      '/topic/dm-thread/${widget.currentUserId}',
       _dmMessageHandler!,
     );
 
@@ -774,6 +796,21 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     }
   }
 
+  // Mark all messages in this conversation as read
+  Future<void> _markConversationAsRead() async {
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      await apiService.markDMConversationAsRead(widget.conversationId);
+      debugPrint('✅ DM: Marked conversation ${widget.conversationId} as read');
+
+      // Use callback to update parent screen
+      widget.onMarkAsRead?.call();
+      debugPrint('✅ DM: Called onMarkAsRead callback');
+    } catch (e) {
+      debugPrint('❌ DM: Error marking conversation as read: $e');
+    }
+  }
+
   // Show WebSocket connection status
   Widget _buildConnectionStatus() {
     return Container(
@@ -804,6 +841,268 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     );
   }
 
+  // Helper method to build group avatar for AppBar
+  Widget _buildGroupAvatar() {
+    if (widget.participants == null || widget.participants!.isEmpty) {
+      // Fallback to simple group avatar
+      return CircleAvatar(
+        radius: 16,
+        backgroundColor: Colors.deepPurple.shade400,
+        child: const Icon(Icons.group, color: Colors.white, size: 16),
+      );
+    }
+
+    final participants = widget.participants!;
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
+    // Special case for single participant - center it
+    if (participants.length == 1) {
+      return SizedBox(
+        width: 32,
+        height: 32,
+        child: Center(
+          child: Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1),
+            ),
+            child: ClipOval(
+              child: _buildParticipantAvatar(
+                participants[0],
+                apiService,
+                radius: 14,
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      // Google Messages style: max 4 avatars in corners for multiple participants
+      return SizedBox(
+        width: 32,
+        height: 32,
+        child: Stack(
+          children: [
+            // First participant (top-left)
+            if (participants.isNotEmpty)
+              Positioned(
+                left: 0,
+                top: 0,
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 0.5),
+                  ),
+                  child: ClipOval(
+                    child: _buildParticipantAvatar(
+                      participants[0],
+                      apiService,
+                      radius: 8,
+                    ),
+                  ),
+                ),
+              ),
+            // Second participant (bottom-right)
+            if (participants.length > 1)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 0.5),
+                  ),
+                  child: ClipOval(
+                    child: _buildParticipantAvatar(
+                      participants[1],
+                      apiService,
+                      radius: 8,
+                    ),
+                  ),
+                ),
+              ),
+            // Third participant (top-right)
+            if (participants.length > 2)
+              Positioned(
+                right: 0,
+                top: 0,
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 0.5),
+                  ),
+                  child: ClipOval(
+                    child: _buildParticipantAvatar(
+                      participants[2],
+                      apiService,
+                      radius: 8,
+                    ),
+                  ),
+                ),
+              ),
+            // Fourth participant (bottom-left)
+            if (participants.length > 3)
+              Positioned(
+                left: 0,
+                bottom: 0,
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 0.5),
+                  ),
+                  child: ClipOval(
+                    child: _buildParticipantAvatar(
+                      participants[3],
+                      apiService,
+                      radius: 8,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+  }
+
+  // Helper method to build participant avatar
+  Widget _buildParticipantAvatar(
+    Map<String, dynamic> participant,
+    ApiService apiService, {
+    double radius = 12,
+  }) {
+    final String firstName = participant['firstName'] as String? ?? '';
+    final String lastName = participant['lastName'] as String? ?? '';
+    final String username = participant['username'] as String? ?? '';
+    final String? photoUrl = participant['photo'] as String?;
+
+    final String initials = _getInitials(firstName, lastName, username);
+
+    if (photoUrl != null && photoUrl.isNotEmpty) {
+      final String fullUrl =
+          photoUrl.startsWith('http')
+              ? photoUrl
+              : '${apiService.mediaBaseUrl}$photoUrl';
+
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Color(initials.hashCode | 0xFF000000),
+        child: ClipOval(
+          child: CachedNetworkImage(
+            imageUrl: fullUrl,
+            fit: BoxFit.cover,
+            width: radius * 2,
+            height: radius * 2,
+            placeholder: (context, url) => const CircularProgressIndicator(),
+            errorWidget: (context, url, error) {
+              return Text(
+                initials.isNotEmpty ? initials[0].toUpperCase() : '?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: radius * 0.7,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } else {
+      final avatarColor = _getAvatarColor(initials);
+      return CircleAvatar(
+        radius: 16,
+        backgroundColor: avatarColor,
+        child: Text(
+          initials.isNotEmpty ? initials[0].toUpperCase() : '?',
+          style: TextStyle(
+            color: _getTextColor(avatarColor),
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+      );
+    }
+  }
+
+  // Helper method to get initials
+  String _getInitials(String firstName, String lastName, String username) {
+    if (firstName.isNotEmpty && lastName.isNotEmpty) {
+      return '${firstName[0]}${lastName[0]}'.toUpperCase();
+    } else if (firstName.isNotEmpty) {
+      return firstName[0].toUpperCase();
+    } else if (username.isNotEmpty) {
+      return username[0].toUpperCase();
+    }
+    return '?';
+  }
+
+  // Google Messages-style avatar colors
+  static const List<Color> _avatarColors = [
+    Color(0xFFFDD835), // Yellow
+    Color(0xFF8E24AA), // Purple
+    Color(0xFF42A5F5), // Light blue
+    Color(0xFF66BB6A), // Green
+    Color(0xFFFF7043), // Orange
+    Color(0xFFEC407A), // Pink
+    Color(0xFF26A69A), // Teal
+    Color(0xFF5C6BC0), // Indigo
+  ];
+
+  // Get avatar color based on name (consistent per user)
+  Color _getAvatarColor(String name) {
+    // Get first letter and map to color index (A=0, B=1, etc.)
+    if (name.isEmpty) return _avatarColors[0];
+
+    final firstLetter = name[0].toUpperCase();
+    final letterIndex = firstLetter.codeUnitAt(0) - 'A'.codeUnitAt(0);
+
+    // Map letters A-Z to our 8 colors (repeating pattern)
+    final colorIndex = letterIndex % _avatarColors.length;
+    return _avatarColors[colorIndex];
+  }
+
+  // Get text color based on background color
+  Color _getTextColor(Color backgroundColor) {
+    // Use black text for yellow, white for others
+    if (backgroundColor == const Color(0xFFFDD835)) {
+      // Yellow
+      return Colors.black;
+    }
+    return Colors.white;
+  }
+
+  // Navigate to group management screen
+  void _navigateToGroupManagement() {
+    if (!widget.isGroup) return;
+
+    debugPrint(
+      '🔧 Navigating to group management for conversation ${widget.conversationId}',
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (context) => GroupManagementScreen(
+              conversationId: widget.conversationId,
+              groupName: widget.otherUserName,
+              currentUserId: widget.currentUserId,
+              participants: widget.participants ?? [],
+            ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -816,23 +1115,57 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         ),
         title: Row(
           children: [
-            _buildAvatarForSender(widget.otherUserPhoto, widget.otherUserName),
+            widget.isGroup
+                ? GestureDetector(
+                  onTap: () => _navigateToGroupManagement(),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: _buildGroupAvatar(),
+                  ),
+                )
+                : _buildAvatarForSender(
+                  widget.otherUserPhoto,
+                  widget.otherUserName,
+                ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.otherUserName,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                  Row(
+                    children: [
+                      if (widget.isGroup) ...[
+                        Icon(
+                          Icons.group,
+                          size: 14,
+                          color: Colors.white.withOpacity(0.8),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: Text(
+                          widget.otherUserName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
-                  const Text(
-                    'Online',
-                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  Text(
+                    widget.isGroup
+                        ? '${widget.participantCount ?? 0} members'
+                        : 'Online',
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
                   ),
                 ],
               ),
@@ -912,7 +1245,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                                     itemCount: messages.length,
                                     itemBuilder: (context, index) {
                                       final message = messages[index];
-                                      return _buildMessageBubble(message);
+                                      return _buildMessageRow(message);
                                     },
                                   ),
                                 ),
@@ -1183,31 +1516,25 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
       ),
       child: CircleAvatar(
         radius: 16,
-        backgroundColor: Color(displayName.hashCode | 0xFF000000),
+        backgroundColor: _getAvatarColor(displayName),
         child:
             senderPhoto != null && senderPhoto.isNotEmpty
                 ? ClipOval(
                   child: CachedNetworkImage(
-                    imageUrl:
-                        senderPhoto.startsWith('http')
-                            ? senderPhoto
-                            : Provider.of<ApiService>(
-                                  context,
-                                  listen: false,
-                                ).mediaBaseUrl +
-                                senderPhoto,
+                    imageUrl: senderPhoto,
                     fit: BoxFit.cover,
                     width: 32,
                     height: 32,
                     placeholder:
                         (context, url) => const CircularProgressIndicator(),
                     errorWidget: (context, url, error) {
+                      final avatarColor = _getAvatarColor(displayName);
                       return Text(
                         displayName.isNotEmpty
                             ? displayName[0].toUpperCase()
                             : '?',
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: _getTextColor(avatarColor),
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),
@@ -1217,14 +1544,120 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                 )
                 : Text(
                   displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: _getTextColor(_getAvatarColor(displayName)),
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
                 ),
       ),
     );
+  }
+
+  // Build message row with sender avatar for group chats
+  Widget _buildMessageRow(DMMessage message) {
+    final bool isMe = message.senderId == widget.currentUserId;
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
+    // For group chats, show sender avatar
+    if (widget.isGroup && !isMe) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Sender avatar
+            Container(
+              margin: const EdgeInsets.only(right: 8, bottom: 4),
+              child: _buildSenderAvatar(message, apiService),
+            ),
+            // Message bubble
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _buildMessageBubble(message),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // For 1:1 chats or own messages, no sender avatar needed
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Align(
+          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+          child: _buildMessageBubble(message),
+        ),
+      );
+    }
+  }
+
+  // Build sender avatar for group messages
+  Widget _buildSenderAvatar(DMMessage message, ApiService apiService) {
+    final String firstName = message.senderFirstName ?? '';
+    final String lastName = message.senderLastName ?? '';
+    final String username = message.senderUsername ?? '';
+    final String? photoUrl = message.senderPhoto;
+
+    final String initials = _getInitials(firstName, lastName, username);
+
+    if (photoUrl != null && photoUrl.isNotEmpty) {
+      final String fullUrl =
+          photoUrl.startsWith('http')
+              ? photoUrl
+              : '${apiService.mediaBaseUrl}$photoUrl';
+
+      return Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 1),
+        ),
+        child: ClipOval(
+          child: CachedNetworkImage(
+            imageUrl: fullUrl,
+            fit: BoxFit.cover,
+            width: 32,
+            height: 32,
+            placeholder:
+                (context, url) => Container(
+                  color: Colors.grey.shade300,
+                  child: const Icon(Icons.person, size: 16, color: Colors.grey),
+                ),
+            errorWidget: (context, url, error) {
+              return CircleAvatar(
+                radius: 16,
+                backgroundColor: Color(initials.hashCode | 0xFF000000),
+                child: Text(
+                  initials.isNotEmpty ? initials[0].toUpperCase() : '?',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } else {
+      final avatarColor = _getAvatarColor(initials);
+      return CircleAvatar(
+        radius: 16,
+        backgroundColor: avatarColor,
+        child: Text(
+          initials.isNotEmpty ? initials[0].toUpperCase() : '?',
+          style: TextStyle(
+            color: _getTextColor(avatarColor),
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildMessageBubble(DMMessage message) {
@@ -1278,10 +1711,6 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         children: [
           if (isMe)
             const Spacer(flex: 1), // Subtle push right (reduced from flex: 2)
-          if (!isMe) ...[
-            _buildAvatarForSender(message.senderPhoto, senderName),
-            const SizedBox(width: 8),
-          ],
           Flexible(
             flex: 6, // Increased from 5 to give more space to message
             child: Container(
@@ -1295,7 +1724,9 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                 color:
                     isMe
                         ? (Theme.of(context).brightness == Brightness.dark
-                            ? AppTheme.darkGreenAccent
+                            ? Colors
+                                .grey
+                                .shade700 // Muted grey for dark mode
                             : Theme.of(context).colorScheme.primary)
                         : (Theme.of(context).brightness == Brightness.dark
                             ? Theme.of(context).colorScheme.surface
@@ -1381,7 +1812,12 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                                 : FontWeight.normal,
                         color:
                             isMe
-                                ? Colors.white
+                                ? (Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? Colors
+                                        .white // White text on grey background in dark mode
+                                    : Colors
+                                        .white) // White text on primary color in light mode
                                 : (Theme.of(context).brightness ==
                                         Brightness.dark
                                     ? Colors.white
@@ -1424,9 +1860,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           final dmMessageId = message.id.toString();
           final visibleFraction = visibilityInfo.visibleFraction;
 
-          debugPrint(
-            '👁️ DM_VISIBILITY: DM Message $dmMessageId visibility changed to ${(visibleFraction * 100).toInt()}%',
-          );
+          // Removed excessive visibility logging to reduce console spam
 
           if (visibleFraction > 0) {
             DMMessageViewTracker().onMessageVisible(

@@ -106,8 +106,10 @@ class DMConversationProvider extends ChangeNotifier {
     try {
       return _conversations.firstWhere(
         (c) =>
-            (c.user1Id == currentUserId && c.user2Id == otherUserId) ||
-            (c.user1Id == otherUserId && c.user2Id == currentUserId),
+            c.user1Id != null &&
+            c.user2Id != null &&
+            ((c.user1Id == currentUserId && c.user2Id == otherUserId) ||
+                (c.user1Id == otherUserId && c.user2Id == currentUserId)),
       );
     } catch (e) {
       return null;

@@ -239,7 +239,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
 
         // Mark comments as seen (for comment notification tracking)
         final totalCommentCount = comments.length; // Don't count parent message
-        await CommentNotificationTracker().markCommentsAsSeen(
+        await CommentNotificationTracker().markAllCommentsAsSeen(
           widget.message['id'].toString(),
           totalCommentCount,
         );

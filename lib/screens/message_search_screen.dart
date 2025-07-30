@@ -9,6 +9,7 @@ import '../main.dart'; // Import to access MainAppContainer
 import 'dm_thread_screen.dart'; // Import DMThreadScreen
 import '../models/dm_conversation.dart'; // Import DMConversation model
 import '../theme/app_theme.dart';
+import '../utils/group_avatar_utils.dart'; // Import the shared utility
 
 class MessageSearchScreen extends StatefulWidget {
   final int userId;
@@ -175,14 +176,11 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
         return;
       }
 
-      // Determine the other user ID
-      final otherUserId =
-          conversation.user1Id == widget.userId
-              ? conversation.user2Id
-              : conversation.user1Id;
+      // Determine the other user ID (use helper method that handles nulls and groups)
+      final otherUserId = conversation.getOtherUserId(widget.userId);
 
       debugPrint(
-        '🔍 Navigating to DMThreadScreen with conversation: ${conversation.id}, otherUserId: $otherUserId',
+        '🔍 Navigating to DMThreadScreen with conversation: ${conversation.id}, otherUserId: $otherUserId, isGroup: ${conversation.isGroup}',
       );
 
       // Navigate to DM thread screen
@@ -194,6 +192,9 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
           otherUserName: conversation.otherUserName ?? 'Unknown User',
           otherUserPhoto: conversation.otherUserPhoto ?? '',
           conversationId: conversation.id,
+          isGroup: conversation.isGroup,
+          participantCount: conversation.participantCount,
+          participants: conversation.participants,
         ),
       );
     } catch (e) {
@@ -233,32 +234,79 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
     }
   }
 
-  String _getSenderDisplayName(Map<String, dynamic> message) {
-    final firstName = message['sender_first_name'] as String? ?? '';
-    final lastName = message['sender_last_name'] as String? ?? '';
-    final username = message['sender_username'] as String? ?? '';
+  Widget _buildSenderAvatar(
+    String? senderPhoto,
+    String? firstName,
+    String? lastName,
+    String? username,
+  ) {
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    final initials = GroupAvatarUtils.getInitials(
+      firstName,
+      lastName,
+      username,
+    );
 
-    if (firstName.isNotEmpty && lastName.isNotEmpty) {
-      return '$firstName $lastName';
-    } else if (firstName.isNotEmpty) {
-      return firstName;
-    } else if (username.isNotEmpty) {
-      return username;
-    }
-    return 'Unknown';
+    return CircleAvatar(
+      radius: 20,
+      backgroundColor: GroupAvatarUtils.getAvatarColor(initials),
+      child:
+          senderPhoto != null && senderPhoto.isNotEmpty
+              ? ClipOval(
+                child: CachedNetworkImage(
+                  imageUrl:
+                      senderPhoto.startsWith('http')
+                          ? senderPhoto
+                          : apiService.mediaBaseUrl + senderPhoto,
+                  fit: BoxFit.cover,
+                  width: 40,
+                  height: 40,
+                  placeholder:
+                      (context, url) => Text(
+                        initials,
+                        style: TextStyle(
+                          color: GroupAvatarUtils.getTextColor(
+                            GroupAvatarUtils.getAvatarColor(initials),
+                          ),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                  errorWidget:
+                      (context, url, error) => Text(
+                        initials,
+                        style: TextStyle(
+                          color: GroupAvatarUtils.getTextColor(
+                            GroupAvatarUtils.getAvatarColor(initials),
+                          ),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                ),
+              )
+              : Text(
+                initials,
+                style: TextStyle(
+                  color: GroupAvatarUtils.getTextColor(
+                    GroupAvatarUtils.getAvatarColor(initials),
+                  ),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+    );
   }
 
-  String _getInitials(String? firstName, String? lastName, String? username) {
-    if (firstName != null && firstName.isNotEmpty) {
-      if (lastName != null && lastName.isNotEmpty) {
-        return '${firstName[0]}${lastName[0]}'.toUpperCase();
-      }
-      return firstName[0].toUpperCase();
+  String _getSenderDisplayName(Map<String, dynamic> message) {
+    final senderFirstName = message['sender_first_name']?.toString();
+    final senderLastName = message['sender_last_name']?.toString();
+    final senderUsername = message['sender_username']?.toString();
+
+    if (senderFirstName != null && senderLastName != null) {
+      return '$senderFirstName $senderLastName';
+    } else if (senderUsername != null) {
+      return senderUsername;
+    } else {
+      return 'Unknown User';
     }
-    if (username != null && username.isNotEmpty) {
-      return username[0].toUpperCase();
-    }
-    return '?';
   }
 
   Future<void> _testSearchController() async {
@@ -473,14 +521,25 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
     final mediaType = message['media_type'] as String?;
     final mediaUrl = message['media_url'] as String?;
 
+    // Check if this is a group chat message
+    final isGroup = message['is_group'] as bool? ?? false;
+    final conversationName = message['conversation_name'] as String?;
+    final participants = message['participants'] as List<dynamic>?;
+
     // Safely extract sender information with proper type casting
     final senderFirstName = message['sender_first_name']?.toString();
     final senderLastName = message['sender_last_name']?.toString();
     final senderUsername = message['sender_username']?.toString();
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(
+          0.15,
+        ), // Light green like MessagesHomeScreen
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+      ),
       child: InkWell(
         onTap: () {
           debugPrint('🔍 Card tapped! Message: $message');
@@ -492,87 +551,52 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header with sender info and timestamp
+              // Header with avatar info and timestamp
               Row(
                 children: [
-                  // Sender avatar
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Color(senderName.hashCode | 0xFF000000),
-                    child:
-                        senderPhoto != null && senderPhoto.isNotEmpty
-                            ? ClipOval(
-                              child: CachedNetworkImage(
-                                imageUrl:
-                                    senderPhoto.startsWith('http')
-                                        ? senderPhoto
-                                        : Provider.of<ApiService>(
-                                              context,
-                                              listen: false,
-                                            ).mediaBaseUrl +
-                                            senderPhoto,
-                                fit: BoxFit.cover,
-                                width: 40,
-                                height: 40,
-                                placeholder:
-                                    (context, url) => Text(
-                                      _getInitials(
-                                        senderFirstName,
-                                        senderLastName,
-                                        senderUsername,
-                                      ),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                errorWidget:
-                                    (context, url, error) => Text(
-                                      _getInitials(
-                                        senderFirstName,
-                                        senderLastName,
-                                        senderUsername,
-                                      ),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                              ),
-                            )
-                            : Text(
-                              _getInitials(
-                                senderFirstName,
-                                senderLastName,
-                                senderUsername,
-                              ),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                  ),
+                  // Show group avatar for group chats, sender avatar for 1:1
+                  isGroup
+                      ? GroupAvatarUtils.buildGroupAvatar(
+                        participants?.cast<Map<String, dynamic>>(),
+                        Provider.of<ApiService>(context, listen: false),
+                      )
+                      : _buildSenderAvatar(
+                        senderPhoto,
+                        senderFirstName,
+                        senderLastName,
+                        senderUsername,
+                      ),
                   const SizedBox(width: 12),
 
-                  // Sender name and family
+                  // Conversation name and message (2 lines like MessagesHomeScreen)
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          senderName,
+                          isGroup
+                              ? (conversationName ?? familyName)
+                              : senderName,
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
+                            color:
+                                Colors
+                                    .white, // White text like MessagesHomeScreen
                           ),
                         ),
-                        Text(
-                          familyName,
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 12,
+                        if (content.isNotEmpty)
+                          Text(
+                            content,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(
+                                0.7,
+                              ), // Light white like MessagesHomeScreen
+                              fontSize: 14,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -580,25 +604,19 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
                   // Timestamp
                   Text(
                     _formatTimestamp(timestamp),
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(
+                        0.7,
+                      ), // Light white like MessagesHomeScreen
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
 
               const SizedBox(height: 12),
 
-              // Message content
-              if (content.isNotEmpty) ...[
-                Text(
-                  content,
-                  style: const TextStyle(fontSize: 14),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-              ],
-
-              // Media indicator
+              // Media indicator (removed duplicate message content)
               if (mediaType != null && mediaUrl != null) ...[
                 Row(
                   children: [

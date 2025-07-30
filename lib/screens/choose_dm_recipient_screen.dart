@@ -8,12 +8,23 @@ import '../providers/dm_message_provider.dart';
 import '../widgets/gradient_background.dart';
 import '../utils/page_transitions.dart';
 import 'dm_thread_screen.dart';
+import 'group_name_screen.dart';
 import '../theme/app_theme.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ChooseDMRecipientScreen extends StatefulWidget {
   final int userId;
+  final bool isGroupMode;
+  final List<int> existingParticipants;
+  final bool isAddingToExistingGroup;
 
-  const ChooseDMRecipientScreen({super.key, required this.userId});
+  const ChooseDMRecipientScreen({
+    super.key,
+    required this.userId,
+    this.isGroupMode = false,
+    this.existingParticipants = const [],
+    this.isAddingToExistingGroup = false,
+  });
 
   @override
   State<ChooseDMRecipientScreen> createState() =>
@@ -30,9 +41,14 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
   List<Map<String, dynamic>> _filteredMembers = [];
   bool _loadingMembers = false;
 
+  // Group chat state
+  bool _isGroupMode = false;
+  Set<Map<String, dynamic>> _selectedMembers = {};
+
   @override
   void initState() {
     super.initState();
+    _isGroupMode = widget.isGroupMode;
     _loadFamilyMembers();
   }
 
@@ -53,8 +69,14 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
       // Use the new method that gets members from ALL families
       final members = await apiService.getAllFamilyMembers();
 
-      // Note: The new endpoint already excludes the current user, so no need to filter
-      final filteredMembers = members;
+      // Filter out existing participants if in group mode
+      final filteredMembers =
+          members.where((member) {
+            final isExistingParticipant = widget.existingParticipants.contains(
+              member['userId'],
+            );
+            return !isExistingParticipant;
+          }).toList();
 
       if (mounted) {
         setState(() {
@@ -142,16 +164,22 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
             displayName = 'Unknown User';
           }
 
-          // Navigate to DM thread
-          slidePush(
-            context,
-            DMThreadScreen(
-              currentUserId: widget.userId,
-              otherUserId: memberId,
-              otherUserName: displayName,
-              otherUserPhoto: member['photo'] as String?,
-              conversationId: conversationId,
+          // Navigate to DM thread and clear navigation stack
+          // This ensures that pressing back goes to the conversation list, not the recipient selection
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder:
+                  (context) => DMThreadScreen(
+                    currentUserId: widget.userId,
+                    otherUserId: memberId,
+                    otherUserName: displayName,
+                    otherUserPhoto: member['photo'] as String?,
+                    conversationId: conversationId,
+                  ),
             ),
+            (route) =>
+                route
+                    .isFirst, // Remove all routes except the first (root) route
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -219,6 +247,186 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
     return '?';
   }
 
+  // Helper method to build selected members chips
+  Widget _buildSelectedMembersChips() {
+    if (_selectedMembers.isEmpty) {
+      return TextField(
+        controller: _searchController,
+        onChanged: _filterMembers,
+        style: const TextStyle(color: Colors.white),
+        cursorColor: Colors.white,
+        decoration: const InputDecoration(
+          hintText: 'Add participants...',
+          hintStyle: TextStyle(color: Colors.white70),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+          isDense: true,
+          filled: false,
+          fillColor: Colors.transparent,
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 8.0,
+      runSpacing: 4.0,
+      children: [
+        ..._selectedMembers.map((member) {
+          final firstName = member['firstName'] as String? ?? '';
+          final lastName = member['lastName'] as String? ?? '';
+          final username = member['username'] as String? ?? '';
+
+          String displayName = '';
+          if (firstName.isNotEmpty) {
+            displayName = firstName;
+            if (lastName.isNotEmpty) {
+              displayName += ' $lastName';
+            }
+          } else if (username.isNotEmpty) {
+            displayName = username;
+          } else {
+            displayName = 'Unknown User';
+          }
+
+          return Chip(
+            label: Text(
+              displayName,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            backgroundColor: Colors.white.withOpacity(0.2),
+            deleteIcon: const Icon(Icons.close, color: Colors.white, size: 18),
+            onDeleted: () {
+              setState(() {
+                _selectedMembers.remove(member);
+              });
+            },
+          );
+        }).toList(),
+
+        // Add more participants field
+        if (_selectedMembers.length < 4) // Max 4 others + creator = 5 total
+          SizedBox(
+            width: 100,
+            child: TextField(
+              controller: _searchController,
+              onChanged: _filterMembers,
+              style: const TextStyle(color: Colors.white),
+              cursorColor: Colors.white,
+              decoration: const InputDecoration(
+                hintText: 'Add more...',
+                hintStyle: TextStyle(color: Colors.white70),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                isDense: true,
+                filled: false,
+                fillColor: Colors.transparent,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // Helper method to build search field for normal mode
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _searchController,
+      onChanged: _filterMembers,
+      style: const TextStyle(color: Colors.white),
+      cursorColor: Colors.white,
+      decoration: const InputDecoration(
+        hintText: 'Type name, phone number, or email',
+        hintStyle: TextStyle(color: Colors.white70),
+        border: InputBorder.none,
+        contentPadding: EdgeInsets.zero,
+        isDense: true,
+        filled: false,
+        fillColor: Colors.transparent,
+      ),
+    );
+  }
+
+  // Helper method to build create group button
+  Widget _buildCreateGroupButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _toggleGroupMode,
+        icon: const Icon(Icons.group_add, color: Colors.white),
+        label: const Text(
+          'Create group',
+          style: TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.white.withOpacity(0.2),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          elevation: 0,
+        ),
+      ),
+    );
+  }
+
+  // Helper method to build next button for group mode
+  Widget _buildNextButton() {
+    final isAddingToGroup = widget.isAddingToExistingGroup;
+    final buttonText =
+        isAddingToGroup
+            ? 'Add (${_selectedMembers.length})'
+            : 'Next (${_selectedMembers.length})';
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        ElevatedButton(
+          onPressed:
+              isAddingToGroup ? _addSelectedParticipants : _proceedToGroupName,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Theme.of(context).primaryColor,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+          child: Text(
+            buttonText,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Add selected participants to existing group (return user IDs)
+  void _addSelectedParticipants() {
+    final selectedUserIds =
+        _selectedMembers.map((member) => member['userId'] as int).toList();
+    Navigator.pop(context, selectedUserIds);
+  }
+
+  // Proceed to group name screen
+  void _proceedToGroupName() {
+    slidePush(
+      context,
+      GroupNameScreen(
+        currentUserId: widget.userId,
+        selectedMembers: _selectedMembers.toList(),
+      ),
+    );
+  }
+
+  // Toggle between normal and group mode
+  void _toggleGroupMode() {
+    setState(() {
+      _isGroupMode = !_isGroupMode;
+      _selectedMembers.clear();
+      _searchController.clear();
+      _filteredMembers = _familyMembers;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -230,10 +438,15 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
         ),
         title: Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
-                'New message to family',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+                widget.isAddingToExistingGroup
+                    ? 'Add participants'
+                    : (_isGroupMode ? 'New group chat' : 'New chat'),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
             // User avatar
@@ -258,45 +471,51 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
       body: GradientBackground(
         child: Column(
           children: [
-            // "To:" field with GREEN background - NO WHITE ANYWHERE
+            // "To:" field with selected members and Create group button
             Container(
-              //  color: Theme.of(context).colorScheme.primary, // GREEN background
               width: double.infinity,
               padding: const EdgeInsets.symmetric(
                 vertical: 12.0,
                 horizontal: 16.0,
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Column 1: "To:" label
-                  const Text(
-                    'To:',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Column 2: Text field with transparent background
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: _filterMembers,
-                      style: const TextStyle(color: Colors.white),
-                      cursorColor: Colors.white,
-                      decoration: const InputDecoration(
-                        hintText: 'Type a name',
-                        hintStyle: TextStyle(color: Colors.white70),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                        isDense: true,
-                        filled: false,
-                        fillColor: Colors.transparent,
+                  // To: field row
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // "To:" label
+                      const Text(
+                        'To:',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      // Selected members or search field
+                      Expanded(
+                        child:
+                            _isGroupMode
+                                ? _buildSelectedMembersChips()
+                                : _buildSearchField(),
+                      ),
+                    ],
                   ),
+
+                  // Create group button (only in normal mode)
+                  if (!_isGroupMode) ...[
+                    const SizedBox(height: 12),
+                    _buildCreateGroupButton(),
+                  ],
+
+                  // Next button (only in group mode with selections)
+                  if (_isGroupMode && _selectedMembers.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _buildNextButton(),
+                  ],
                 ],
               ),
             ),
@@ -413,27 +632,27 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
     }
 
     final String initials = _getInitials(firstName, lastName, username);
+    final bool isSelected = _selectedMembers.contains(member);
+    final bool isAtLimit =
+        _selectedMembers.length >= 4; // Max 4 others + creator = 5 total
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color:
+            _isGroupMode && isSelected
+                ? Colors.white.withOpacity(
+                  0.3,
+                ) // Highlight selected in group mode
+                : Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-          radius: 24,
-          backgroundColor: Colors.white,
-          child: Text(
-            initials,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-        ),
+        leading:
+            _isGroupMode
+                ? _buildGroupModeLeading(isSelected, isAtLimit, member)
+                : _buildNormalModeLeading(initials, member),
         title: Text(
           displayName,
           style: const TextStyle(
@@ -449,8 +668,184 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
                 )
                 : null,
-        onTap: () => _startConversationWith(member),
+        onTap:
+            () =>
+                _isGroupMode
+                    ? _toggleMemberSelection(member)
+                    : _startConversationWith(member),
       ),
     );
+  }
+
+  // Helper method to build leading widget for normal mode (avatar only)
+  Widget _buildNormalModeLeading(String initials, Map<String, dynamic> member) {
+    final photo = member['photo'] as String?;
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
+    // Construct full URL for photo
+    final String? fullPhotoUrl =
+        photo != null && photo.isNotEmpty
+            ? (photo.startsWith('http')
+                ? photo
+                : '${apiService.mediaBaseUrl}$photo')
+            : null;
+
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: Colors.white,
+      child:
+          fullPhotoUrl != null
+              ? ClipOval(
+                child: CachedNetworkImage(
+                  imageUrl: fullPhotoUrl,
+                  fit: BoxFit.cover,
+                  width: 48,
+                  height: 48,
+                  placeholder:
+                      (context, url) => Container(
+                        color: Colors.grey.shade300,
+                        child: const Icon(
+                          Icons.person,
+                          size: 24,
+                          color: Colors.grey,
+                        ),
+                      ),
+                  errorWidget: (context, url, error) {
+                    return Text(
+                      initials,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    );
+                  },
+                ),
+              )
+              : Text(
+                initials,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+    );
+  }
+
+  // Helper method to build leading widget for group mode (checkbox + avatar)
+  Widget _buildGroupModeLeading(
+    bool isSelected,
+    bool isAtLimit,
+    Map<String, dynamic> member,
+  ) {
+    final firstName = member['firstName'] as String? ?? '';
+    final lastName = member['lastName'] as String? ?? '';
+    final username = member['username'] as String? ?? '';
+    final photo = member['photo'] as String?;
+    final String initials = _getInitials(firstName, lastName, username);
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
+    // Construct full URL for photo
+    final String? fullPhotoUrl =
+        photo != null && photo.isNotEmpty
+            ? (photo.startsWith('http')
+                ? photo
+                : '${apiService.mediaBaseUrl}$photo')
+            : null;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Checkbox
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color:
+                isSelected
+                    ? Theme.of(context).primaryColor
+                    : Colors.transparent,
+            border: Border.all(
+              color:
+                  isSelected
+                      ? Theme.of(context).primaryColor
+                      : Colors.white.withOpacity(0.5),
+              width: 2,
+            ),
+          ),
+          child:
+              isSelected
+                  ? const Icon(Icons.check, color: Colors.white, size: 16)
+                  : null,
+        ),
+        const SizedBox(width: 12),
+        // Avatar with photo support
+        CircleAvatar(
+          radius: 20,
+          backgroundColor: Colors.white,
+          child:
+              fullPhotoUrl != null
+                  ? ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: fullPhotoUrl,
+                      fit: BoxFit.cover,
+                      width: 40,
+                      height: 40,
+                      placeholder:
+                          (context, url) => Container(
+                            color: Colors.grey.shade300,
+                            child: const Icon(
+                              Icons.person,
+                              size: 20,
+                              color: Colors.grey,
+                            ),
+                          ),
+                      errorWidget: (context, url, error) {
+                        return Text(
+                          initials,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        );
+                      },
+                    ),
+                  )
+                  : Text(
+                    initials,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+        ),
+      ],
+    );
+  }
+
+  // Toggle member selection in group mode
+  void _toggleMemberSelection(Map<String, dynamic> member) {
+    setState(() {
+      if (_selectedMembers.contains(member)) {
+        _selectedMembers.remove(member);
+      } else {
+        // Check limit (max 4 others + creator = 5 total)
+        if (_selectedMembers.length < 4) {
+          _selectedMembers.add(member);
+        } else {
+          // Show limit message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Maximum 5 people allowed in a group chat'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    });
   }
 }

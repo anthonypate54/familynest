@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 /// Environment types
 enum Environment { development, staging, production }
@@ -16,40 +17,39 @@ class AppConfig {
   // App environment
   Environment _environment = Environment.development;
 
+  // Cache the platform URL to avoid repeated calculations and prints
+  String? _cachedPlatformUrl;
+
   // API URLs for different environments
   String get _devBaseUrl {
-    try {
-      if (!dotenv.isInitialized) {
-        print(
-          '⚠️ dotenv not initialized, using platform-specific default for direct IDE run',
-        );
-        return _getPlatformDefaultUrl();
-      }
-      final url = dotenv.env['API_URL'];
-      if (url == null || url.isEmpty) {
-        print(
-          '⚠️ API_URL not found in .env (direct IDE run), using platform default',
-        );
-        return _getPlatformDefaultUrl();
-      }
-      print('✅ Using API_URL from .env: $url (run.sh mode)');
-      return url;
-    } catch (e) {
-      print(
-        '⚠️ Error reading API_URL from environment, using platform default: $e',
-      );
-      return _getPlatformDefaultUrl();
+    // For development, always use platform-specific defaults
+    // This is more reliable than trying to read .env files
+    if (_cachedPlatformUrl == null) {
+      print('🔧 Using platform-specific URL for development mode');
+      _cachedPlatformUrl = _getPlatformDefaultUrl();
     }
+    return _cachedPlatformUrl!;
   }
 
   /// Get the correct default URL based on the current platform (for direct IDE runs)
   String _getPlatformDefaultUrl() {
     if (Platform.isAndroid) {
-      // Android emulator default (most common for development)
+      // We need to detect if this is an emulator or physical device
+      // This is async, so we'll use a simple heuristic for now
+      // Emulators typically have model names containing "emulator" or "sdk"
+
+      // For now, always try localhost first (works for physical devices with port forwarding)
+      // If that fails, the app will handle the error gracefully
       print(
-        '📱 Android detected - using emulator default: http://10.0.2.2:8080',
+        '📱 Android detected - using localhost with port forwarding: http://localhost:8080',
       );
-      return 'http://10.0.2.2:8080';
+      print(
+        '💡 Make sure adb reverse tcp:8080 tcp:8080 is set up for physical devices',
+      );
+      print(
+        '💡 If this fails, you may need to check emulator vs physical device detection',
+      );
+      return 'http://localhost:8080';
     } else if (Platform.isIOS) {
       // iOS - use network IP for real devices, localhost for simulator
       print('📱 iOS detected - using network IP: http://10.0.0.9:8080');
@@ -120,8 +120,7 @@ class AppConfig {
       case Environment.development:
       default:
         // For development, always use platform-specific defaults to avoid iOS/Android URL conflicts
-        print('🔧 Using platform-specific URL for API in development mode');
-        return _getPlatformDefaultUrl();
+        return _devBaseUrl; // Use the cached version
     }
   }
 
@@ -139,8 +138,7 @@ class AppConfig {
       case Environment.development:
       default:
         // For development, always use platform-specific defaults to avoid iOS/Android URL conflicts
-        print('🔧 Using platform-specific URL for media in development mode');
-        return _getPlatformDefaultUrl();
+        return _devBaseUrl; // Use the cached version instead of calling _getPlatformDefaultUrl again
     }
   }
 
@@ -195,4 +193,19 @@ class AppConfig {
 
   /// Whether to show link sharing option for large files
   static const bool enableLinkSharing = true;
+
+  // Group Chat Configuration
+  /// Maximum number of participants in a group chat (including creator)
+  static const int maxGroupChatParticipants = 5;
+
+  /// Minimum number of participants to create a group chat (excluding creator)
+  static const int minGroupChatParticipants = 1;
+
+  /// Get the maximum number of participants that can be selected when creating a group
+  /// (excludes the creator who is automatically added)
+  static int get maxSelectableParticipants => maxGroupChatParticipants - 1;
+
+  /// Get error message for when group size limit is exceeded
+  static String getGroupSizeLimitMessage() =>
+      'Maximum $maxSelectableParticipants participants allowed ($maxGroupChatParticipants total including you)';
 }

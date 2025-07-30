@@ -2,11 +2,18 @@ import 'package:flutter/foundation.dart';
 
 class DMConversation {
   final int id;
-  final int user1Id; // Always the lower user_id
-  final int user2Id; // Always the higher user_id
+  final int? user1Id; // Nullable for group chats (for 1:1 chats)
+  final int? user2Id; // Nullable for group chats (for 1:1 chats)
   final int? familyContextId;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  // Group chat fields
+  final bool isGroup;
+  final String? name; // Group name
+  final int? participantCount;
+  final int? createdBy;
+  final List<Map<String, dynamic>>? participants;
 
   // Additional fields that might come from API joins
   final String? otherUserName;
@@ -23,11 +30,16 @@ class DMConversation {
 
   DMConversation({
     required this.id,
-    required this.user1Id,
-    required this.user2Id,
+    this.user1Id, // Made optional
+    this.user2Id, // Made optional
     this.familyContextId,
     required this.createdAt,
     required this.updatedAt,
+    this.isGroup = false,
+    this.name,
+    this.participantCount,
+    this.createdBy,
+    this.participants,
     this.otherUserName,
     this.otherUserPhoto,
     this.otherUserFirstName,
@@ -52,8 +64,8 @@ class DMConversation {
 
     return DMConversation(
       id: parseIntSafe(json['id']),
-      user1Id: parseIntSafe(json['user1_id']),
-      user2Id: parseIntSafe(json['user2_id']),
+      user1Id: json['user1_id'] != null ? parseIntSafe(json['user1_id']) : null,
+      user2Id: json['user2_id'] != null ? parseIntSafe(json['user2_id']) : null,
       familyContextId:
           json['family_context_id'] != null
               ? parseIntSafe(json['family_context_id'])
@@ -74,6 +86,22 @@ class DMConversation {
                     json['updated_at'] as int,
                   ))
               : DateTime.now(),
+      isGroup: json['is_group'] as bool? ?? false,
+      name: json['name'] as String?,
+      participantCount:
+          json['participant_count'] != null
+              ? parseIntSafe(json['participant_count'])
+              : null,
+      createdBy:
+          json['created_by'] != null ? parseIntSafe(json['created_by']) : null,
+      participants:
+          json['participants'] != null
+              ? List<Map<String, dynamic>>.from(
+                (json['participants'] as List<dynamic>).map(
+                  (p) => Map<String, dynamic>.from(p),
+                ),
+              )
+              : null,
       otherUserName: json['other_user_name'] as String?,
       otherUserPhoto: json['other_user_photo'] as String?,
       otherUserFirstName: json['other_user_first_name'] as String?,
@@ -108,6 +136,11 @@ class DMConversation {
       'family_context_id': familyContextId,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      'is_group': isGroup,
+      'name': name,
+      'participant_count': participantCount,
+      'created_by': createdBy,
+      'participants': participants,
       'other_user_name': otherUserName,
       'other_user_photo': otherUserPhoto,
       'other_user_first_name': otherUserFirstName,
@@ -148,6 +181,11 @@ class DMConversation {
     int? familyContextId,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? isGroup,
+    String? name,
+    int? participantCount,
+    int? createdBy,
+    List<Map<String, dynamic>>? participants,
     String? otherUserName,
     String? otherUserPhoto,
     String? otherUserFirstName,
@@ -165,6 +203,11 @@ class DMConversation {
       familyContextId: familyContextId ?? this.familyContextId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isGroup: isGroup ?? this.isGroup,
+      name: name ?? this.name,
+      participantCount: participantCount ?? this.participantCount,
+      createdBy: createdBy ?? this.createdBy,
+      participants: participants ?? this.participants,
       otherUserName: otherUserName ?? this.otherUserName,
       otherUserPhoto: otherUserPhoto ?? this.otherUserPhoto,
       otherUserFirstName: otherUserFirstName ?? this.otherUserFirstName,
@@ -204,7 +247,11 @@ class DMConversation {
 
   // Helper to get the other user ID based on current user ID
   int getOtherUserId(int currentUserId) {
-    return currentUserId == user1Id ? user2Id : user1Id;
+    // For group chats, return 0 as there's no single "other user"
+    if (isGroup || user1Id == null || user2Id == null) {
+      return 0;
+    }
+    return currentUserId == user1Id ? user2Id! : user1Id!;
   }
 
   // Static method to convert a list of DMConversation to the format expected by MessagesHomeScreen

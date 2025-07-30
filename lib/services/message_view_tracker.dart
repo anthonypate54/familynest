@@ -42,15 +42,27 @@ class MessageViewTracker {
   /// Set the ApiService instance to use for API calls
   void setApiService(ApiService apiService) {
     _apiService = apiService;
-    debugPrint('🔧 READ_TRACKING: ApiService instance updated');
+    // Remove excessive logging - only log once when first set
+    if (!_isApiServiceSet) {
+      debugPrint('🔧 READ_TRACKING: ApiService instance updated');
+      _isApiServiceSet = true;
+    }
   }
+
+  // Track if ApiService has been set to avoid spam
+  bool _isApiServiceSet = false;
 
   /// Mark a message as potentially viewed (starts the dwell timer)
   void onMessageVisible(String messageId, double visibleFraction) {
+    // Skip if already viewed or pending
+    if (_viewedMessages.contains(messageId) ||
+        _pendingViews.contains(messageId)) {
+      // Removed excessive logging for already viewed messages
+      return;
+    }
+
     // Only track if message is sufficiently visible and not already viewed
-    if (visibleFraction >= _visibilityThreshold &&
-        !_viewedMessages.contains(messageId) &&
-        !_pendingViews.contains(messageId)) {
+    if (visibleFraction >= _visibilityThreshold) {
       debugPrint(
         '🔍 READ_TRACKING: Message $messageId became visible (${(visibleFraction * 100).toInt()}%)',
       );

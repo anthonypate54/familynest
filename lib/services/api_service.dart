@@ -3,13 +3,12 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'dart:io' show Platform, File;
+import 'dart:io' show File;
 import '../config/app_config.dart';
-import 'dart:math' as Math;
+import 'dart:math' as math;
 import 'package:http_parser/http_parser.dart'; // For MediaType
 import '../models/message.dart'; // Add this import
 import '../models/dm_conversation.dart';
-import '../models/dm_message.dart';
 
 class AuthException implements Exception {
   final String message;
@@ -216,7 +215,7 @@ Network connection error. Please check:
         // Will fetch a test token in the initialize method
       } else if (_token != null && _token!.isNotEmpty) {
         debugPrint(
-          'Loaded token from storage: ${_token!.substring(0, Math.min(10, _token!.length))}...',
+          'Loaded token from storage: ${_token!.substring(0, math.min(10, _token!.length))}...',
         );
       } else {
         debugPrint('No token found in storage');
@@ -241,7 +240,7 @@ Network connection error. Please check:
 
       _token = token;
       debugPrint(
-        'Saved token to storage: ${token.substring(0, Math.min(10, token.length))}...',
+        'Saved token to storage: ${token.substring(0, math.min(10, token.length))}...',
       );
 
       // Verify token was saved
@@ -1170,7 +1169,7 @@ Network connection error. Please check:
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
       debugPrint(
-        '🔍 API DEBUG: Token available - ${_token!.substring(0, Math.min(10, _token!.length))}...',
+        '🔍 API DEBUG: Token available - ${_token!.substring(0, math.min(10, _token!.length))}...',
       );
     } else {
       debugPrint('🔍 API DEBUG: No token available!');
@@ -1187,16 +1186,18 @@ Network connection error. Please check:
             (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
         return result;
       } else if (response.statusCode == 400) {
-        print('🔍 API DEBUG: New endpoint returned 400 - returning empty list');
+        debugPrint(
+          '🔍 API DEBUG: New endpoint returned 400 - returning empty list',
+        );
         return [];
       } else {
-        print(
+        debugPrint(
           '🔍 API DEBUG: New endpoint failed with status ${response.statusCode}',
         );
         throw Exception('Failed to get all family members: ${response.body}');
       }
     } catch (e) {
-      print('🔍 API DEBUG: Error fetching all family members: $e');
+      debugPrint('🔍 API DEBUG: Error fetching all family members: $e');
       return [];
     }
   }
@@ -1209,7 +1210,7 @@ Network connection error. Please check:
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
       debugPrint(
-        '🔍 API DEBUG: Token available - ${_token!.substring(0, Math.min(10, _token!.length))}...',
+        '🔍 API DEBUG: Token available - ${_token!.substring(0, math.min(10, _token!.length))}...',
       );
     } else {
       debugPrint('🔍 API DEBUG: No token available!');
@@ -1232,39 +1233,41 @@ Network connection error. Please check:
           return result;
         }
       } else {
-        print('🔍 API DEBUG: No user families found');
+        debugPrint('🔍 API DEBUG: No user families found');
       }
     } catch (e) {
-      print(
+      debugPrint(
         '🔍 API DEBUG: Family endpoint failed, falling back to old endpoint: $e',
       );
     }
 
     // Fallback to the old user-based endpoint
     final fallbackUrl = '$baseUrl/api/users/$userId/family-members';
-    print('🔍 API DEBUG: Calling fallback endpoint: $fallbackUrl');
+    debugPrint('🔍 API DEBUG: Calling fallback endpoint: $fallbackUrl');
 
     final response = await client.get(Uri.parse(fallbackUrl), headers: headers);
 
-    print(
+    debugPrint(
       '🔍 API DEBUG: Fallback endpoint response status: ${response.statusCode}',
     );
-    print('🔍 API DEBUG: Fallback endpoint response body: ${response.body}');
+    debugPrint(
+      '🔍 API DEBUG: Fallback endpoint response body: ${response.body}',
+    );
 
     if (response.statusCode == 200) {
       final result =
           (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
-      print(
+      debugPrint(
         '🔍 API DEBUG: Fallback endpoint success - returning ${result.length} members',
       );
       return result;
     } else if (response.statusCode == 400) {
-      print(
+      debugPrint(
         '🔍 API DEBUG: Fallback endpoint returned 400 - returning empty list',
       );
       return [];
     } else {
-      print(
+      debugPrint(
         '🔍 API DEBUG: Fallback endpoint failed with status ${response.statusCode}',
       );
       throw Exception('Failed to get family members: ${response.body}');
@@ -2436,46 +2439,25 @@ Network connection error. Please check:
         final result =
             conversations
                 .map((conv) {
-                  final conversationId = conv['conversation_id'] as int;
-                  final otherUser = conv['other_user'] as Map<String, dynamic>?;
+                  try {
+                    debugPrint('🔄 Processing conversation: $conv');
 
-                  if (otherUser == null) {
-                    debugPrint(
-                      '❌ No other user data for conversation $conversationId',
+                    // Use the new flat format from backend
+                    final conversationData = Map<String, dynamic>.from(conv);
+
+                    // Create DMConversation object using fromJson with the backend format
+                    final dmConversation = DMConversation.fromJson(
+                      conversationData,
                     );
+
+                    debugPrint(
+                      '✅ Created DMConversation: ${dmConversation.otherUserName} - "${dmConversation.lastMessageContent}" - Group: ${dmConversation.isGroup}',
+                    );
+                    return dmConversation;
+                  } catch (e) {
+                    debugPrint('❌ Error parsing conversation: $e');
                     return null;
                   }
-
-                  // Determine user1Id and user2Id (lower ID is always user1)
-                  final otherUserId = otherUser['id'] as int;
-                  final user1Id =
-                      currentUserId < otherUserId ? currentUserId : otherUserId;
-                  final user2Id =
-                      currentUserId < otherUserId ? otherUserId : currentUserId;
-
-                  // Create DMConversation object using fromJson with correct field mapping
-                  final dmConversation = DMConversation.fromJson({
-                    'id': conversationId,
-                    'user1_id': user1Id,
-                    'user2_id': user2Id,
-                    'created_at': conv['created_at'],
-                    'updated_at': DateTime.now().millisecondsSinceEpoch,
-                    'other_user_name': otherUser['username'],
-                    'other_user_first_name': otherUser['first_name'],
-                    'other_user_last_name': otherUser['last_name'],
-                    'other_user_photo': otherUser['photo'],
-                    'last_message_content': otherUser['last_message_content'],
-                    'last_message_time': otherUser['last_message_created_at'],
-                    'last_message_sender_id':
-                        null, // Not provided by backend yet
-                    'has_unread_messages': false, // Not provided by backend yet
-                    'unread_count': 0, // Not provided by backend yet
-                  });
-
-                  debugPrint(
-                    '✅ Created DMConversation: ${dmConversation.otherUserName} - "${dmConversation.lastMessageContent}" - ${dmConversation.lastMessageTime}',
-                  );
-                  return dmConversation;
                 })
                 .whereType<DMConversation>()
                 .toList();
@@ -2489,6 +2471,82 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('💥 Error getting conversations: $e');
       return [];
+    }
+  }
+
+  /// Search DM conversations and messages
+  /// Returns list of conversations matching the search query
+  Future<List<DMConversation>> searchDMConversations(String query) async {
+    debugPrint('🔍 DM SEARCH: Starting DM conversation search for "$query"');
+
+    if (_token == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = '$baseUrl/api/dm/search?q=${Uri.encodeComponent(query)}';
+    debugPrint('🔍 DM SEARCH: Calling URL: $url');
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      },
+    );
+
+    debugPrint('🔍 DM SEARCH: Response status: ${response.statusCode}');
+    debugPrint('🔍 DM SEARCH: Response body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final conversations = data['conversations'] as List<dynamic>;
+
+      debugPrint('🔍 DM SEARCH: Found ${conversations.length} conversations');
+
+      // Log each conversation for debugging
+      for (int i = 0; i < conversations.length; i++) {
+        final conv = conversations[i];
+        debugPrint('🔍 DM SEARCH: Conversation $i: $conv');
+
+        // Check if it's a group chat
+        if (conv['is_group'] == true) {
+          debugPrint('🔍 DM SEARCH: Group chat detected: ${conv['name']}');
+        } else {
+          debugPrint('🔍 DM SEARCH: 1:1 chat detected');
+        }
+      }
+
+      try {
+        final dmConversations =
+            conversations
+                .map((json) {
+                  try {
+                    final dmConv = DMConversation.fromJson(json);
+                    debugPrint(
+                      '🔍 DM SEARCH: Successfully parsed: ${dmConv.isGroup ? "Group '${dmConv.name}'" : "1:1 chat"}',
+                    );
+                    return dmConv;
+                  } catch (e) {
+                    debugPrint('❌ DM SEARCH: Failed to parse conversation: $e');
+                    debugPrint('❌ DM SEARCH: Failed JSON: $json');
+                    return null;
+                  }
+                })
+                .where((conv) => conv != null)
+                .cast<DMConversation>()
+                .toList();
+
+        debugPrint(
+          '🔍 DM SEARCH: Final result count: ${dmConversations.length}',
+        );
+        return dmConversations;
+      } catch (e) {
+        debugPrint('❌ DM SEARCH: Error mapping conversations: $e');
+        return [];
+      }
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? 'Failed to search conversations');
     }
   }
 
@@ -3595,6 +3653,135 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('Error getting unread DM count: $e');
       return {'error': e.toString()};
+    }
+  }
+
+  // Create group chat
+  Future<Map<String, dynamic>?> createGroupChat({
+    required String? groupName,
+    required List<int> participantIds,
+  }) async {
+    try {
+      if (_token == null || _token!.isEmpty) {
+        debugPrint('❌ API: No auth token available for group chat creation');
+        return null;
+      }
+
+      final url = Uri.parse('$baseUrl/api/dm/groups');
+
+      final body = {'name': groupName, 'participantIds': participantIds};
+
+      debugPrint(
+        '🔄 API: Creating group chat with ${participantIds.length} participants',
+      );
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+        body: jsonEncode(body),
+      );
+
+      debugPrint(
+        '📡 API: Group chat creation response status: ${response.statusCode}',
+      );
+
+      if (response.statusCode == 201) {
+        final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint(
+          '✅ API: Group chat created successfully - ID: ${responseData['id']}',
+        );
+        return responseData;
+      } else {
+        debugPrint(
+          '❌ API: Failed to create group chat: ${response.statusCode}',
+        );
+        debugPrint('Response body: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('❌ API: Exception creating group chat: $e');
+      return null;
+    }
+  }
+
+  // Add participants to a group chat
+  Future<Map<String, dynamic>> addGroupParticipants(
+    int conversationId,
+    List<int> participantIds,
+  ) async {
+    final url = '$baseUrl/api/dm/groups/$conversationId/participants';
+    if (_token == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final response = await http.post(
+      Uri.parse(url),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      },
+      body: jsonEncode({'participantIds': participantIds}),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? 'Failed to add participants');
+    }
+  }
+
+  // Remove a participant from a group chat
+  Future<Map<String, dynamic>> removeGroupParticipant(
+    int conversationId,
+    int participantId,
+  ) async {
+    final url =
+        '$baseUrl/api/dm/groups/$conversationId/participants/$participantId';
+    if (_token == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final response = await http.delete(
+      Uri.parse(url),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? 'Failed to remove participant');
+    }
+  }
+
+  // Get group chat configuration
+  Future<Map<String, dynamic>> getGroupChatConfig() async {
+    final url = '$baseUrl/api/dm/config';
+
+    if (_token == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      final error = jsonDecode(response.body);
+      throw Exception(error['error'] ?? 'Failed to get group chat config');
     }
   }
 }

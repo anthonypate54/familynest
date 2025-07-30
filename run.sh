@@ -92,6 +92,19 @@ if [ ! -z "$SETUP_COMMAND" ]; then
   eval $SETUP_COMMAND
 fi
 
+# Always set up port forwarding for Android devices (both emulator and physical)
+if [[ "$PLATFORM" == *"android"* ]]; then
+  echo "Setting up ADB port forwarding for Android device..."
+  adb -s "$DEVICE_ID" reverse tcp:8080 tcp:8080
+  if [ $? -eq 0 ]; then
+    echo "✅ Port forwarding set up successfully"
+    echo "📱 Device can now access backend at http://10.0.2.2:8080"
+  else
+    echo "⚠️ Warning: Port forwarding setup failed"
+    echo "💡 You may need to enable USB debugging on your device"
+  fi
+fi
+
 # Create a temporary .env file for the app to read
 echo "API_URL=$API_URL" > .env
 echo "ENVIRONMENT=$ENVIRONMENT" >> .env

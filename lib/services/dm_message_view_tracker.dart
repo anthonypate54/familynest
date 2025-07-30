@@ -78,9 +78,7 @@ class DMMessageViewTracker {
   /// Internal method to mark a DM message for viewing after dwell time
   void _markMessageForViewing(String dmMessageId) {
     if (_viewedMessages.contains(dmMessageId)) {
-      debugPrint(
-        '🔍 DM_READ_TRACKING: DM Message $dmMessageId already viewed, skipping',
-      );
+      // Removed excessive logging for already viewed DM messages
       return;
     }
 

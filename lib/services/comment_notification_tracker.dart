@@ -10,14 +10,30 @@ class CommentNotificationTracker {
 
   static const String _keyPrefix = 'last_comment_count_';
 
+  // Add local cache to prevent redundant SharedPreferences calls
+  final Map<String, int> _cache = {};
+  final Set<String> _pendingChecks = {};
+
   /// Get the last seen comment count for a message
   Future<int> getLastSeenCommentCount(String messageId) async {
     try {
+      // Return cached value if available
+      if (_cache.containsKey(messageId)) {
+        return _cache[messageId]!;
+      }
+
       final prefs = await SharedPreferences.getInstance();
       final count = prefs.getInt('$_keyPrefix$messageId') ?? 0;
-      debugPrint(
-        '📊 COMMENT_TRACKER: Last seen count for message $messageId: $count',
-      );
+
+      // Cache the result
+      _cache[messageId] = count;
+
+      // Only log in debug mode and reduce frequency
+      if (kDebugMode && !_pendingChecks.contains(messageId)) {
+        debugPrint(
+          '📊 COMMENT_TRACKER: Last seen count for message $messageId: $count',
+        );
+      }
       return count;
     } catch (e) {
       debugPrint(
@@ -35,9 +51,15 @@ class CommentNotificationTracker {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('$_keyPrefix$messageId', commentCount);
-      debugPrint(
-        '📊 COMMENT_TRACKER: Updated last seen count for message $messageId to $commentCount',
-      );
+
+      // Update cache
+      _cache[messageId] = commentCount;
+
+      if (kDebugMode) {
+        debugPrint(
+          '📊 COMMENT_TRACKER: Updated last seen count for message $messageId to $commentCount',
+        );
+      }
     } catch (e) {
       debugPrint(
         '❌ COMMENT_TRACKER: Error updating last seen count for $messageId: $e',
@@ -47,20 +69,37 @@ class CommentNotificationTracker {
 
   /// Check if a message has new comments
   Future<bool> hasNewComments(String messageId, int currentCommentCount) async {
-    final lastSeenCount = await getLastSeenCommentCount(messageId);
-    final hasNew = currentCommentCount > lastSeenCount;
-    debugPrint(
-      '📊 COMMENT_TRACKER: Message $messageId - Current: $currentCommentCount, Last seen: $lastSeenCount, Has new: $hasNew',
-    );
-    return hasNew;
+    // Prevent duplicate checks for the same message
+    if (_pendingChecks.contains(messageId)) {
+      return false;
+    }
+    _pendingChecks.add(messageId);
+
+    try {
+      final lastSeenCount = await getLastSeenCommentCount(messageId);
+      final hasNew = currentCommentCount > lastSeenCount;
+
+      // Only log occasionally to reduce spam
+      if (kDebugMode && hasNew) {
+        debugPrint(
+          '📊 COMMENT_TRACKER: Message $messageId - Current: $currentCommentCount, Last seen: $lastSeenCount, Has new: $hasNew',
+        );
+      }
+
+      return hasNew;
+    } finally {
+      _pendingChecks.remove(messageId);
+    }
   }
 
   /// Mark all comments as seen for a message (call when user opens thread)
-  Future<void> markCommentsAsSeen(String messageId, int commentCount) async {
+  Future<void> markAllCommentsAsSeen(String messageId, int commentCount) async {
     await updateLastSeenCommentCount(messageId, commentCount);
-    debugPrint(
-      '✅ COMMENT_TRACKER: Marked all comments as seen for message $messageId (count: $commentCount)',
-    );
+    if (kDebugMode) {
+      debugPrint(
+        '✅ COMMENT_TRACKER: Marked all comments as seen for message $messageId (count: $commentCount)',
+      );
+    }
   }
 
   /// Clear all tracked comment counts (useful for logout)
@@ -71,6 +110,11 @@ class CommentNotificationTracker {
       for (final key in keys) {
         await prefs.remove(key);
       }
+
+      // Clear cache
+      _cache.clear();
+      _pendingChecks.clear();
+
       debugPrint('🗑️ COMMENT_TRACKER: Cleared all comment tracking data');
     } catch (e) {
       debugPrint('❌ COMMENT_TRACKER: Error clearing tracking data: $e');

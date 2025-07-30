@@ -716,10 +716,7 @@ class _MessageCardState extends State<MessageCard> {
               // Set the authenticated ApiService instance
               viewTracker.setApiService(widget.apiService);
 
-              debugPrint(
-                '👁️ VISIBILITY: Message $messageId visibility changed to ${(info.visibleFraction * 100).toInt()}% (isCurrentUser: $isCurrentUser)',
-              );
-
+              // Only log significant visibility events, not every change
               if (info.visibleFraction > 0) {
                 // Message became visible
                 viewTracker.onMessageVisible(messageId, info.visibleFraction);
@@ -728,11 +725,7 @@ class _MessageCardState extends State<MessageCard> {
                 viewTracker.onMessageInvisible(messageId);
               }
             } else {
-              if (isCurrentUser) {
-                debugPrint(
-                  '👁️ VISIBILITY: Skipping message ${widget.message.id} - current user\'s message',
-                );
-              }
+              // Skip logging for current user's messages to reduce noise
             }
           },
           child: _buildMessageContent(
