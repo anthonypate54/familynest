@@ -5,7 +5,6 @@ import '../widgets/gradient_background.dart';
 import '../utils/page_transitions.dart';
 import 'dm_thread_screen.dart';
 import '../theme/app_theme.dart';
-import '../config/app_config.dart';
 
 class GroupNameScreen extends StatefulWidget {
   final int currentUserId;
@@ -70,9 +69,8 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
 
       if (mounted) {
         if (groupChat != null) {
-          // Navigate to the group thread and clear the navigation stack
-          // This ensures that pressing back goes to the conversation list, not the group creation flow
-          Navigator.of(context).pushAndRemoveUntil(
+          // Navigate to the group thread
+          Navigator.of(context).pushReplacement(
             MaterialPageRoute(
               builder:
                   (context) => DMThreadScreen(
@@ -96,9 +94,6 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
                             : null,
                   ),
             ),
-            (route) =>
-                route
-                    .isFirst, // Remove all routes except the first (root) route
           );
         } else {
           // Show error
@@ -133,26 +128,12 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
     const double avatarSize = 32.0;
     const double overlap = 24.0;
 
-    // Create a combined list with creator first, then selected members
-    final allMembers = <Map<String, dynamic>>[];
-
-    // Add the creator (current user) first
-    // Note: We don't have the creator's full info here, so we'll use a placeholder
-    allMembers.add({
-      'firstName': 'You', // Could also fetch actual user data if needed
-      'lastName': '',
-      'username': 'you',
-    });
-
-    // Add all selected members
-    allMembers.addAll(widget.selectedMembers);
-
     return SizedBox(
       height: avatarSize,
-      width: (allMembers.length * overlap) + avatarSize - overlap,
+      width: (widget.selectedMembers.length * overlap) + avatarSize - overlap,
       child: Stack(
         children:
-            allMembers.asMap().entries.map((entry) {
+            widget.selectedMembers.asMap().entries.map((entry) {
               final index = entry.key;
               final member = entry.value;
 
@@ -172,11 +153,11 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
                   ),
                   child: CircleAvatar(
                     radius: (avatarSize - 4) / 2,
-                    backgroundColor: _getAvatarColor(firstName),
+                    backgroundColor: _getAvatarColor(index),
                     child: Text(
                       initials,
-                      style: TextStyle(
-                        color: _getTextColor(_getAvatarColor(firstName)),
+                      style: const TextStyle(
+                        color: Colors.white,
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),
@@ -189,38 +170,15 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
     );
   }
 
-  // Google Messages-style avatar colors (same as other screens)
-  static const List<Color> _avatarColors = [
-    Color(0xFFFDD835), // Yellow
-    Color(0xFF8E24AA), // Purple
-    Color(0xFF42A5F5), // Light blue
-    Color(0xFF66BB6A), // Green
-    Color(0xFFFF7043), // Orange
-    Color(0xFFEC407A), // Pink
-    Color(0xFF26A69A), // Teal
-    Color(0xFF5C6BC0), // Indigo
-  ];
-
-  Color _getAvatarColor(String name) {
-    // Get first letter and map to color index (A=0, B=1, etc.)
-    if (name.isEmpty) return _avatarColors[0];
-
-    final firstLetter = name[0].toUpperCase();
-    final letterIndex = firstLetter.codeUnitAt(0) - 'A'.codeUnitAt(0);
-
-    // Map letters A-Z to our 8 colors (repeating pattern)
-    final colorIndex = letterIndex % _avatarColors.length;
-    return _avatarColors[colorIndex];
-  }
-
-  // Get text color based on background color
-  Color _getTextColor(Color backgroundColor) {
-    // Use black text for yellow, white for others
-    if (backgroundColor == const Color(0xFFFDD835)) {
-      // Yellow
-      return Colors.black;
-    }
-    return Colors.white;
+  Color _getAvatarColor(int index) {
+    final colors = [
+      Colors.purple,
+      Colors.green,
+      Colors.orange,
+      Colors.blue,
+      Colors.pink,
+    ];
+    return colors[index % colors.length];
   }
 
   @override

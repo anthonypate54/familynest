@@ -631,6 +631,13 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                     groupName: conversation.name ?? 'Group Chat',
                     currentUserId: widget.userId,
                     participants: conversation.participants ?? [],
+                    onParticipantsChanged: () {
+                      // Refresh conversation list to update group avatars
+                      debugPrint(
+                        '🔄 Group participants changed, refreshing conversation list',
+                      );
+                      _loadConversations();
+                    },
                   ),
             ),
           );
@@ -992,6 +999,13 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                   groupName: conversation.name ?? 'Group Chat',
                   currentUserId: widget.userId,
                   participants: conversation.participants ?? [],
+                  onParticipantsChanged: () {
+                    // Refresh conversation list to update group avatars
+                    debugPrint(
+                      '🔄 Group participants changed, refreshing conversation list',
+                    );
+                    _loadConversations();
+                  },
                 ),
           ),
         );

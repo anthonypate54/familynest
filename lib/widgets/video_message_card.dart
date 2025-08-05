@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:math' as math;
 import '../services/api_service.dart';
 
 class VideoMessageCard extends StatefulWidget {
@@ -70,7 +71,21 @@ class VideoMessageCardState extends State<VideoMessageCard> {
           looping: false,
           aspectRatio: _controller!.value.aspectRatio,
           showControls: true,
-          showOptions: true,
+          showOptions: false,
+          showControlsOnInitialize: false,
+          hideControlsTimer: const Duration(seconds: 3),
+          allowFullScreen: true,
+          allowMuting: true,
+          allowPlaybackSpeedChanging:
+              false, // Disable to reduce control bar width
+          // Custom controls that handle overflow properly
+          customControls: const _CustomMaterialControls(),
+          materialProgressColors: ChewieProgressColors(
+            playedColor: Colors.blue,
+            handleColor: Colors.blueAccent,
+            backgroundColor: Colors.grey,
+            bufferedColor: Colors.lightBlue,
+          ),
         );
         setState(() {
           _isPlaying = true;
@@ -138,12 +153,14 @@ class VideoMessageCardState extends State<VideoMessageCard> {
               if (_controller != null &&
                   _controller!.value.isInitialized &&
                   _chewieController != null)
-                SizedBox(
+                Container(
                   width: double.infinity,
                   height: 200,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(6),
-                    child: ClipRect(
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 200,
                       child: Chewie(
                         key: ValueKey('playback-${widget.videoUrl}'),
                         controller: _chewieController!,
@@ -224,6 +241,148 @@ class VideoMessageCardState extends State<VideoMessageCard> {
       color: Colors.black,
       child: const Center(
         child: Icon(Icons.videocam, color: Colors.white, size: 40),
+      ),
+    );
+  }
+}
+
+/// Custom controls widget that properly handles overflow in constrained spaces
+class _CustomMaterialControls extends StatefulWidget {
+  const _CustomMaterialControls();
+
+  @override
+  State<_CustomMaterialControls> createState() =>
+      _CustomMaterialControlsState();
+}
+
+class _CustomMaterialControlsState extends State<_CustomMaterialControls> {
+  ChewieController? _chewieController;
+  VideoPlayerController? _videoController;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final newChewieController = ChewieController.of(context);
+    if (newChewieController != _chewieController) {
+      _removeListener();
+      _chewieController = newChewieController;
+      _videoController = _chewieController?.videoPlayerController;
+      _addListener();
+    }
+  }
+
+  @override
+  void dispose() {
+    _removeListener();
+    super.dispose();
+  }
+
+  void _addListener() {
+    _videoController?.addListener(_videoListener);
+  }
+
+  void _removeListener() {
+    _videoController?.removeListener(_videoListener);
+  }
+
+  void _videoListener() {
+    if (mounted) {
+      setState(() {
+        // This will rebuild the widget with updated video state
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chewieController = _chewieController;
+    final videoController = _videoController;
+    return Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.transparent, Colors.black54],
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Play/Pause button (fixed width)
+          SizedBox(
+            width: 30,
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              icon: Icon(
+                videoController?.value.isPlaying == true
+                    ? Icons.pause
+                    : Icons.play_arrow,
+                color: Colors.white,
+                size: 18,
+              ),
+              onPressed: () {
+                if (videoController?.value.isPlaying == true) {
+                  videoController?.pause();
+                } else {
+                  videoController?.play();
+                }
+              },
+            ),
+          ),
+          // Progress bar (flexible - takes remaining space)
+          Expanded(
+            child: Container(
+              height: 4,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: 0.3, // Example progress
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.blue,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Mute button (fixed width)
+          SizedBox(
+            width: 30,
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              icon: Icon(
+                videoController?.value.volume == 0
+                    ? Icons.volume_off
+                    : Icons.volume_up,
+                color: Colors.white,
+                size: 18,
+              ),
+              onPressed: () {
+                final currentVolume = videoController?.value.volume ?? 1.0;
+                videoController?.setVolume(currentVolume == 0 ? 1.0 : 0.0);
+              },
+            ),
+          ),
+          // Fullscreen button (fixed width)
+          SizedBox(
+            width: 30,
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              icon: const Icon(Icons.fullscreen, color: Colors.white, size: 18),
+              onPressed: () {
+                chewieController?.enterFullScreen();
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

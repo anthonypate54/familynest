@@ -12,6 +12,8 @@ class GroupManagementScreen extends StatefulWidget {
   final String groupName;
   final int currentUserId;
   final List<Map<String, dynamic>> participants;
+  final VoidCallback?
+  onParticipantsChanged; // Add callback for participant changes
 
   const GroupManagementScreen({
     super.key,
@@ -19,6 +21,7 @@ class GroupManagementScreen extends StatefulWidget {
     required this.groupName,
     required this.currentUserId,
     required this.participants,
+    this.onParticipantsChanged, // Add callback parameter
   });
 
   @override
@@ -86,6 +89,9 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
               backgroundColor: Colors.green,
             ),
           );
+
+          // Notify parent screen about participant changes
+          widget.onParticipantsChanged?.call();
         }
       }
     } catch (e) {
@@ -149,11 +155,14 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
           '✅ Successfully removed participant: ${response['message']}',
         );
 
-        // Remove from local state
+        // Remove from local state immediately
         setState(() {
           _participants.removeWhere((p) => p['id'] == participant['id']);
           _isLoading = false;
         });
+
+        // Notify parent screen about participant changes
+        widget.onParticipantsChanged?.call();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -234,6 +243,10 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
               backgroundColor: Colors.green,
             ),
           );
+
+          // Notify parent screen about participant changes
+          widget.onParticipantsChanged?.call();
+
           Navigator.pop(context);
         }
       } catch (e) {

@@ -7,6 +7,7 @@ import '../widgets/gradient_background.dart';
 import 'package:intl/intl.dart';
 import '../controllers/bottom_navigation_controller.dart';
 import '../theme/app_theme.dart';
+import '../widgets/file_picker_test_widget.dart';
 
 class FamilyManagementScreen extends StatefulWidget {
   final int userId;
@@ -28,7 +29,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
   bool _isLoading = true;
   List<Family> _families = [];
   Family? _selectedFamily;
-  Family? _ownedFamily;
+  // Family? _ownedFamily; // Will be used for family ownership features
   List<Map<String, dynamic>> _allMembers = [];
   List<Map<String, dynamic>> _filteredMembers = [];
   List<Map<String, dynamic>> _pendingInvitations = [];
@@ -47,6 +48,10 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
   // Notification preferences state
   Map<String, dynamic>? _notificationPreferences;
   bool _loadingNotifications = false;
+
+  // Demographics visibility state
+  Map<String, dynamic>? _demographicsSettings;
+  bool _loadingDemographics = false;
 
   final _searchController = TextEditingController();
   final _familyNameController = TextEditingController();
@@ -164,39 +169,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     }
   }
 
-  Future<void> _loadWeeklyActivity() async {
-    final selectedFamily = _selectedFamily;
-    if (selectedFamily == null) return;
-
-    if (mounted) {
-      setState(() {
-        _loadingWeeklyActivity = true;
-      });
-    }
-
-    try {
-      final apiService = Provider.of<ApiService>(context, listen: false);
-      final activity = await apiService.getWeeklyActivity(selectedFamily.id);
-
-      debugPrint(
-        '📊 WEEKLY ACTIVITY DEBUG - Loaded activity for family ${selectedFamily.id}: $activity',
-      );
-
-      if (mounted) {
-        setState(() {
-          _weeklyActivity = activity;
-          _loadingWeeklyActivity = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading weekly activity: $e');
-      if (mounted) {
-        setState(() {
-          _loadingWeeklyActivity = false;
-        });
-      }
-    }
-  }
+  // _loadWeeklyActivity method removed - replaced by _loadActivity method
 
   Future<void> _loadActivity({String? period}) async {
     final selectedFamily = _selectedFamily;
@@ -254,6 +227,251 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     }
   }
 
+  Future<void> _loadDemographicsSettings() async {
+    if (mounted) {
+      setState(() {
+        _loadingDemographics = true;
+      });
+    }
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final userSettings = await apiService.getCurrentUserSettings();
+
+      if (userSettings != null && mounted) {
+        setState(() {
+          // Now we have individual fields for each demographic setting
+          _demographicsSettings = {
+            'showAddress': userSettings['showAddress'] ?? true,
+            'showPhoneNumber': userSettings['showPhoneNumber'] ?? true,
+            'showBirthday': userSettings['showBirthday'] ?? true,
+          };
+          _loadingDemographics = false;
+        });
+
+        debugPrint(
+          '📋 Loaded individual demographics settings: $_demographicsSettings',
+        );
+        debugPrint('📋 Full userSettings: $userSettings');
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading demographics settings: $e');
+      if (mounted) {
+        setState(() {
+          _loadingDemographics = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _updateDemographicsVisibility(String field, bool value) async {
+    // IMMEDIATELY update the UI to respond to user input
+    if (mounted) {
+      setState(() {
+        // Initialize _demographicsSettings if it's null
+        if (_demographicsSettings == null) {
+          _demographicsSettings = {};
+        }
+
+        // Update the specific field that was toggled
+        _demographicsSettings![field] = value;
+      });
+    }
+
+    debugPrint('📝 User toggled $field = $value');
+    debugPrint('📝 Immediately updated UI state: $_demographicsSettings');
+
+    // Now try to save to backend
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+
+      // Map frontend field names to backend field names
+      String backendField;
+      switch (field) {
+        case 'showAddress':
+          backendField = 'showAddress';
+          break;
+        case 'showPhoneNumber':
+          backendField = 'showPhoneNumber';
+          break;
+        case 'showBirthday':
+          backendField = 'showBirthday';
+          break;
+        default:
+          backendField = field;
+      }
+
+      final response = await apiService.updateUserPreferences({
+        backendField: value,
+      });
+
+      debugPrint('📝 Backend saved successfully: $response');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value
+                  ? '${_getFieldDisplayName(field)} visibility enabled'
+                  : '${_getFieldDisplayName(field)} visibility disabled',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Backend save failed: $e');
+
+      // ONLY revert the UI if the backend save actually failed
+      if (mounted) {
+        setState(() {
+          // Revert to the opposite value since the save failed
+          _demographicsSettings![field] = !value;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save settings: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  String _getFieldDisplayName(String field) {
+    switch (field) {
+      case 'showAddress':
+        return 'Address';
+      case 'showPhoneNumber':
+        return 'Phone number';
+      case 'showBirthday':
+        return 'Birthday';
+      default:
+        return field;
+    }
+  }
+
+  Future<void> _loadNotificationSettings() async {
+    if (mounted) {
+      setState(() {
+        _loadingNotifications = true;
+      });
+    }
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final userSettings = await apiService.getCurrentUserSettings();
+
+      if (userSettings != null && mounted) {
+        setState(() {
+          // Load individual notification preferences from the backend
+          _notificationPreferences = {
+            'familyMessages':
+                userSettings['familyMessagesNotifications'] ?? true,
+            'newMemberAlerts': userSettings['newMemberNotifications'] ?? true,
+            'invitationNotifications':
+                userSettings['invitationNotifications'] ?? true,
+          };
+          _loadingNotifications = false;
+        });
+
+        debugPrint(
+          '📋 Loaded notification settings: $_notificationPreferences',
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading notification settings: $e');
+      if (mounted) {
+        setState(() {
+          _loadingNotifications = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _updateNotificationPreference(String field, bool value) async {
+    // IMMEDIATELY update the UI to respond to user input
+    if (mounted) {
+      setState(() {
+        if (_notificationPreferences == null) {
+          _notificationPreferences = {};
+        }
+        _notificationPreferences![field] = value;
+      });
+    }
+
+    debugPrint('📝 User toggled notification $field = $value');
+
+    // Now try to save to backend
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+
+      // Map frontend field names to backend field names
+      String backendField;
+      switch (field) {
+        case 'familyMessages':
+          backendField = 'familyMessagesNotifications';
+          break;
+        case 'newMemberAlerts':
+          backendField = 'newMemberNotifications';
+          break;
+        case 'invitationNotifications':
+          backendField = 'invitationNotifications';
+          break;
+        default:
+          backendField = field;
+      }
+
+      final response = await apiService.updateUserPreferences({
+        backendField: value,
+      });
+
+      debugPrint('📝 Notification backend saved successfully: $response');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value
+                  ? '${_getNotificationDisplayName(field)} enabled'
+                  : '${_getNotificationDisplayName(field)} disabled',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Notification backend save failed: $e');
+
+      // ONLY revert the UI if the backend save actually failed
+      if (mounted) {
+        setState(() {
+          // Revert to the opposite value since the save failed
+          _notificationPreferences![field] = !value;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save notification settings: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  String _getNotificationDisplayName(String field) {
+    switch (field) {
+      case 'familyMessages':
+        return 'Family message notifications';
+      case 'newMemberAlerts':
+        return 'New member notifications';
+      case 'invitationNotifications':
+        return 'Invitation notifications';
+      default:
+        return field;
+    }
+  }
+
   Future<void> _loadData() async {
     if (mounted) {
       setState(() {
@@ -263,7 +481,6 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
 
     try {
       final familyService = FamilyService.of(context);
-      final apiService = Provider.of<ApiService>(context, listen: false);
 
       final families = await familyService.loadUserFamilies(widget.userId);
 
@@ -298,10 +515,9 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         setState(() {
           _families = families;
           _selectedFamily = families.isNotEmpty ? families.first : null;
-          _ownedFamily =
-              families.where((f) => f.isOwned).isNotEmpty
-                  ? families.firstWhere((f) => f.isOwned)
-                  : null;
+          // _ownedFamily = families.where((f) => f.isOwned).isNotEmpty
+          //     ? families.firstWhere((f) => f.isOwned)
+          //     : null;
           _allMembers = allMembers;
           _filteredMembers = allMembers;
           _pendingInvitations = pendingInvitations;
@@ -324,6 +540,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         if (_selectedFamily != null) {
           await _loadActivity();
         }
+
+        // Load user demographics settings
+        await _loadDemographicsSettings();
+
+        // Load notification settings
+        await _loadNotificationSettings();
       }
     } catch (e) {
       debugPrint('Error in _loadData: $e');
@@ -342,6 +564,21 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       appBar: AppBar(
         title: const Text('Family Management'),
         backgroundColor: AppTheme.getAppBarColor(context),
+        actions: [
+          // Debug button for file service testing
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            tooltip: 'Test File Service',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FilePickerTestWidget(),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: GradientBackground(
         child: LayoutBuilder(
@@ -641,12 +878,15 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     'Allow family members to see your address',
                     style: TextStyle(color: Colors.white70),
                   ),
-                  value: true, // TODO: Connect to actual preference
+                  value: _demographicsSettings?['showAddress'] ?? true,
                   activeColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
-                  onChanged: (value) {
-                    // TODO: Implement preference update
-                  },
+                  onChanged:
+                      _loadingDemographics
+                          ? null
+                          : (value) {
+                            _updateDemographicsVisibility('showAddress', value);
+                          },
                 ),
                 SwitchListTile(
                   title: const Text(
@@ -657,12 +897,18 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     'Allow family members to see your phone',
                     style: TextStyle(color: Colors.white70),
                   ),
-                  value: true, // TODO: Connect to actual preference
+                  value: _demographicsSettings?['showPhoneNumber'] ?? true,
                   activeColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
-                  onChanged: (value) {
-                    // TODO: Implement preference update
-                  },
+                  onChanged:
+                      _loadingDemographics
+                          ? null
+                          : (value) {
+                            _updateDemographicsVisibility(
+                              'showPhoneNumber',
+                              value,
+                            );
+                          },
                 ),
                 SwitchListTile(
                   title: const Text(
@@ -673,12 +919,18 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     'Allow family members to see your birthday',
                     style: TextStyle(color: Colors.white70),
                   ),
-                  value: true, // TODO: Connect to actual preference
+                  value: _demographicsSettings?['showBirthday'] ?? true,
                   activeColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
-                  onChanged: (value) {
-                    // TODO: Implement preference update
-                  },
+                  onChanged:
+                      _loadingDemographics
+                          ? null
+                          : (value) {
+                            _updateDemographicsVisibility(
+                              'showBirthday',
+                              value,
+                            );
+                          },
                 ),
               ],
             ),
@@ -716,12 +968,18 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     'Receive notifications for family messages',
                     style: TextStyle(color: Colors.white70),
                   ),
-                  value: true, // TODO: Connect to actual preference
+                  value: _notificationPreferences?['familyMessages'] ?? true,
                   activeColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
-                  onChanged: (value) {
-                    // TODO: Implement preference update
-                  },
+                  onChanged:
+                      _loadingNotifications
+                          ? null
+                          : (value) {
+                            _updateNotificationPreference(
+                              'familyMessages',
+                              value,
+                            );
+                          },
                 ),
                 SwitchListTile(
                   title: const Text(
@@ -732,12 +990,18 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     'Get notified when someone joins the family',
                     style: TextStyle(color: Colors.white70),
                   ),
-                  value: true, // TODO: Connect to actual preference
+                  value: _notificationPreferences?['newMemberAlerts'] ?? true,
                   activeColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
-                  onChanged: (value) {
-                    // TODO: Implement preference update
-                  },
+                  onChanged:
+                      _loadingNotifications
+                          ? null
+                          : (value) {
+                            _updateNotificationPreference(
+                              'newMemberAlerts',
+                              value,
+                            );
+                          },
                 ),
                 SwitchListTile(
                   title: const Text(
@@ -748,12 +1012,20 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     'Receive notifications for new invitations',
                     style: TextStyle(color: Colors.white70),
                   ),
-                  value: true, // TODO: Connect to actual preference
+                  value:
+                      _notificationPreferences?['invitationNotifications'] ??
+                      true,
                   activeColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
-                  onChanged: (value) {
-                    // TODO: Implement preference update
-                  },
+                  onChanged:
+                      _loadingNotifications
+                          ? null
+                          : (value) {
+                            _updateNotificationPreference(
+                              'invitationNotifications',
+                              value,
+                            );
+                          },
                 ),
               ],
             ),

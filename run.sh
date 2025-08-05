@@ -109,6 +109,18 @@ fi
 echo "API_URL=$API_URL" > .env
 echo "ENVIRONMENT=$ENVIRONMENT" >> .env
 
+# Add MEDIA_URL for ngrok support (required for video playback on all Android devices)
+# Use static ngrok URL for all platforms to avoid cleartext HTTP issues
+MEDIA_URL="https://familynesngrok.ngrok.io"
+echo "MEDIA_URL=$MEDIA_URL" >> .env
+echo "✅ Added static ngrok URL for media: $MEDIA_URL"
+
+# Also update .env.development since the app loads this file first
+echo "API_URL=$API_URL" > .env.development
+echo "ENVIRONMENT=$ENVIRONMENT" >> .env.development
+echo "MEDIA_URL=$MEDIA_URL" >> .env.development
+echo "✅ Updated .env.development with platform-specific API_URL: $API_URL"
+
 # Run the Flutter app
 if [ "$PLATFORM" = "web" ]; then
   RENDERER=$(grep -A 4 "  $PLATFORM:" config.yaml | grep "renderer" | cut -d'"' -f2)

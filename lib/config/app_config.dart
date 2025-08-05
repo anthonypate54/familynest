@@ -22,13 +22,28 @@ class AppConfig {
 
   // API URLs for different environments
   String get _devBaseUrl {
-    // For development, always use platform-specific defaults
-    // This is more reliable than trying to read .env files
-    if (_cachedPlatformUrl == null) {
-      print('🔧 Using platform-specific URL for development mode');
-      _cachedPlatformUrl = _getPlatformDefaultUrl();
+    try {
+      if (!dotenv.isInitialized) {
+        print(
+          '⚠️ dotenv not initialized, using platform-specific default for direct IDE run',
+        );
+        return _getPlatformDefaultUrl();
+      }
+      final url = dotenv.env['API_URL'];
+      if (url == null || url.isEmpty) {
+        print(
+          '⚠️ API_URL not found in .env (direct IDE run), using platform default',
+        );
+        return _getPlatformDefaultUrl();
+      }
+      print('✅ Using API_URL from .env: $url (run.sh mode)');
+      return url;
+    } catch (e) {
+      print(
+        '⚠️ Error reading API_URL from environment, using platform default: $e',
+      );
+      return _getPlatformDefaultUrl();
     }
-    return _cachedPlatformUrl!;
   }
 
   /// Get the correct default URL based on the current platform (for direct IDE runs)
@@ -137,8 +152,21 @@ class AppConfig {
 
       case Environment.development:
       default:
-        // For development, always use platform-specific defaults to avoid iOS/Android URL conflicts
-        return _devBaseUrl; // Use the cached version instead of calling _getPlatformDefaultUrl again
+        // For development, try to use MEDIA_URL from .env first (for ngrok), then fall back to API base URL
+        try {
+          if (dotenv.isInitialized) {
+            final mediaUrl = dotenv.env['MEDIA_URL'];
+            if (mediaUrl != null && mediaUrl.isNotEmpty) {
+              print('✅ Using MEDIA_URL from .env: $mediaUrl (ngrok mode)');
+              return mediaUrl;
+            }
+          }
+        } catch (e) {
+          print('⚠️ Error reading MEDIA_URL from environment: $e');
+        }
+        // Fallback to same URL as API
+        print('🔧 Using API base URL for media (no MEDIA_URL in .env)');
+        return _devBaseUrl;
     }
   }
 
@@ -175,7 +203,7 @@ class AppConfig {
 
   // Media Upload Configuration
   /// Maximum file size for direct upload (in MB)
-  static const double maxFileUploadSizeMB = 5.0;
+  static const double maxFileUploadSizeMB = 100.0;
 
   /// Maximum video duration for uploads (in minutes)
   static const int maxVideoDurationMinutes = 10;

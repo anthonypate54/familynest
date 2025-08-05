@@ -51,7 +51,9 @@ class ApiService {
   }
 
   final http.Client client;
-  String? _token;
+  String? _token; // Access token
+  String? _refreshToken; // Refresh token
+  bool _refreshingInProgress = false; // Prevent concurrent refresh attempts
 
   ApiService({http.Client? client}) : client = client ?? http.Client();
 
@@ -185,6 +187,15 @@ Network connection error. Please check:
     }
   }
 
+  /// Validate that we have a valid token before making authenticated requests
+  bool _hasValidToken() {
+    if (_token == null || _token!.isEmpty || _token == 'null') {
+      debugPrint('⚠️ No valid token available for request');
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _loadToken() async {
     // Debug output to track SharedPreferences state
     await debugPrintSharedPrefs("_loadToken-start");
@@ -196,17 +207,27 @@ Network connection error. Please check:
       final keys = prefs.getKeys();
       debugPrint('All SharedPreferences keys: $keys');
 
-      // Try to retrieve token from both primary and backup locations
-      _token = prefs.getString('auth_token');
+      // Try to retrieve access token from both primary and backup locations
+      _token = prefs.getString('access_token') ?? prefs.getString('auth_token');
 
-      // If primary token is missing, try the backup token
+      // Try backup access token if primary is missing
       if (_token == null || _token!.isEmpty) {
         _token = prefs.getString('auth_token_backup');
         if (_token != null && _token!.isNotEmpty) {
-          debugPrint('Using backup token since primary token was missing');
+          debugPrint(
+            'Using backup access token since primary token was missing',
+          );
           // Restore primary token
-          await prefs.setString('auth_token', _token!);
+          await prefs.setString('access_token', _token!);
         }
+      }
+
+      // Load refresh token
+      _refreshToken = prefs.getString('refresh_token');
+      if (_refreshToken != null && _refreshToken!.isNotEmpty) {
+        debugPrint(
+          'Loaded refresh token from storage: ${_refreshToken!.substring(0, math.min(10, _refreshToken!.length))}...',
+        );
       }
 
       // For debugging builds, if no token is found, try to fetch a test token
@@ -226,6 +247,66 @@ Network connection error. Please check:
     }
   }
 
+  // Save both access and refresh tokens (new method)
+  Future<void> _saveTokenPair(String accessToken, String refreshToken) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Clear any existing tokens first
+      await prefs.remove('auth_token');
+      await prefs.remove('auth_token_backup');
+      await prefs.remove('access_token');
+      await prefs.remove('refresh_token');
+
+      // Save new tokens
+      await prefs.setString('access_token', accessToken);
+      await prefs.setString('refresh_token', refreshToken);
+
+      // Keep legacy token for backward compatibility
+      await prefs.setString('auth_token', accessToken);
+      await prefs.setString('auth_token_backup', accessToken);
+
+      _token = accessToken;
+      _refreshToken = refreshToken;
+
+      debugPrint(
+        'Saved access token to storage: ${accessToken.substring(0, math.min(10, accessToken.length))}...',
+      );
+      debugPrint(
+        'Saved refresh token to storage: ${refreshToken.substring(0, math.min(10, refreshToken.length))}...',
+      );
+
+      // Verify tokens were saved
+      final savedAccessToken = prefs.getString('access_token');
+      final savedRefreshToken = prefs.getString('refresh_token');
+
+      if (savedAccessToken != null && savedAccessToken.isNotEmpty) {
+        debugPrint(
+          '✅ Access token saved successfully (${savedAccessToken.length} chars)',
+        );
+      } else {
+        debugPrint('❌ ERROR: Access token not saved!');
+      }
+
+      if (savedRefreshToken != null && savedRefreshToken.isNotEmpty) {
+        debugPrint(
+          '✅ Refresh token saved successfully (${savedRefreshToken.length} chars)',
+        );
+      } else {
+        debugPrint('❌ ERROR: Refresh token not saved!');
+      }
+
+      // Save the token timestamp for debugging
+      await prefs.setString(
+        'token_save_time',
+        DateTime.now().toIso8601String(),
+      );
+    } catch (e) {
+      debugPrint('Error saving token pair: $e');
+    }
+  }
+
+  // Legacy method for backward compatibility
   Future<void> _saveToken(String token) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -237,10 +318,11 @@ Network connection error. Please check:
       // Save with two different keys for redundancy
       await prefs.setString('auth_token', token);
       await prefs.setString('auth_token_backup', token);
+      await prefs.setString('access_token', token); // Also save as access token
 
       _token = token;
       debugPrint(
-        'Saved token to storage: ${token.substring(0, math.min(10, token.length))}...',
+        'Saved legacy token to storage: ${token.substring(0, math.min(10, token.length))}...',
       );
 
       // Verify token was saved
@@ -283,9 +365,11 @@ Network connection error. Please check:
       await prefs.setBool('explicitly_logged_out', true);
       await prefs.setBool('is_logged_in', false);
 
-      // Clear token data
+      // Clear all token data
       await prefs.remove('auth_token');
       await prefs.remove('auth_token_backup');
+      await prefs.remove('access_token');
+      await prefs.remove('refresh_token');
       await prefs.remove('token_save_time');
 
       // Clear additional login data
@@ -297,10 +381,150 @@ Network connection error. Please check:
       // await prefs.clear(); // This would clear app settings too
 
       _token = null;
+      _refreshToken = null;
       debugPrint('Cleared auth data from storage');
     } catch (e) {
       debugPrint('Error clearing token: $e');
     }
+  }
+
+  /// Refresh access token using refresh token
+  Future<bool> _refreshAccessToken() async {
+    if (_refreshingInProgress) {
+      debugPrint('🔄 Token refresh already in progress, waiting...');
+      // Wait for ongoing refresh to complete
+      while (_refreshingInProgress) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      return _token != null && _token!.isNotEmpty;
+    }
+
+    if (_refreshToken == null || _refreshToken!.isEmpty) {
+      debugPrint('❌ No refresh token available for refresh');
+      return false;
+    }
+
+    _refreshingInProgress = true;
+    debugPrint('🔄 Attempting to refresh access token...');
+
+    try {
+      final response = await client.post(
+        Uri.parse('$baseUrl/api/auth/refresh'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refreshToken': _refreshToken}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final newAccessToken = data['accessToken'];
+        final newRefreshToken = data['refreshToken'];
+
+        if (newAccessToken != null && newRefreshToken != null) {
+          await _saveTokenPair(newAccessToken, newRefreshToken);
+          debugPrint('✅ Access token refreshed successfully');
+          return true;
+        } else {
+          debugPrint('❌ Invalid refresh response format');
+          return false;
+        }
+      } else {
+        debugPrint(
+          '❌ Token refresh failed with status: ${response.statusCode}',
+        );
+        debugPrint('Response: ${response.body}');
+
+        // If refresh fails, clear all tokens and redirect to login
+        await _clearToken();
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ Error during token refresh: $e');
+      return false;
+    } finally {
+      _refreshingInProgress = false;
+    }
+  }
+
+  /// Make an authenticated request with automatic token refresh
+  Future<http.Response> _makeAuthenticatedRequest(
+    String method,
+    Uri uri, {
+    Map<String, String>? headers,
+    String? body,
+  }) async {
+    // Ensure we have an access token
+    if (_token == null || _token!.isEmpty) {
+      throw Exception('No access token available');
+    }
+
+    // Prepare headers with authorization
+    final requestHeaders = <String, String>{
+      'Authorization': 'Bearer $_token',
+      ...?headers,
+    };
+
+    // Make the request
+    late http.Response response;
+    switch (method.toUpperCase()) {
+      case 'GET':
+        response = await client.get(uri, headers: requestHeaders);
+        break;
+      case 'POST':
+        response = await client.post(uri, headers: requestHeaders, body: body);
+        break;
+      case 'PUT':
+        response = await client.put(uri, headers: requestHeaders, body: body);
+        break;
+      case 'DELETE':
+        response = await client.delete(uri, headers: requestHeaders);
+        break;
+      default:
+        throw Exception('Unsupported HTTP method: $method');
+    }
+
+    // Check if token is expired (401/403)
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        _refreshToken != null &&
+        _refreshToken!.isNotEmpty) {
+      debugPrint('🔄 Access token expired, attempting refresh...');
+
+      final refreshSuccess = await _refreshAccessToken();
+      if (refreshSuccess) {
+        // Retry the original request with new token
+        final retryHeaders = <String, String>{
+          'Authorization': 'Bearer $_token',
+          ...?headers,
+        };
+
+        debugPrint('🔄 Retrying request with refreshed token...');
+        switch (method.toUpperCase()) {
+          case 'GET':
+            response = await client.get(uri, headers: retryHeaders);
+            break;
+          case 'POST':
+            response = await client.post(
+              uri,
+              headers: retryHeaders,
+              body: body,
+            );
+            break;
+          case 'PUT':
+            response = await client.put(uri, headers: retryHeaders, body: body);
+            break;
+          case 'DELETE':
+            response = await client.delete(uri, headers: retryHeaders);
+            break;
+        }
+        debugPrint(
+          '✅ Request retried successfully with status: ${response.statusCode}',
+        );
+      } else {
+        debugPrint('❌ Token refresh failed, user needs to log in again');
+        throw Exception('Session expired - please log in again');
+      }
+    }
+
+    return response;
   }
 
   /// Logout the current user and clear all session data
@@ -308,8 +532,31 @@ Network connection error. Please check:
     debugPrint('🚪 LOGOUT: Starting logout process...');
 
     try {
-      // Clear token from memory
+      // First, try to revoke refresh token on backend
+      if (_refreshToken != null && _refreshToken!.isNotEmpty) {
+        try {
+          debugPrint('🚪 LOGOUT: Revoking refresh token on backend...');
+          final response = await client.post(
+            Uri.parse('$baseUrl/api/auth/logout'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refreshToken': _refreshToken}),
+          );
+          if (response.statusCode == 200) {
+            debugPrint('✅ LOGOUT: Refresh token revoked successfully');
+          } else {
+            debugPrint(
+              '⚠️ LOGOUT: Failed to revoke refresh token: ${response.statusCode}',
+            );
+          }
+        } catch (e) {
+          debugPrint('⚠️ LOGOUT: Error revoking refresh token: $e');
+          // Continue with logout even if backend revocation fails
+        }
+      }
+
+      // Clear tokens from memory
       _token = null;
+      _refreshToken = null;
 
       // Clear all auth-related data from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
@@ -421,13 +668,21 @@ Network connection error. Please check:
           final data = json.decode(response.body);
           debugPrint('Login response: $data');
 
-          if (data['token'] != null) {
-            // Save token and user data to SharedPreferences
-            final String token = data['token'];
+          // Handle both new token pair format and legacy single token format
+          final String? accessToken = data['accessToken'] ?? data['token'];
+          final String? refreshToken = data['refreshToken'];
 
-            // Save token (and backup for redundancy)
-            await prefs.setString('auth_token', token);
-            await prefs.setString('auth_token_backup', token);
+          if (accessToken != null) {
+            // Save tokens based on what's available
+            if (refreshToken != null) {
+              // New token pair format
+              await _saveTokenPair(accessToken, refreshToken);
+              debugPrint('✅ Saved token pair from login');
+            } else {
+              // Legacy single token format
+              await _saveToken(accessToken);
+              debugPrint('✅ Saved legacy token from login');
+            }
 
             // Store user ID for identification
             if (data['userId'] != null) {
@@ -448,9 +703,6 @@ Network connection error. Please check:
 
             // For backward compatibility, make sure explicitly_logged_out is false
             await prefs.setBool('explicitly_logged_out', false);
-
-            // Set the token in memory
-            _token = token;
 
             debugPrint(
               '✅ Login credentials successfully saved to SharedPreferences',
@@ -1494,6 +1746,47 @@ Network connection error. Please check:
     }
 
     return null; // User doesn't own a family
+  }
+
+  // Get current user settings
+  Future<Map<String, dynamic>> getCurrentUserSettings() async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    final response = await client.get(
+      Uri.parse('$baseUrl/api/users/current/settings'),
+      headers: headers,
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to get user settings: ${response.body}');
+    }
+  }
+
+  // Update current user preferences
+  Future<Map<String, dynamic>> updateUserPreferences(
+    Map<String, dynamic> preferences,
+  ) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+
+    final response = await client.put(
+      Uri.parse('$baseUrl/api/users/current/preferences'),
+      headers: headers,
+      body: jsonEncode(preferences),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to update user preferences: ${response.body}');
+    }
   }
 
   // Update user demographics

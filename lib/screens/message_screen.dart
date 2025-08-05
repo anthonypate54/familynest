@@ -639,11 +639,16 @@ class _MessageScreenState extends State<MessageScreen>
           );
 
           if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
-            // LARGE FILE - different handling based on source
+            // LARGE FILE - immediate handling without trying to access file.path
+            debugPrint(
+              '🔍 🚫 Large file detected - showing options immediately',
+            );
+
             if (isCloudFile) {
-              // LARGE CLOUD FILE (cached) - handle as external video
-              debugPrint('🔍 Large cloud file - handling as external video');
-              await _processExternalVideo(File(file.path!));
+              // LARGE CLOUD FILE - go straight to URL dialog (like Google Messages)
+              debugPrint('🔍 Large cloud file - immediate URL dialog');
+              await _handleVeryLargeCloudFile('video');
+              return;
             } else {
               // LARGE LOCAL FILE - show upload dialog
               debugPrint('🔍 Large local file - showing upload dialog');

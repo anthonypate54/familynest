@@ -56,6 +56,13 @@ class WebSocketService extends ChangeNotifier {
   DateTime? _lastMessageTime;
   Duration _averageLatency = Duration.zero;
 
+  // Enhanced monitoring
+  DateTime? _lastSuccessfulPing;
+  int _pingFailures = 0;
+  static const Duration _maxIdleTime = Duration(
+    minutes: 35,
+  ); // Warn at 35 minutes
+
   // Getters
   bool get isConnected => _isConnected;
   bool get isConnecting => _isConnecting;
@@ -83,8 +90,8 @@ class WebSocketService extends ChangeNotifier {
           onConnect: _onConnect,
           onWebSocketError: _onError,
           onDisconnect: _onDisconnect,
-          heartbeatIncoming: const Duration(seconds: 30),
-          heartbeatOutgoing: const Duration(seconds: 30),
+          heartbeatIncoming: const Duration(seconds: 120),
+          heartbeatOutgoing: const Duration(seconds: 120),
         ),
       );
 
@@ -110,6 +117,10 @@ class WebSocketService extends ChangeNotifier {
     _isConnecting = false;
     _retryCount = 0;
     _consecutiveFailures = 0;
+
+    // Reset message tracking to prevent immediate idle detection
+    _lastMessageTime = DateTime.now();
+
     _safeNotifyListeners();
     _notifyConnectionListeners(true);
 
@@ -220,6 +231,8 @@ class WebSocketService extends ChangeNotifier {
         _lastMessageTime != null
             ? now.difference(_lastMessageTime!)
             : Duration(hours: 1);
+
+    // Note: Removed aggressive idle detection as it was causing reconnection loops
 
     if (timeSinceLastMessage.inMinutes > 5) {
       debugPrint(

@@ -35,7 +35,7 @@ class LargeVideoDialog {
               ),
               const SizedBox(height: 8),
               Text(
-                'Videos larger than 20MB cannot be uploaded directly.',
+                'Videos larger than 100MB cannot be uploaded directly.',
                 style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
               const SizedBox(height: 16),

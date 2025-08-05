@@ -1,6 +1,7 @@
 environments:
   dev:
     api_base_url: "http://localhost:8080"
+    ngrok_url: "https://familynesngrok.ngrok.io"
     debug: true
   prod:
     api_base_url: "https://api.familynest.app"

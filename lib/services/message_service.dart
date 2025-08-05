@@ -775,9 +775,23 @@ class _MessageCardState extends State<MessageCard> {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.surface.withAlpha(220),
+                            color:
+                                (widget.message.mediaUrl != null &&
+                                        (widget.message.mediaType == 'video' ||
+                                            widget.message.mediaType ==
+                                                'image' ||
+                                            widget.message.mediaType ==
+                                                'photo' ||
+                                            widget.message.mediaType ==
+                                                'cloud_video') &&
+                                        Theme.of(context).brightness ==
+                                            Brightness.light)
+                                    ? Colors
+                                        .green
+                                        .shade400 // Rich green for media messages in light mode
+                                    : Theme.of(
+                                      context,
+                                    ).colorScheme.surface.withAlpha(220),
                             borderRadius: BorderRadius.circular(12),
                             // Add left border for unread messages
                             border:
