@@ -18,6 +18,7 @@ import 'dm_thread_screen.dart';
 import 'group_management_screen.dart';
 import '../utils/group_avatar_utils.dart'; // Import the shared utility
 import '../screens/profile_screen.dart';
+import '../screens/login_screen.dart';
 
 class MessagesHomeScreen extends StatefulWidget {
   final int userId;
@@ -152,6 +153,17 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       }
     } catch (e) {
       debugPrint('❌ MessagesHomeScreen: Error loading conversations: $e');
+
+      // Check if it's an authentication error
+      if (e.toString().contains('403') ||
+          e.toString().contains('401') ||
+          e.toString().contains('Invalid token') ||
+          e.toString().contains('Session expired')) {
+        debugPrint('🔒 Authentication error detected, redirecting to login');
+        _redirectToLogin();
+        return;
+      }
+
       if (mounted) {
         setState(() {
           _errorMessage = e.toString();
@@ -159,6 +171,18 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         });
       }
     }
+  }
+
+  // Redirect to login on authentication errors
+  void _redirectToLogin() {
+    if (!mounted) return;
+    Future.delayed(Duration.zero, () {
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false, // Remove all previous routes
+      );
+    });
   }
 
   void _filterConversations(String query) async {

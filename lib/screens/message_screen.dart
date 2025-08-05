@@ -11,6 +11,7 @@ import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
+import '../services/cloud_file_service.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../theme/app_theme.dart';
@@ -602,56 +603,62 @@ class _MessageScreenState extends State<MessageScreen>
 
   Future<void> _pickMedia(String type) async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: type == 'photo' ? FileType.image : FileType.video,
-        allowMultiple: false,
-        withData: false, // Don't download large cloud files to memory
-      );
+      // Use fast Document Picker (like Google Messages)
+      List<CloudFile> files = await CloudFileService().browseDocuments();
 
       if (!mounted) return;
 
-      if (result != null) {
-        PlatformFile file = result.files.first;
+      if (files.isNotEmpty) {
+        CloudFile cloudFile = files.first;
 
-        // Debug output
-        debugPrint('🔍 Picked file path: ${file.path}');
-        debugPrint('🔍 Picked file name: ${file.name}');
-        debugPrint('🔍 Picked file size: ${file.size}');
-        debugPrint('🔍 File identifier: ${file.identifier}');
+        // Filter by type if needed
+        bool isCorrectType =
+            type == 'photo'
+                ? (cloudFile.mimeType.startsWith('image/'))
+                : (cloudFile.mimeType.startsWith('video/'));
 
-        // Determine file source
-        bool isCloudFile =
-            file.identifier != null &&
-            file.identifier!.startsWith('content://') &&
-            !file.identifier!.contains('com.android.providers.media.documents');
-
-        if (isCloudFile) {
-          debugPrint('🔍 ☁️ CLOUD FILE detected (cached)');
-        } else {
-          debugPrint('🔍 ✅ LOCAL FILE detected');
+        if (!isCorrectType) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Please select a ${type == 'photo' ? 'photo' : 'video'} file',
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          return;
         }
 
-        if (type == 'video') {
-          final int fileSizeBytes = file.size;
-          final double fileSizeMB = fileSizeBytes / (1024 * 1024);
-          debugPrint(
-            '🔍 File size: ${fileSizeMB}MB, limit: ${AppConfig.maxFileUploadSizeMB}MB',
-          );
+        // Check file size first - handle large files immediately
+        final double fileSizeMB = cloudFile.size / (1024 * 1024);
+        if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
+          debugPrint('🔍 Large file detected: ${fileSizeMB}MB');
 
-          if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
-            // LARGE FILE - immediate handling without trying to access file.path
-            debugPrint(
-              '🔍 🚫 Large file detected - showing options immediately',
+          if (type == 'photo') {
+            // Large photos - show simple rejection message
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Photo too large (${fileSizeMB.toStringAsFixed(1)}MB). Please select a photo under ${AppConfig.maxFileUploadSizeMB}MB.',
+                ),
+                duration: const Duration(seconds: 4),
+                action: SnackBarAction(
+                  label: 'Choose Another',
+                  onPressed: () => _showMediaPicker(),
+                ),
+              ),
             );
+            return;
+          } else {
+            // Large videos - show upload dialog like before
+            bool isCloudFile = cloudFile.provider != 'local';
 
             if (isCloudFile) {
-              // LARGE CLOUD FILE - go straight to URL dialog (like Google Messages)
-              debugPrint('🔍 Large cloud file - immediate URL dialog');
+              debugPrint('🔍 Large cloud video - immediate URL dialog');
               await _handleVeryLargeCloudFile('video');
               return;
             } else {
-              // LARGE LOCAL FILE - show upload dialog
-              debugPrint('🔍 Large local file - showing upload dialog');
+              debugPrint('🔍 Large local video - showing upload dialog');
               final action = await LargeVideoDialog.show(context, fileSizeMB);
 
               if (action == VideoSizeAction.chooseDifferent) {
@@ -667,32 +674,56 @@ class _MessageScreenState extends State<MessageScreen>
                 );
                 _showMediaPicker();
               }
+              return;
             }
-            return; // Exit early for large files
           }
         }
 
+        // Check if we have a local path
+        if (cloudFile.localPath == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to access selected file'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+
+        // Convert CloudFile to File for existing logic
+        File file = File(cloudFile.localPath!);
+
+        // Debug output
+        debugPrint('🔍 Family: Picked file path: ${file.path}');
+        debugPrint('🔍 Family: Picked file name: ${cloudFile.name}');
+        debugPrint('🔍 Family: Picked file size: ${cloudFile.size}');
+        debugPrint('🔍 Family: File provider: ${cloudFile.provider}');
+
+        // Determine file source from Document Picker
+        bool isCloudFile = cloudFile.provider != 'local';
+
+        if (isCloudFile) {
+          debugPrint('🔍 ☁️ CLOUD FILE detected (Document Picker)');
+        } else {
+          debugPrint('🔍 ✅ LOCAL FILE detected (Document Picker)');
+        }
+
+        // File size already checked above - proceed with processing
+
         // SMALL FILE (any source) - process normally
         debugPrint('🔍 Small file - processing normally');
-        await _processLocalFile(File(file.path!), type);
+        await _processLocalFile(file, type);
       }
     } catch (e) {
-      if (e is PlatformException && e.code == 'unknown_path') {
-        // VERY LARGE CLOUD FILE - couldn't cache
-        debugPrint('🔍 Very large cloud file - showing URL input dialog');
-        if (!mounted) return;
-        await _handleVeryLargeCloudFile('video');
-      } else {
-        debugPrint('Error picking media: $e');
-        if (!mounted) return;
+      debugPrint('Error picking media: $e');
+      if (!mounted) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error picking media: $e'),
-            duration: const Duration(seconds: 10),
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking media: $e'),
+          duration: const Duration(seconds: 10),
+        ),
+      );
     }
   }
 

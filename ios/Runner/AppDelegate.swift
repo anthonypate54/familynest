@@ -221,8 +221,6 @@ class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
     for url in urls {
       // Start accessing the security-scoped resource
       if url.startAccessingSecurityScopedResource() {
-        defer { url.stopAccessingSecurityScopedResource() }
-        
         do {
           let resourceValues = try url.resourceValues(forKeys: [
             .nameKey,
@@ -230,17 +228,28 @@ class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
             .isDirectoryKey
           ])
           
-          // Get file type using older API
+          // Copy file to temporary location for persistent access
+          let tempDir = FileManager.default.temporaryDirectory
+          let fileName = resourceValues.name ?? "unknown_file"
+          let tempFileURL = tempDir.appendingPathComponent(fileName)
+          
+          // Remove existing temp file if it exists
+          try? FileManager.default.removeItem(at: tempFileURL)
+          
+          // Copy the file to temp location
+          try FileManager.default.copyItem(at: url, to: tempFileURL)
+          
+          // Get file type for mime type
           var fileType = "unknown"
           if let pathExtension = resourceValues.name?.components(separatedBy: ".").last {
             fileType = pathExtension
           }
           
           let fileInfo: [String: Any] = [
-            "id": url.path,
-            "name": resourceValues.name ?? "Unknown",
+            "id": url.absoluteString,
+            "name": fileName,
             "size": resourceValues.fileSize ?? 0,
-            "path": url.path,
+            "path": tempFileURL.path,  // Use temp path for persistent access
             "type": fileType,
             "isDirectory": resourceValues.isDirectory ?? false,
             "mimeType": self.getMimeType(for: fileType)
@@ -248,8 +257,11 @@ class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
           
           fileInfos.append(fileInfo)
         } catch {
-          print("Error getting resource values for \(url): \(error)")
+          print("Error processing file \(url): \(error)")
         }
+        
+        // Stop accessing security-scoped resource after copying
+        url.stopAccessingSecurityScopedResource()
       }
     }
     

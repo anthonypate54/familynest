@@ -275,6 +275,7 @@ class MainAppContainerState extends State<MainAppContainer> {
 
   // Add a timer instance variable to allow cancellation
   Timer? _authCheckTimer;
+  Timer? _tokenRefreshTimer;
   // Note: _invitationCheckTimer removed - now using WebSocket for real-time updates
 
   // WebSocket handler for invitations
@@ -342,6 +343,11 @@ class MainAppContainerState extends State<MainAppContainer> {
 
     // Start an immediate check to ensure we're authenticated
     _checkAuthenticationState();
+
+    // Start periodic token refresh to prevent expiration (every 3 hours, before 4-hour expiration)
+    _tokenRefreshTimer = Timer.periodic(const Duration(hours: 3), (timer) {
+      _refreshTokenProactively();
+    });
 
     // Initial check for pending invitations (WebSocket will handle real-time updates)
     _checkPendingInvitations();
@@ -470,6 +476,34 @@ class MainAppContainerState extends State<MainAppContainer> {
       } else {
         // For other errors (like network issues), don't redirect
         debugPrint('Non-authentication error in periodic check: $e');
+      }
+    }
+  }
+
+  // Proactively refresh tokens to prevent expiration
+  Future<void> _refreshTokenProactively() async {
+    try {
+      debugPrint('🔄 MAIN: Proactive token refresh started');
+      final apiService = Provider.of<ApiService>(context, listen: false);
+
+      // This will automatically refresh if needed
+      final user = await apiService.getCurrentUser();
+      if (user != null) {
+        debugPrint('✅ MAIN: Proactive token refresh successful');
+      } else {
+        debugPrint('⚠️ MAIN: Proactive token refresh - user is null');
+      }
+    } catch (e) {
+      debugPrint('❌ MAIN: Proactive token refresh failed: $e');
+
+      // If it's an auth error during proactive refresh, redirect to login
+      if (e.toString().contains('401') ||
+          e.toString().contains('403') ||
+          e.toString().contains('Invalid token')) {
+        debugPrint(
+          '🔒 MAIN: Auth error during proactive refresh, redirecting to login',
+        );
+        _redirectToLogin();
       }
     }
   }
@@ -693,8 +727,9 @@ class MainAppContainerState extends State<MainAppContainer> {
 
   @override
   void dispose() {
-    // Cancel the timer to prevent memory leaks
+    // Cancel the timers to prevent memory leaks
     _authCheckTimer?.cancel();
+    _tokenRefreshTimer?.cancel();
     // Note: _invitationCheckTimer removed - now using WebSocket instead of polling
     _pageController.dispose();
     super.dispose();

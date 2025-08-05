@@ -65,36 +65,32 @@ class CloudFileService {
     return providers;
   }
 
-  /// Use iOS Document Picker for immediate file access (like Google Messages)
+  /// Use native Document Picker for immediate file access (like Google Messages)
   /// This is the fast alternative to the slow file_picker package
+  /// Works on both iOS and Android
   Future<List<CloudFile>> browseDocuments() async {
     debugPrint('📄 CloudFileService.browseDocuments called');
 
-    if (!Platform.isIOS) {
-      throw UnsupportedError(
-        'Document picker currently only implemented for iOS',
-      );
-    }
-
     try {
       final result = await platform.invokeMethod('browseDocuments');
-      debugPrint('📄 Document picker returned: ${result.length} files');
+      debugPrint('📄 Raw document picker result: $result');
+      debugPrint('📄 Result type: ${result.runtimeType}');
+      if (result is List) {
+        debugPrint('📄 Document picker returned: ${result.length} files');
+      }
 
       if (result is List) {
-        return result
-            .map<CloudFile>((fileData) {
-              final data = Map<String, dynamic>.from(fileData);
-              return CloudFile(
-                id: data['id'] ?? '',
-                name: data['name'] ?? 'Unknown',
-                size: data['size'] ?? 0,
-                localPath: data['path'],
-                mimeType: data['mimeType'] ?? 'application/octet-stream',
-                provider: 'document_picker',
-              );
-            })
-            .where((file) => file.isWithinSizeLimit)
-            .toList();
+        return result.map<CloudFile>((fileData) {
+          final data = Map<String, dynamic>.from(fileData);
+          return CloudFile(
+            id: data['id'] ?? '',
+            name: data['name'] ?? 'Unknown',
+            size: data['size'] ?? 0,
+            localPath: data['path'],
+            mimeType: data['mimeType'] ?? 'application/octet-stream',
+            provider: 'document_picker',
+          );
+        }).toList(); // Don't filter by size here - let UI handle it
       } else {
         debugPrint('📄 Unexpected result type: ${result.runtimeType}');
         return [];

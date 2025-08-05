@@ -225,8 +225,12 @@ class ShareService {
                 decoration: const InputDecoration(
                   hintText: 'https://drive.google.com/file/d/...',
                   border: OutlineInputBorder(),
+                  helperText: 'Long press to paste',
                 ),
                 keyboardType: TextInputType.url,
+                enableSuggestions: true,
+                autocorrect: false,
+                textInputAction: TextInputAction.done,
               ),
               const SizedBox(height: 12),
               const Text(

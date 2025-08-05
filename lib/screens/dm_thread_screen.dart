@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
+
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'dart:io';
 import '../services/api_service.dart';
 import '../services/share_service.dart';
 import '../services/dm_message_view_tracker.dart';
+import '../services/cloud_file_service.dart';
 import '../utils/video_thumbnail_util.dart';
 import '../config/app_config.dart';
 import '../dialogs/large_video_dialog.dart';
@@ -349,28 +350,106 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
 
   Future<void> _pickDMMedia(String type) async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: type == 'photo' ? FileType.image : FileType.video,
-        allowMultiple: false,
-        withData: false, // Don't download large cloud files to memory
-      );
+      // Use fast Document Picker (like Google Messages) on both iOS and Android
+      List<CloudFile> files = await CloudFileService().browseDocuments();
 
       if (!mounted) return;
 
-      if (result != null) {
-        PlatformFile file = result.files.first;
+      if (files.isNotEmpty) {
+        CloudFile cloudFile = files.first;
+
+        // Filter by type if needed
+        bool isCorrectType =
+            type == 'photo'
+                ? (cloudFile.mimeType.startsWith('image/'))
+                : (cloudFile.mimeType.startsWith('video/'));
+
+        if (!isCorrectType) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Please select a ${type == 'photo' ? 'photo' : 'video'} file',
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+
+        // Check file size first - handle large files immediately
+        final double fileSizeMB = cloudFile.size / (1024 * 1024);
+        if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
+          debugPrint('🔍 DM: Large file detected: ${fileSizeMB}MB');
+
+          if (type == 'photo') {
+            // Large photos - show simple rejection message
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Photo too large (${fileSizeMB.toStringAsFixed(1)}MB). Please select a photo under ${AppConfig.maxFileUploadSizeMB}MB.',
+                ),
+                duration: const Duration(seconds: 4),
+                action: SnackBarAction(
+                  label: 'Choose Another',
+                  onPressed: () => _showDMMediaPicker(),
+                ),
+              ),
+            );
+            return;
+          } else {
+            // Large videos - show upload dialog
+            bool isCloudFile = cloudFile.provider != 'local';
+
+            if (isCloudFile) {
+              debugPrint('🔍 DM: Large cloud video - immediate URL dialog');
+              await _handleDMVeryLargeCloudFile('video');
+              return;
+            } else {
+              debugPrint('🔍 DM: Large local video - showing upload dialog');
+              final action = await LargeVideoDialog.show(context, fileSizeMB);
+
+              if (action == VideoSizeAction.chooseDifferent) {
+                _showDMMediaPicker();
+              } else if (action == VideoSizeAction.shareAsLink) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Upload your video to Google Drive or Dropbox first, then select it from there.',
+                    ),
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+                _showDMMediaPicker();
+              }
+              return;
+            }
+          }
+        }
+
+        // Check if we have a local path
+        if (cloudFile.localPath == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to access selected file'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+
+        // Convert CloudFile to File for existing logic
+        File file = File(cloudFile.localPath!);
 
         // Debug output
         debugPrint('🔍 DM: Picked file path: ${file.path}');
-        debugPrint('🔍 DM: Picked file name: ${file.name}');
-        debugPrint('🔍 DM: Picked file size: ${file.size}');
-        debugPrint('🔍 DM: File identifier: ${file.identifier}');
+        debugPrint('🔍 DM: Picked file name: ${cloudFile.name}');
+        debugPrint('🔍 DM: Picked file size: ${cloudFile.size}');
+        debugPrint('🔍 DM: File provider: ${cloudFile.provider}');
 
-        // Determine file source
+        // Determine file source from Document Picker
         bool isCloudFile =
-            file.identifier != null &&
-            file.identifier!.startsWith('content://') &&
-            !file.identifier!.contains('com.android.providers.media.documents');
+            cloudFile.provider != 'document_picker' ||
+            !file.path.startsWith('/private/var/mobile/Containers/');
 
         if (isCloudFile) {
           debugPrint('🔍 DM: ☁️ CLOUD FILE detected (cached)');
@@ -379,7 +458,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         }
 
         if (type == 'video') {
-          final int fileSizeBytes = file.size;
+          final int fileSizeBytes = cloudFile.size;
           final double fileSizeMB = fileSizeBytes / (1024 * 1024);
           debugPrint(
             '🔍 DM: File size: ${fileSizeMB}MB, limit: ${AppConfig.maxFileUploadSizeMB}MB',
@@ -392,7 +471,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
               debugPrint(
                 '🔍 DM: Large cloud file - handling as external video',
               );
-              await _processDMExternalVideo(File(file.path!));
+              await _processDMExternalVideo(File(file.path));
             } else {
               // LARGE LOCAL FILE - show upload dialog
               debugPrint('🔍 DM: Large local file - showing upload dialog');
@@ -419,7 +498,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
 
         // SMALL FILE (any source) - process normally
         debugPrint('🔍 DM: Small file - processing normally');
-        await _processDMLocalFile(File(file.path!), type);
+        await _processDMLocalFile(File(file.path), type);
       }
     } catch (e) {
       if (e is PlatformException && e.code == 'unknown_path') {
@@ -1020,14 +1099,14 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     } else {
       final avatarColor = _getAvatarColor(initials);
       return CircleAvatar(
-        radius: 16,
+        radius: radius,
         backgroundColor: avatarColor,
         child: Text(
-          initials.isNotEmpty ? initials[0].toUpperCase() : '?',
+          initials,
           style: TextStyle(
             color: _getTextColor(avatarColor),
             fontWeight: FontWeight.bold,
-            fontSize: 12,
+            fontSize: radius * 0.7,
           ),
         ),
       );
@@ -1115,7 +1194,16 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
         ),
         title: Row(
           children: [
-            widget.isGroup
+            // Debug: Log conversation details
+            Builder(
+              builder: (context) {
+                debugPrint(
+                  '🔍 DMThreadScreen: isGroup=${widget.isGroup}, participants=${widget.participants?.length ?? 0}, otherUserName=${widget.otherUserName}',
+                );
+                return const SizedBox.shrink();
+              },
+            ),
+            (widget.isGroup && (widget.participants?.length ?? 0) > 1)
                 ? GestureDetector(
                   onTap: () => _navigateToGroupManagement(),
                   child: Container(
@@ -1129,9 +1217,19 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                     child: _buildGroupAvatar(),
                   ),
                 )
-                : _buildAvatarForSender(
-                  widget.otherUserPhoto,
-                  widget.otherUserName,
+                : CircleAvatar(
+                  radius: 16,
+                  backgroundColor: _getAvatarColor(widget.otherUserName),
+                  child: Text(
+                    _getInitials('', '', widget.otherUserName),
+                    style: TextStyle(
+                      color: _getTextColor(
+                        _getAvatarColor(widget.otherUserName),
+                      ),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
             const SizedBox(width: 12),
             Expanded(
@@ -1500,6 +1598,46 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     );
   }
 
+  // Clean header avatar for app bar (no margins or shadows)
+  Widget _buildHeaderAvatar(String? senderPhoto, String displayName) {
+    return CircleAvatar(
+      radius: 16,
+      backgroundColor: _getAvatarColor(displayName),
+      child:
+          senderPhoto != null && senderPhoto.isNotEmpty
+              ? ClipOval(
+                child: CachedNetworkImage(
+                  imageUrl: senderPhoto,
+                  fit: BoxFit.cover,
+                  width: 32,
+                  height: 32,
+                  placeholder:
+                      (context, url) => const CircularProgressIndicator(),
+                  errorWidget: (context, url, error) {
+                    return Text(
+                      displayName.isNotEmpty
+                          ? displayName[0].toUpperCase()
+                          : '?',
+                      style: TextStyle(
+                        color: _getTextColor(_getAvatarColor(displayName)),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    );
+                  },
+                ),
+              )
+              : Text(
+                displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                style: TextStyle(
+                  color: _getTextColor(_getAvatarColor(displayName)),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+    );
+  }
+
   Widget _buildAvatarForSender(String? senderPhoto, String displayName) {
     return Container(
       margin: const EdgeInsets.only(right: 8),
@@ -1682,12 +1820,6 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                 ? thumbnailUrl
                 : apiService.mediaBaseUrl + thumbnailUrl)
             : null;
-    final String senderName =
-        isMe
-            ? 'You'
-            : '${message.senderFirstName ?? ''} ${message.senderLastName ?? ''}'
-                .trim();
-
     // Format timestamp
     String timeString = '';
     final DateTime messageTime = message.createdAt;
