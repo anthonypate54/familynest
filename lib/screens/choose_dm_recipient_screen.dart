@@ -270,6 +270,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
     return Wrap(
       spacing: 8.0,
       runSpacing: 4.0,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         ..._selectedMembers.map((member) {
           final firstName = member['firstName'] as String? ?? '';
@@ -291,10 +292,14 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
           return Chip(
             label: Text(
               displayName,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+              style: const TextStyle(color: Colors.black87, fontSize: 14),
             ),
-            backgroundColor: Colors.white.withOpacity(0.2),
-            deleteIcon: const Icon(Icons.close, color: Colors.white, size: 18),
+            backgroundColor: Colors.white.withOpacity(0.9),
+            deleteIcon: const Icon(
+              Icons.close,
+              color: Colors.black54,
+              size: 18,
+            ),
             onDeleted: () {
               setState(() {
                 _selectedMembers.remove(member);
@@ -307,19 +312,23 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
         if (_selectedMembers.length < 4) // Max 4 others + creator = 5 total
           SizedBox(
             width: 100,
-            child: TextField(
-              controller: _searchController,
-              onChanged: _filterMembers,
-              style: const TextStyle(color: Colors.white),
-              cursorColor: Colors.white,
-              decoration: const InputDecoration(
-                hintText: 'Add more...',
-                hintStyle: TextStyle(color: Colors.white70),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-                isDense: true,
-                filled: false,
-                fillColor: Colors.transparent,
+            height: 32, // Match chip height
+            child: Center(
+              child: TextField(
+                controller: _searchController,
+                onChanged: _filterMembers,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white),
+                cursorColor: Colors.white,
+                decoration: const InputDecoration(
+                  hintText: 'Add more...',
+                  hintStyle: TextStyle(color: Colors.white70),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                  isDense: true,
+                  filled: false,
+                  fillColor: Colors.transparent,
+                ),
               ),
             ),
           ),
@@ -486,10 +495,12 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       // "To:" label
-                      const Text(
+                      Text(
                         'To:',
                         style: TextStyle(
-                          color: Colors.white,
+                          color:
+                              Colors
+                                  .white, // White text on green gradient background
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
                         ),
@@ -836,6 +847,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
         // Check limit (max 4 others + creator = 5 total)
         if (_selectedMembers.length < 4) {
           _selectedMembers.add(member);
+          _searchController.clear(); // Clear search text after adding
         } else {
           // Show limit message
           ScaffoldMessenger.of(context).showSnackBar(

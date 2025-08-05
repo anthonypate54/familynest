@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../widgets/gradient_background.dart';
-import '../utils/page_transitions.dart';
 import 'dm_thread_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -211,23 +210,53 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
               // Group name input
               TextField(
                 controller: _groupNameController,
-                style: const TextStyle(color: Colors.white, fontSize: 18),
-                cursorColor: Colors.white,
+                style: TextStyle(
+                  color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : Colors.black87,
+                  fontSize: 18,
+                ),
+                cursorColor:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Colors.black87,
                 decoration: InputDecoration(
                   labelText: 'Group name (optional)',
-                  labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                  labelStyle: TextStyle(
+                    color:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white.withOpacity(0.7)
+                            : Colors.black.withOpacity(0.6),
+                  ),
                   enabledBorder: UnderlineInputBorder(
                     borderSide: BorderSide(
-                      color: Colors.white.withOpacity(0.5),
+                      color:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.5)
+                              : Colors.black.withOpacity(0.3),
                     ),
                   ),
-                  focusedBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white, width: 2),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(
+                      color:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black87,
+                      width: 2,
+                    ),
                   ),
                   suffixIcon:
                       _groupNameController.text.isNotEmpty
                           ? IconButton(
-                            icon: const Icon(Icons.clear, color: Colors.white),
+                            icon: Icon(
+                              Icons.clear,
+                              color:
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white
+                                      : Colors.black54,
+                            ),
                             onPressed: () {
                               setState(() {
                                 _groupNameController.clear();
@@ -247,7 +276,10 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
               Text(
                 'Only you can see this group name',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white.withOpacity(0.7)
+                          : Colors.black.withOpacity(0.6),
                   fontSize: 14,
                 ),
               ),
