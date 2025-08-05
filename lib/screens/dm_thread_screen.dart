@@ -59,6 +59,7 @@ class DMThreadScreen extends StatefulWidget {
 class _DMThreadScreenState extends State<DMThreadScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _messageFocusNode = FocusNode();
 
   // Remove local messages state since we'll use provider
   bool _isLoading = true;
@@ -198,6 +199,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
 
     _messageController.dispose();
     _scrollController.dispose();
+    _messageFocusNode.dispose();
     // Clean up DM media controllers
     _dmVideoController?.dispose();
     _dmChewieController?.dispose();
@@ -312,9 +314,19 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
       _showEmojiPicker = !_showEmojiPicker;
     });
 
-    // Hide keyboard when showing emoji picker
     if (_showEmojiPicker) {
+      // Hide keyboard when showing emoji picker
       FocusScope.of(context).unfocus();
+    } else {
+      // Show keyboard when hiding emoji picker
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _messageFocusNode.requestFocus();
+          _messageController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _messageController.text.length),
+          );
+        }
+      });
     }
   }
 
@@ -1202,6 +1214,50 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomSheet:
+          _showEmojiPicker
+              ? Container(
+                height: 250,
+                decoration: BoxDecoration(
+                  color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[900]
+                          : Colors.white,
+                  border: Border(
+                    top: BorderSide(
+                      color:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[700]!
+                              : Colors.grey[300]!,
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: EmojiPickerWidget(
+                  textController: _messageController,
+                  isDarkMode: Theme.of(context).brightness == Brightness.dark,
+                  onEmojiSelected: () {
+                    debugPrint(
+                      '🎉 DM: Emoji selected, switching back to keyboard',
+                    );
+                    // Hide emoji picker and show keyboard
+                    setState(() {
+                      _showEmojiPicker = false;
+                    });
+                    // Request focus to show keyboard
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        _messageFocusNode.requestFocus();
+                        _messageController
+                            .selection = TextSelection.fromPosition(
+                          TextPosition(offset: _messageController.text.length),
+                        );
+                      }
+                    });
+                  },
+                ),
+              )
+              : null,
       appBar: AppBar(
         backgroundColor: AppTheme.getAppBarColor(context),
         elevation: 0,
@@ -1368,16 +1424,6 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                         },
                       ),
             ),
-
-            // Emoji picker (if visible)
-            if (_showEmojiPicker)
-              EmojiPickerWidget(
-                textController: _messageController,
-                isDarkMode: Theme.of(context).brightness == Brightness.dark,
-                onEmojiSelected: () {
-                  // Optional: Auto-hide after selection or other logic
-                },
-              ),
 
             // Media preview (if any)
             if (_selectedDMMediaFile != null)
@@ -1576,6 +1622,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                     Expanded(
                       child: TextField(
                         controller: _messageController,
+                        focusNode: _messageFocusNode,
                         style: TextStyle(
                           color:
                               Theme.of(context).brightness == Brightness.dark
