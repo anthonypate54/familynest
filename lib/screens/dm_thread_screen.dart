@@ -1952,7 +1952,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                             : Theme.of(context).colorScheme.primary)
                         : (Theme.of(context).brightness == Brightness.dark
                             ? Theme.of(context).colorScheme.surface
-                            : Colors.grey.shade200),
+                            : Colors.green.shade100),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
