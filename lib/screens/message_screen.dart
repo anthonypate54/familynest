@@ -23,6 +23,7 @@ import '../dialogs/large_video_dialog.dart';
 import '../config/app_config.dart';
 import '../services/share_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/emoji_picker_widget.dart';
 
 class MessageScreen extends StatefulWidget {
   final String userId;
@@ -63,6 +64,9 @@ class _MessageScreenState extends State<MessageScreen>
   MessageProvider? _messageProvider;
   int? _currentUserId;
   int? _currentFamilyId;
+
+  // Emoji picker state
+  bool _showEmojiPicker = false;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -966,6 +970,18 @@ class _MessageScreenState extends State<MessageScreen>
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
+    }
+  }
+
+  // Emoji picker toggle
+  void _toggleEmojiPicker() {
+    setState(() {
+      _showEmojiPicker = !_showEmojiPicker;
+    });
+
+    // Hide keyboard when showing emoji picker
+    if (_showEmojiPicker) {
+      FocusScope.of(context).unfocus();
     }
   }
 

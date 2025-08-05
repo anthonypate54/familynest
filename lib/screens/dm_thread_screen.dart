@@ -23,6 +23,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'group_management_screen.dart';
 import '../screens/messages_home_screen.dart';
+import '../widgets/emoji_picker_widget.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
@@ -79,6 +80,9 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   ConnectionStatusHandler? _connectionListener;
   WebSocketService? _webSocketService;
   DMMessageProvider? _dmMessageProvider;
+
+  // Emoji picker state
+  bool _showEmojiPicker = false;
 
   @override
   void initState() {
@@ -241,6 +245,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           _dmVideoController = null;
           _dmChewieController = null;
           _selectedDMVideoThumbnail = null;
+          _showEmojiPicker = false; // Hide emoji picker when sending
         });
 
         // Add the message to sender's provider immediately (optimistic update)
@@ -298,6 +303,18 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           _isSending = false;
         });
       }
+    }
+  }
+
+  // Emoji picker toggle
+  void _toggleEmojiPicker() {
+    setState(() {
+      _showEmojiPicker = !_showEmojiPicker;
+    });
+
+    // Hide keyboard when showing emoji picker
+    if (_showEmojiPicker) {
+      FocusScope.of(context).unfocus();
     }
   }
 
@@ -1352,6 +1369,16 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                       ),
             ),
 
+            // Emoji picker (if visible)
+            if (_showEmojiPicker)
+              EmojiPickerWidget(
+                textController: _messageController,
+                isDarkMode: Theme.of(context).brightness == Brightness.dark,
+                onEmojiSelected: () {
+                  // Optional: Auto-hide after selection or other logic
+                },
+              ),
+
             // Media preview (if any)
             if (_selectedDMMediaFile != null)
               Padding(
@@ -1517,7 +1544,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
               child: SafeArea(
                 child: Row(
                   children: [
-                    // Attachment button (dummy)
+                    // Attachment button
                     IconButton(
                       icon: const Icon(
                         Icons.add_circle_outline,
@@ -1527,6 +1554,22 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                         // Use the new DM media picker
                         _showDMMediaPicker();
                       },
+                    ),
+
+                    // Emoji button
+                    IconButton(
+                      icon: Icon(
+                        _showEmojiPicker
+                            ? Icons.keyboard
+                            : Icons.emoji_emotions_outlined,
+                        color:
+                            _showEmojiPicker
+                                ? Theme.of(context).primaryColor
+                                : Colors.grey,
+                      ),
+                      onPressed: _toggleEmojiPicker,
+                      tooltip:
+                          _showEmojiPicker ? 'Show Keyboard' : 'Show Emojis',
                     ),
 
                     // Text input
