@@ -187,15 +187,6 @@ Network connection error. Please check:
     }
   }
 
-  /// Validate that we have a valid token before making authenticated requests
-  bool _hasValidToken() {
-    if (_token == null || _token!.isEmpty || _token == 'null') {
-      debugPrint('⚠️ No valid token available for request');
-      return false;
-    }
-    return true;
-  }
-
   Future<void> _loadToken() async {
     // Debug output to track SharedPreferences state
     await debugPrintSharedPrefs("_loadToken-start");
@@ -750,16 +741,12 @@ Network connection error. Please check:
       }
 
       // We have a token, try to validate it with the server
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
       final currentUserPath = _getApiEndpoint('/api/users/current');
 
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl$currentUserPath'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -794,11 +781,6 @@ Network connection error. Please check:
           // Include all other fields from the backend response
           ...responseBody,
         };
-      } else if (response.statusCode == 401 || response.statusCode == 403) {
-        _token = null;
-        await prefs.remove('auth_token');
-        await prefs.remove('auth_token_backup');
-        throw AuthException('Session expired or unauthorized');
       } else {
         debugPrint('❌ Token validation failed (status ${response.statusCode})');
         _token = null;
@@ -885,16 +867,11 @@ Network connection error. Please check:
 
   // Get user data by ID
   Future<Map<String, dynamic>> getUserById(int id) async {
-    final headers = {'Content-Type': 'application/json'};
     debugPrint('getUserById: Getting user with ID: $id');
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    } else {
-      debugPrint('No token available, Authorization header not set');
-    }
-    final response = await client.get(
+    final response = await _makeAuthenticatedRequest(
+      'GET',
       Uri.parse('$baseUrl/api/users/$id'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -906,14 +883,10 @@ Network connection error. Please check:
   // Notification Preferences API methods
   Future<Map<String, dynamic>?> getNotificationPreferences(int userId) async {
     try {
-      final headers = {'Content-Type': 'application/json'};
-      if (_token != null) {
-        headers['Authorization'] = 'Bearer $_token';
-      }
-
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/notification-preferences/$userId'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -937,14 +910,10 @@ Network connection error. Please check:
     required bool pushDMNotifications,
   }) async {
     try {
-      final headers = {'Content-Type': 'application/json'};
-      if (_token != null) {
-        headers['Authorization'] = 'Bearer $_token';
-      }
-
-      final response = await client.post(
+      final response = await _makeAuthenticatedRequest(
+        'POST',
         Uri.parse('$baseUrl/api/notification-preferences/$userId/dm'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'receiveDMNotifications': receiveDMNotifications,
           'emailDMNotifications': emailDMNotifications,
@@ -969,14 +938,10 @@ Network connection error. Please check:
     required bool weekendNotifications,
   }) async {
     try {
-      final headers = {'Content-Type': 'application/json'};
-      if (_token != null) {
-        headers['Authorization'] = 'Bearer $_token';
-      }
-
-      final response = await client.post(
+      final response = await _makeAuthenticatedRequest(
+        'POST',
         Uri.parse('$baseUrl/api/notification-preferences/$userId/global'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'emailNotificationsEnabled': emailNotificationsEnabled,
           'pushNotificationsEnabled': pushNotificationsEnabled,
@@ -1003,14 +968,10 @@ Network connection error. Please check:
     required bool notifyOnInvitationDeclined,
   }) async {
     try {
-      final headers = {'Content-Type': 'application/json'};
-      if (_token != null) {
-        headers['Authorization'] = 'Bearer $_token';
-      }
-
-      final response = await client.post(
+      final response = await _makeAuthenticatedRequest(
+        'POST',
         Uri.parse('$baseUrl/api/notification-preferences/$userId/invitations'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'receiveInvitationNotifications': receiveInvitationNotifications,
           'emailInvitationNotifications': emailInvitationNotifications,
@@ -1029,15 +990,14 @@ Network connection error. Please check:
 
   // Get messages for a user
   Future<List<Map<String, dynamic>>> getMessages(int userId) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-
     final apiUrl = '$baseUrl/api/users/$userId/messages';
     debugPrint('API URL for messages: $apiUrl');
 
-    final response = await client.get(Uri.parse(apiUrl), headers: headers);
+    final response = await _makeAuthenticatedRequest(
+      'GET',
+      Uri.parse(apiUrl),
+      headers: {'Content-Type': 'application/json'},
+    );
 
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
@@ -1417,21 +1377,15 @@ Network connection error. Please check:
 
   // Get all family members across all families (for DM recipient selection)
   Future<List<Map<String, dynamic>>> getAllFamilyMembers() async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-      debugPrint(
-        '🔍 API DEBUG: Token available - ${_token!.substring(0, math.min(10, _token!.length))}...',
-      );
-    } else {
-      debugPrint('🔍 API DEBUG: No token available!');
-    }
-
     try {
       // Use the new endpoint for getting all family members
       final url = '$baseUrl/api/families/all-members';
 
-      final response = await client.get(Uri.parse(url), headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'GET',
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
 
       if (response.statusCode == 200) {
         final result =
@@ -1458,16 +1412,6 @@ Network connection error. Please check:
   Future<List<Map<String, dynamic>>> getFamilyMembers(int userId) async {
     debugPrint('🔍 API DEBUG: getFamilyMembers called for userId: $userId');
 
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-      debugPrint(
-        '🔍 API DEBUG: Token available - ${_token!.substring(0, math.min(10, _token!.length))}...',
-      );
-    } else {
-      debugPrint('🔍 API DEBUG: No token available!');
-    }
-
     // First try to get the user's active family
     try {
       final userFamilies = await getJoinedFamilies(userId);
@@ -1477,7 +1421,11 @@ Network connection error. Please check:
         // Try the new family-based endpoint
         final url = '$baseUrl/api/families/$familyId/members';
 
-        final response = await client.get(Uri.parse(url), headers: headers);
+        final response = await _makeAuthenticatedRequest(
+          'GET',
+          Uri.parse(url),
+          headers: {'Content-Type': 'application/json'},
+        );
 
         if (response.statusCode == 200) {
           final result =
@@ -1497,7 +1445,11 @@ Network connection error. Please check:
     final fallbackUrl = '$baseUrl/api/users/$userId/family-members';
     debugPrint('🔍 API DEBUG: Calling fallback endpoint: $fallbackUrl');
 
-    final response = await client.get(Uri.parse(fallbackUrl), headers: headers);
+    final response = await _makeAuthenticatedRequest(
+      'GET',
+      Uri.parse(fallbackUrl),
+      headers: {'Content-Type': 'application/json'},
+    );
 
     debugPrint(
       '🔍 API DEBUG: Fallback endpoint response status: ${response.statusCode}',
@@ -1528,13 +1480,10 @@ Network connection error. Please check:
 
   // Get family details
   Future<Map<String, dynamic>> getFamily(int familyId) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-    final response = await client.get(
+    final response = await _makeAuthenticatedRequest(
+      'GET',
       Uri.parse('$baseUrl/api/families/$familyId'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -1558,11 +1507,6 @@ Network connection error. Please check:
     int invitationId,
     bool accept,
   ) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
     debugPrint(
       '🔍 API: Responding to invitation $invitationId with accept=$accept',
     );
@@ -1570,11 +1514,11 @@ Network connection error. Please check:
       '🔍 API: Using endpoint: $baseUrl/api/invitations/$invitationId/respond',
     );
     debugPrint('🔍 API: Request body: ${jsonEncode({'accept': accept})}');
-    debugPrint('🔍 API: Headers: ${headers.toString()}');
 
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/invitations/$invitationId/respond'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'accept': accept}),
     );
 
@@ -1590,11 +1534,6 @@ Network connection error. Please check:
 
   // Invite a user to a family
   Future<Map<String, dynamic>> inviteUser(int userId, String email) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
     // First get the family that this user owns
     final ownedFamily = await getOwnedFamily(userId);
 
@@ -1607,9 +1546,10 @@ Network connection error. Please check:
     debugPrint('🔍 API: Sending invitation to $email for family $familyId');
 
     // Using the InvitationController endpoint
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/invitations/$familyId/invite'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email}),
     );
 
@@ -1643,17 +1583,13 @@ Network connection error. Please check:
     int familyId,
     String email,
   ) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
     debugPrint('🔍 API: Sending invitation to $email for family $familyId');
 
     // Using the InvitationController endpoint with the specified family ID
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/invitations/$familyId/invite'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email}),
     );
 
@@ -1670,12 +1606,10 @@ Network connection error. Please check:
       if (freshToken != null) {
         // Retry the invitation with the fresh token
         debugPrint('🔍 Retrying invitation with fresh token');
-        final retryResponse = await client.post(
+        final retryResponse = await _makeAuthenticatedRequest(
+          'POST',
           Uri.parse('$baseUrl/api/invitations/$familyId/invite'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $_token',
-          },
+          headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'email': email}),
         );
 
@@ -1724,16 +1658,12 @@ Network connection error. Please check:
 
   // Get family owned by a user
   Future<Map<String, dynamic>?> getOwnedFamily(int userId) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-
     try {
       // Use the new dedicated endpoint for checking owned family
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/families/owned'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -1750,14 +1680,10 @@ Network connection error. Please check:
 
   // Get current user settings
   Future<Map<String, dynamic>> getCurrentUserSettings() async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
-    final response = await client.get(
+    final response = await _makeAuthenticatedRequest(
+      'GET',
       Uri.parse('$baseUrl/api/users/current/settings'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
     );
 
     if (response.statusCode == 200) {
@@ -1771,14 +1697,10 @@ Network connection error. Please check:
   Future<Map<String, dynamic>> updateUserPreferences(
     Map<String, dynamic> preferences,
   ) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
-    final response = await client.put(
+    final response = await _makeAuthenticatedRequest(
+      'PUT',
       Uri.parse('$baseUrl/api/users/current/preferences'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode(preferences),
     );
 
@@ -1794,14 +1716,10 @@ Network connection error. Please check:
     int userId,
     Map<String, dynamic> data,
   ) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/users/$userId/profile'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode(data),
     );
 
@@ -1827,19 +1745,12 @@ Network connection error. Please check:
   Future<List<Map<String, dynamic>>> getInvitations() async {
     debugPrint('Getting invitations from the correct backend endpoint');
 
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    } else {
-      debugPrint('No token available for getting invitations');
-      return [];
-    }
-
     try {
       // The endpoint is in UserController at /api/users/invitations (verified with curl)
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/invitations'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       debugPrint('Invitations response status: ${response.statusCode}');
@@ -1864,18 +1775,11 @@ Network connection error. Please check:
   Future<Map<String, dynamic>> getSentInvitations() async {
     debugPrint('Getting sent invitations from backend endpoint');
 
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    } else {
-      debugPrint('No token available for getting sent invitations');
-      return {'success': false, 'invitations': []};
-    }
-
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/invitations/sent'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       debugPrint('Sent invitations response status: ${response.statusCode}');
@@ -1902,14 +1806,10 @@ Network connection error. Please check:
     int userId,
     String familyName,
   ) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/families'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'name': familyName}),
     );
 
@@ -1922,11 +1822,6 @@ Network connection error. Please check:
 
   // Leave a family
   Future<Map<String, dynamic>> leaveFamily(int userId) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
     // First get the user's active family to determine which family to leave
     try {
       final userFamilies = await getJoinedFamilies(userId);
@@ -1934,9 +1829,10 @@ Network connection error. Please check:
         final familyId = userFamilies.first['familyId'];
 
         // Try the new family-based endpoint
-        final response = await client.post(
+        final response = await _makeAuthenticatedRequest(
+          'POST',
           Uri.parse('$baseUrl/api/families/$familyId/leave'),
-          headers: headers,
+          headers: {'Content-Type': 'application/json'},
         );
 
         if (response.statusCode == 200) {
@@ -1950,9 +1846,10 @@ Network connection error. Please check:
     }
 
     // Fallback to the old user-based endpoint
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/users/$userId/leave-family'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
     );
 
     if (response.statusCode == 200) {
@@ -1964,16 +1861,12 @@ Network connection error. Please check:
 
   // Join a family
   Future<void> joinFamily(int userId, int familyId) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
     // Try the new family-based endpoint first
     try {
-      final response = await client.post(
+      final response = await _makeAuthenticatedRequest(
+        'POST',
         Uri.parse('$baseUrl/api/families/$familyId/join'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -1986,9 +1879,10 @@ Network connection error. Please check:
     }
 
     // Fallback to the old user-based endpoint
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/users/$userId/join-family/$familyId'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
     );
 
     if (response.statusCode != 200) {
@@ -1998,13 +1892,10 @@ Network connection error. Please check:
 
   // Get joined families
   Future<List<Map<String, dynamic>>> getJoinedFamilies(int userId) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-    final response = await client.get(
+    final response = await _makeAuthenticatedRequest(
+      'GET',
       Uri.parse('$baseUrl/api/users/$userId/families'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
@@ -2018,14 +1909,10 @@ Network connection error. Please check:
     int familyId,
     String name,
   ) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
-    final response = await client.put(
+    final response = await _makeAuthenticatedRequest(
+      'PUT',
       Uri.parse('$baseUrl/api/families/$familyId'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'name': name}),
     );
 
@@ -2038,13 +1925,10 @@ Network connection error. Please check:
 
   // Get message preferences
   Future<List<Map<String, dynamic>>> getMessagePreferences(int userId) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-    final response = await client.get(
+    final response = await _makeAuthenticatedRequest(
+      'GET',
       Uri.parse('$baseUrl/api/users/$userId/message-preferences'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
@@ -2059,13 +1943,10 @@ Network connection error. Please check:
   Future<List<Map<String, dynamic>>> getMemberMessagePreferences(
     int userId,
   ) async {
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-    final response = await client.get(
+    final response = await _makeAuthenticatedRequest(
+      'GET',
       Uri.parse('$baseUrl/api/users/$userId/member-message-preferences'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode == 200) {
       return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
@@ -2084,14 +1965,10 @@ Network connection error. Please check:
     int familyId,
     bool receiveMessages,
   ) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/users/$userId/message-preferences'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'familyId': familyId,
         'receiveMessages': receiveMessages,
@@ -2112,14 +1989,10 @@ Network connection error. Please check:
     int memberUserId,
     bool receiveMessages,
   ) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      if (_token != null) 'Authorization': 'Bearer $_token',
-    };
-
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/users/$userId/member-message-preferences'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'familyId': familyId,
         'memberUserId': memberUserId,
@@ -2318,12 +2191,12 @@ Network connection error. Please check:
 
     try {
       final url = Uri.parse('$baseUrl/api/messages/$messageId/reactions');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
 
-      final response = await client.get(url, headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'GET',
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
       debugPrint(
         'Get reactions response: status=${response.statusCode}, body=${response.body}',
       );
@@ -2342,12 +2215,10 @@ Network connection error. Please check:
   // Message-related methods
   Future<List<Message>> getUserMessages(String userId) async {
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/users/$userId/messages'),
-        headers: {
-          'Accept': 'application/json',
-          if (_token != null) 'Authorization': 'Bearer $_token',
-        },
+        headers: {'Accept': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -2372,12 +2243,10 @@ Network connection error. Please check:
   // Get comments for a message
   Future<List<Message>> getComments(String messageId) async {
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/messages/$messageId/comments'),
-        headers: {
-          'Accept': 'application/json',
-          if (_token != null) 'Authorization': 'Bearer $_token',
-        },
+        headers: {'Accept': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -2403,12 +2272,12 @@ Network connection error. Please check:
 
     try {
       final url = Uri.parse('$baseUrl/api/messages/$messageId/views');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
 
-      final response = await client.post(url, headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'POST',
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
       debugPrint(
         'Mark message as viewed response: status=${response.statusCode}, body=${response.body}',
       );
@@ -2437,12 +2306,12 @@ Network connection error. Please check:
       final url = Uri.parse(
         '$baseUrl/api/messages/$messageId/reactions/$reactionType',
       );
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
 
-      final response = await client.delete(url, headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'DELETE',
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
       debugPrint(
         'Remove reaction response: status=${response.statusCode}, body=${response.body}',
       );
@@ -2472,13 +2341,14 @@ Network connection error. Please check:
 
     try {
       final url = Uri.parse('$baseUrl/api/messages/$messageId/reactions');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
       final body = jsonEncode({'reactionType': reactionType});
 
-      final response = await client.post(url, headers: headers, body: body);
+      final response = await _makeAuthenticatedRequest(
+        'POST',
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      );
       debugPrint(
         'Add reaction response: status=${response.statusCode}, body=${response.body}',
       );
@@ -2496,12 +2366,10 @@ Network connection error. Please check:
 
   Future<List<Message>> getMessageReplies(String messageId) async {
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/comments/$messageId/comments'),
-        headers: {
-          'Accept': 'application/json',
-          if (_token != null) 'Authorization': 'Bearer $_token',
-        },
+        headers: {'Accept': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -2522,12 +2390,10 @@ Network connection error. Please check:
     String? mediaUrl,
   }) async {
     try {
-      final response = await client.post(
+      final response = await _makeAuthenticatedRequest(
+        'POST',
         Uri.parse('$baseUrl/api/users/$userId/messages'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (_token != null) 'Authorization': 'Bearer $_token',
-        },
+        headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'text': text,
           if (mediaUrl != null) 'mediaUrl': mediaUrl,
@@ -2550,12 +2416,10 @@ Network connection error. Please check:
     bool isLiked,
   ) async {
     debugPrint('Toggling like for message $messageId: isLiked=$isLiked');
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/messages/$messageId/message_like'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (_token != null) 'Authorization': 'Bearer $_token',
-      },
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'liked': isLiked}),
     );
 
@@ -2576,12 +2440,10 @@ Network connection error. Please check:
     bool isLoved,
   ) async {
     try {
-      final response = await client.post(
+      final response = await _makeAuthenticatedRequest(
+        'POST',
         Uri.parse('$baseUrl/api/messages/$messageId/message_love'),
-        headers: {
-          'Accept': 'application/json',
-          if (_token != null) 'Authorization': 'Bearer $_token',
-        },
+        headers: {'Accept': 'application/json'},
         body: json.encode({
           'loved': isLoved,
         }), // Changed from isLoved to loved to match backend
@@ -2598,12 +2460,10 @@ Network connection error. Please check:
   }
 
   Future<void> toggleCommentLike(String messageId, bool isLiked) async {
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/messages/$messageId/comment_like'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (_token != null) 'Authorization': 'Bearer $_token',
-      },
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'liked': isLiked}),
     );
 
@@ -2616,12 +2476,10 @@ Network connection error. Please check:
     String messageId,
     bool isLoved,
   ) async {
-    final response = await client.post(
+    final response = await _makeAuthenticatedRequest(
+      'POST',
       Uri.parse('$baseUrl/api/messages/$messageId/comment_love'),
-      headers: {
-        'Content-Type': 'application/json',
-        if (_token != null) 'Authorization': 'Bearer $_token',
-      },
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'loved': isLoved}),
     );
 
@@ -2641,12 +2499,12 @@ Network connection error. Please check:
       debugPrint('Getting/creating conversation with user: $otherUserId');
 
       final url = Uri.parse('$baseUrl/api/dm/conversations/$otherUserId');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
 
-      final response = await client.post(url, headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'POST',
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
       debugPrint(
         'Get/create conversation response: status=${response.statusCode}, body=${response.body}',
       );
@@ -2702,12 +2560,11 @@ Network connection error. Please check:
       debugPrint('🚀 Getting DM conversations');
 
       final url = Uri.parse('$baseUrl/api/dm/conversations');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await client.get(url, headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'GET',
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
       debugPrint(
         '📥 Get conversations response: status=${response.statusCode}',
       );
@@ -2932,12 +2789,11 @@ Network connection error. Please check:
       final url = Uri.parse(
         '$baseUrl/api/dm/conversations/$conversationId/messages?page=$page&size=$size',
       );
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await client.get(url, headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'GET',
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -2961,12 +2817,11 @@ Network connection error. Please check:
       final url = Uri.parse(
         '$baseUrl/api/dm/conversations/$conversationId/read',
       );
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await client.put(url, headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'PUT',
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
       debugPrint(
         'Mark DM conversation as read response: status=${response.statusCode}, body=${response.body}',
       );
@@ -2991,14 +2846,10 @@ Network connection error. Please check:
     try {
       debugPrint('📤 Registering FCM token for user: $userId');
 
-      final headers = {'Content-Type': 'application/json'};
-      if (_token != null) {
-        headers['Authorization'] = 'Bearer $_token';
-      }
-
-      final response = await client.post(
+      final response = await _makeAuthenticatedRequest(
+        'POST',
         Uri.parse('$baseUrl/api/users/$userId/fcm-token'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
         body: json.encode({'fcmToken': fcmToken}),
       );
 
@@ -3075,12 +2926,11 @@ Network connection error. Please check:
       final uri = Uri.parse(
         '$baseUrl/api/search/messages',
       ).replace(queryParameters: queryParams);
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await client.get(uri, headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'GET',
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      );
       debugPrint('🔍 Search response: status=${response.statusCode}');
 
       if (response.statusCode == 200) {
@@ -3133,12 +2983,11 @@ Network connection error. Please check:
       debugPrint('🔍 Getting user families for search filter');
 
       final url = Uri.parse('$baseUrl/api/search/families');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await client.get(url, headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'GET',
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
       debugPrint('🔍 Get families response: status=${response.statusCode}');
 
       if (response.statusCode == 200) {
@@ -3461,7 +3310,11 @@ Network connection error. Please check:
       final url = '$baseUrl/api/notification-preferences/$userId/enable-all';
       debugPrint('🔔 API_SERVICE: Making POST request to: $url');
 
-      final response = await client.post(Uri.parse(url), headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'POST',
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
 
       debugPrint('🔔 API_SERVICE: Response status: ${response.statusCode}');
       debugPrint('🔔 API_SERVICE: Response body: ${response.body}');
@@ -3897,12 +3750,11 @@ Network connection error. Please check:
 
     try {
       final url = Uri.parse('$baseUrl/api/messages/dm/$dmMessageId/views');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final response = await client.post(url, headers: headers);
+      final response = await _makeAuthenticatedRequest(
+        'POST',
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
 
       debugPrint(
         'Mark DM message as viewed response: status=${response.statusCode}, body=${response.body}',
