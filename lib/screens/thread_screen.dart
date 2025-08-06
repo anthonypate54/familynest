@@ -23,6 +23,7 @@ import '../config/app_config.dart';
 import '../dialogs/large_video_dialog.dart';
 import '../services/share_service.dart';
 import '../services/comment_notification_tracker.dart';
+import '../widgets/emoji_message_input.dart';
 
 class ThreadScreen extends StatefulWidget {
   final int userId;
@@ -60,6 +61,9 @@ class _ThreadScreenState extends State<ThreadScreen> {
   WebSocketService? _webSocketService;
   CommentProvider? _commentProvider;
   int? _parentMessageId;
+
+  // Emoji picker state (managed by reusable component)
+  EmojiPickerState _emojiPickerState = const EmojiPickerState(isVisible: false);
 
   @override
   void initState() {
@@ -826,6 +830,10 @@ class _ThreadScreenState extends State<ThreadScreen> {
   Widget build(BuildContext context) {
     final apiService = Provider.of<ApiService>(context, listen: false);
     return Scaffold(
+      bottomSheet:
+          _emojiPickerState.isVisible
+              ? _emojiPickerState.emojiPickerWidget
+              : null,
       appBar: AppBar(
         backgroundColor: AppTheme.getAppBarColor(context),
         title: const Text('Thread'),
@@ -939,56 +947,40 @@ class _ThreadScreenState extends State<ThreadScreen> {
   }
 
   Widget _buildMessageComposer() {
-    // Implementation of _buildMessageComposer method
-    // This method should return a Widget representing the message composer
-    // For now, we'll use a placeholder
-    return Container(
-      padding: const EdgeInsets.all(8.0),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            onPressed: _showMediaPicker,
-            tooltip: 'Attach Media',
-          ),
-          Expanded(
-            child: TextField(
-              controller: _messageController,
-              decoration: const InputDecoration(
-                hintText: 'Type a message...',
-                border: InputBorder.none,
-              ),
-              maxLines: null,
-              textCapitalization: TextCapitalization.sentences,
+    // Thread comment input using reusable component
+    return EmojiMessageInput(
+      controller: _messageController,
+      hintText: 'Add a comment...',
+      onSend:
+          () => _postComment(Provider.of<ApiService>(context, listen: false)),
+      onMediaAttach: _showMediaPicker,
+      enabled: true,
+      isDarkMode: Theme.of(context).brightness == Brightness.dark,
+      onEmojiPickerStateChanged: (state) {
+        setState(() {
+          _emojiPickerState = state;
+        });
+      },
+      sendButton: ValueListenableBuilder<bool>(
+        valueListenable: _isSendButtonEnabled,
+        builder: (context, isEnabled, child) {
+          return CircleAvatar(
+            backgroundColor:
+                isEnabled
+                    ? Theme.of(context).primaryColor
+                    : Colors.grey.shade400,
+            child: IconButton(
+              icon: const Icon(Icons.send, color: Colors.white),
+              onPressed:
+                  isEnabled
+                      ? () => _postComment(
+                        Provider.of<ApiService>(context, listen: false),
+                      )
+                      : null,
+              tooltip: 'Send Comment',
             ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _isSendButtonEnabled,
-            builder: (context, isEnabled, child) {
-              return IconButton(
-                icon: const Icon(Icons.send),
-                onPressed:
-                    isEnabled
-                        ? () => _postComment(
-                          Provider.of<ApiService>(context, listen: false),
-                        )
-                        : null,
-                tooltip: 'Send Message',
-                color: isEnabled ? Theme.of(context).primaryColor : Colors.grey,
-              );
-            },
-          ),
-        ],
+          );
+        },
       ),
     );
   }

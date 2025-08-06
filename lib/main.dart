@@ -579,6 +579,14 @@ class MainAppContainerState extends State<MainAppContainer> {
           }
           _isCheckingInitialScreen = false;
         });
+
+        // Navigate to the determined tab after build completes
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(_currentIndex);
+          }
+        });
+
         // Start notification check after initial screen is determined
         _finishInitialization();
       }
@@ -590,6 +598,14 @@ class MainAppContainerState extends State<MainAppContainer> {
           _currentIndex = 0; // Default to MessageScreen
           _isCheckingInitialScreen = false;
         });
+
+        // Navigate to the default tab after build completes
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(_currentIndex);
+          }
+        });
+
         // Start notification check even on error
         _finishInitialization();
       }

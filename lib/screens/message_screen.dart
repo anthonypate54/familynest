@@ -23,7 +23,7 @@ import '../dialogs/large_video_dialog.dart';
 import '../config/app_config.dart';
 import '../services/share_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../widgets/emoji_picker_widget.dart';
+import '../widgets/emoji_message_input.dart';
 
 class MessageScreen extends StatefulWidget {
   final String userId;
@@ -65,8 +65,8 @@ class _MessageScreenState extends State<MessageScreen>
   int? _currentUserId;
   int? _currentFamilyId;
 
-  // Emoji picker state
-  bool _showEmojiPicker = false;
+  // Emoji picker state (managed by reusable component)
+  EmojiPickerState _emojiPickerState = const EmojiPickerState(isVisible: false);
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -973,18 +973,6 @@ class _MessageScreenState extends State<MessageScreen>
     }
   }
 
-  // Emoji picker toggle
-  void _toggleEmojiPicker() {
-    setState(() {
-      _showEmojiPicker = !_showEmojiPicker;
-    });
-
-    // Hide keyboard when showing emoji picker
-    if (_showEmojiPicker) {
-      FocusScope.of(context).unfocus();
-    }
-  }
-
   Future<void> _postMessage(ApiService apiService) async {
     final text = _messageController.text.trim();
     if (_isFirstTimeUser) {
@@ -1054,6 +1042,10 @@ class _MessageScreenState extends State<MessageScreen>
   Widget build(BuildContext context) {
     final apiService = Provider.of<ApiService>(context, listen: false);
     return Scaffold(
+      bottomSheet:
+          _emojiPickerState.isVisible
+              ? _emojiPickerState.emojiPickerWidget
+              : null,
       backgroundColor: UIConfig.useDarkMode ? Colors.black : Colors.white,
       appBar: AppBar(
         backgroundColor: AppTheme.getAppBarColor(context),
@@ -1255,53 +1247,35 @@ class _MessageScreenState extends State<MessageScreen>
                         )
                         : const SizedBox.shrink(),
               ),
-            Container(
-              padding: const EdgeInsets.all(8.0),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: _showMediaPicker,
-                    tooltip: 'Attach Media',
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: const InputDecoration(
-                        hintText: 'Type a message...',
-                        border: InputBorder.none,
-                      ),
-                      maxLines: null,
-                      textCapitalization: TextCapitalization.sentences,
+            // Message input (using reusable component)
+            EmojiMessageInput(
+              controller: _messageController,
+              hintText: 'Type a message...',
+              onSend: () => _postMessage(apiService),
+              onMediaAttach: _showMediaPicker,
+              enabled: true,
+              isDarkMode: UIConfig.useDarkMode,
+              onEmojiPickerStateChanged: (state) {
+                setState(() {
+                  _emojiPickerState = state;
+                });
+              },
+              sendButton: ValueListenableBuilder<bool>(
+                valueListenable: _isSendButtonEnabled,
+                builder: (context, isEnabled, child) {
+                  return CircleAvatar(
+                    backgroundColor:
+                        isEnabled
+                            ? Theme.of(context).primaryColor
+                            : Colors.grey.shade400,
+                    child: IconButton(
+                      icon: const Icon(Icons.send, color: Colors.white),
+                      onPressed:
+                          isEnabled ? () => _postMessage(apiService) : null,
+                      tooltip: 'Send Message',
                     ),
-                  ),
-                  ValueListenableBuilder<bool>(
-                    valueListenable: _isSendButtonEnabled,
-                    builder: (context, isEnabled, child) {
-                      return IconButton(
-                        icon: const Icon(Icons.send),
-                        onPressed:
-                            isEnabled ? () => _postMessage(apiService) : null,
-                        tooltip: 'Send Message',
-
-                        color:
-                            isEnabled
-                                ? Theme.of(context).primaryColor
-                                : Colors.grey,
-                      );
-                    },
-                  ),
-                ],
+                  );
+                },
               ),
             ),
           ],

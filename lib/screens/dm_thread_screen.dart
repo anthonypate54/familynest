@@ -23,7 +23,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'group_management_screen.dart';
 import '../screens/messages_home_screen.dart';
-import '../widgets/emoji_picker_widget.dart';
+import '../widgets/emoji_message_input.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
@@ -82,8 +82,8 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   WebSocketService? _webSocketService;
   DMMessageProvider? _dmMessageProvider;
 
-  // Emoji picker state
-  bool _showEmojiPicker = false;
+  // Emoji picker state (managed by reusable component)
+  EmojiPickerState _emojiPickerState = const EmojiPickerState(isVisible: false);
 
   @override
   void initState() {
@@ -247,7 +247,6 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           _dmVideoController = null;
           _dmChewieController = null;
           _selectedDMVideoThumbnail = null;
-          _showEmojiPicker = false; // Hide emoji picker when sending
         });
 
         // Add the message to sender's provider immediately (optimistic update)
@@ -305,28 +304,6 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
           _isSending = false;
         });
       }
-    }
-  }
-
-  // Emoji picker toggle
-  void _toggleEmojiPicker() {
-    setState(() {
-      _showEmojiPicker = !_showEmojiPicker;
-    });
-
-    if (_showEmojiPicker) {
-      // Hide keyboard when showing emoji picker
-      FocusScope.of(context).unfocus();
-    } else {
-      // Show keyboard when hiding emoji picker
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _messageFocusNode.requestFocus();
-          _messageController.selection = TextSelection.fromPosition(
-            TextPosition(offset: _messageController.text.length),
-          );
-        }
-      });
     }
   }
 
@@ -1215,48 +1192,8 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       bottomSheet:
-          _showEmojiPicker
-              ? Container(
-                height: 250,
-                decoration: BoxDecoration(
-                  color:
-                      Theme.of(context).brightness == Brightness.dark
-                          ? Colors.grey[900]
-                          : Colors.white,
-                  border: Border(
-                    top: BorderSide(
-                      color:
-                          Theme.of(context).brightness == Brightness.dark
-                              ? Colors.grey[700]!
-                              : Colors.grey[300]!,
-                      width: 1,
-                    ),
-                  ),
-                ),
-                child: EmojiPickerWidget(
-                  textController: _messageController,
-                  isDarkMode: Theme.of(context).brightness == Brightness.dark,
-                  onEmojiSelected: () {
-                    debugPrint(
-                      '🎉 DM: Emoji selected, switching back to keyboard',
-                    );
-                    // Hide emoji picker and show keyboard
-                    setState(() {
-                      _showEmojiPicker = false;
-                    });
-                    // Request focus to show keyboard
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        _messageFocusNode.requestFocus();
-                        _messageController
-                            .selection = TextSelection.fromPosition(
-                          TextPosition(offset: _messageController.text.length),
-                        );
-                      }
-                    });
-                  },
-                ),
-              )
+          _emojiPickerState.isVisible
+              ? _emojiPickerState.emojiPickerWidget
               : null,
       appBar: AppBar(
         backgroundColor: AppTheme.getAppBarColor(context),
@@ -1578,109 +1515,41 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                         : const SizedBox.shrink(),
               ),
 
-            // Message input
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.95),
-                border: Border(
-                  top: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-                ),
-              ),
-              child: SafeArea(
-                child: Row(
-                  children: [
-                    // Attachment button
-                    IconButton(
-                      icon: const Icon(
-                        Icons.add_circle_outline,
-                        color: Colors.grey,
-                      ),
-                      onPressed: () {
-                        // Use the new DM media picker
-                        _showDMMediaPicker();
-                      },
-                    ),
-
-                    // Emoji button
-                    IconButton(
-                      icon: Icon(
-                        _showEmojiPicker
-                            ? Icons.keyboard
-                            : Icons.emoji_emotions_outlined,
-                        color:
-                            _showEmojiPicker
-                                ? Theme.of(context).primaryColor
-                                : Colors.grey,
-                      ),
-                      onPressed: _toggleEmojiPicker,
-                      tooltip:
-                          _showEmojiPicker ? 'Show Keyboard' : 'Show Emojis',
-                    ),
-
-                    // Text input
-                    Expanded(
-                      child: TextField(
-                        controller: _messageController,
-                        focusNode: _messageFocusNode,
-                        style: TextStyle(
-                          color:
-                              Theme.of(context).brightness == Brightness.dark
-                                  ? Colors
-                                      .black87 // Dark text on white background in dark mode
-                                  : Colors
-                                      .black87, // Dark text on white background in light mode
+            // Message input (using reusable component)
+            EmojiMessageInput(
+              controller: _messageController,
+              focusNode: _messageFocusNode,
+              hintText: 'Message ${widget.otherUserName}...',
+              onSend: _sendMessage,
+              onMediaAttach: _showDMMediaPicker,
+              enabled: !_isSending,
+              isDarkMode: Theme.of(context).brightness == Brightness.dark,
+              onEmojiPickerStateChanged: (state) {
+                setState(() {
+                  _emojiPickerState = state;
+                });
+              },
+              sendButton:
+                  _isSending
+                      ? Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade400,
+                          shape: BoxShape.circle,
                         ),
-                        decoration: InputDecoration(
-                          hintText: 'Message ${widget.otherUserName}...',
-                          hintStyle: TextStyle(color: Colors.grey.shade600),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(25),
-                            borderSide: BorderSide.none,
-                          ),
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
+                        child: const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
                           ),
                         ),
-                        maxLines: null,
-                        textCapitalization: TextCapitalization.sentences,
-                        onSubmitted: (_) => _sendMessage(),
-                      ),
-                    ),
-
-                    // Send button
-                    const SizedBox(width: 8),
-                    CircleAvatar(
-                      backgroundColor:
-                          _isSending
-                              ? Colors.grey.shade400
-                              : Theme.of(context).colorScheme.primary,
-                      child:
-                          _isSending
-                              ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
-                              : IconButton(
-                                icon: const Icon(
-                                  Icons.send,
-                                  color: Colors.white,
-                                ),
-                                onPressed: _isSending ? null : _sendMessage,
-                              ),
-                    ),
-                  ],
-                ),
-              ),
+                      )
+                      : null,
             ),
           ],
         ),
