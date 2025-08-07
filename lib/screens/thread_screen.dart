@@ -830,10 +830,6 @@ class _ThreadScreenState extends State<ThreadScreen> {
   Widget build(BuildContext context) {
     final apiService = Provider.of<ApiService>(context, listen: false);
     return Scaffold(
-      bottomSheet:
-          _emojiPickerState.isVisible
-              ? _emojiPickerState.emojiPickerWidget
-              : null,
       appBar: AppBar(
         backgroundColor: AppTheme.getAppBarColor(context),
         title: const Text('Thread'),
@@ -940,6 +936,10 @@ class _ThreadScreenState extends State<ThreadScreen> {
                         : const SizedBox.shrink(),
               ),
             _buildMessageComposer(),
+
+            // Emoji picker (when visible)
+            if (_emojiPickerState.isVisible)
+              _emojiPickerState.emojiPickerWidget ?? const SizedBox.shrink(),
           ],
         ),
       ),

@@ -68,36 +68,44 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
     super.dispose();
   }
 
-  void _toggleEmojiPicker() {
+  void _openEmojiPicker() {
     setState(() {
-      _showEmojiPicker = !_showEmojiPicker;
+      _showEmojiPicker = true;
     });
-
-    if (_showEmojiPicker) {
-      // Hide keyboard when showing emoji picker
-      FocusScope.of(context).unfocus();
-    } else {
-      // Show keyboard when hiding emoji picker
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _focusNode.requestFocus();
-          widget.controller.selection = TextSelection.fromPosition(
-            TextPosition(offset: widget.controller.text.length),
-          );
-        }
-      });
-    }
-
+    // Hide keyboard when showing emoji picker
+    FocusScope.of(context).unfocus();
     // Notify parent about emoji picker state change
     _notifyEmojiPickerStateChanged();
   }
 
+  void _hideEmojiPicker() {
+    if (_showEmojiPicker) {
+      setState(() {
+        _showEmojiPicker = false;
+      });
+      // Notify parent about emoji picker state change
+      _notifyEmojiPickerStateChanged();
+    }
+  }
+
+  void _onTextFieldTap() {
+    // Google Messages style: Tap in text field always shows keyboard
+    debugPrint('🎯 Text field tapped - hiding emoji picker, showing keyboard');
+    _hideEmojiPicker();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+        widget.controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: widget.controller.text.length),
+        );
+      }
+    });
+  }
+
   void _onEmojiSelected() {
     debugPrint('🎉 Emoji selected, switching back to keyboard');
-    // Hide emoji picker and show keyboard
-    setState(() {
-      _showEmojiPicker = false;
-    });
+    // Hide emoji picker and show keyboard (Google Messages style)
+    _hideEmojiPicker();
     // Request focus to show keyboard
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -107,9 +115,6 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
         );
       }
     });
-
-    // Notify parent about emoji picker state change
-    _notifyEmojiPickerStateChanged();
   }
 
   void _notifyEmojiPickerStateChanged() {
@@ -157,8 +162,9 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
                       bottomActionBarConfig: BottomActionBarConfig(
                         backgroundColor:
                             isDark ? Colors.grey[850]! : Colors.grey[100]!,
-                        enabled: true,
-                        showBackspaceButton: true,
+                        enabled:
+                            false, // Remove the confusing bottom bar entirely
+                        showBackspaceButton: false,
                       ),
                       searchViewConfig: SearchViewConfig(
                         backgroundColor:
@@ -206,19 +212,17 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
                 tooltip: 'Attach Media',
               ),
 
-            // Emoji button
+            // Emoji button (Google Messages style - just shows emoji picker)
             IconButton(
               icon: Icon(
-                _showEmojiPicker
-                    ? Icons.keyboard
-                    : Icons.emoji_emotions_outlined,
+                Icons.emoji_emotions_outlined,
                 color:
                     _showEmojiPicker
                         ? Theme.of(context).primaryColor
                         : Colors.grey,
               ),
-              onPressed: widget.enabled ? _toggleEmojiPicker : null,
-              tooltip: _showEmojiPicker ? 'Show Keyboard' : 'Show Emojis',
+              onPressed: widget.enabled ? _openEmojiPicker : null,
+              tooltip: 'Show Emojis',
             ),
 
             // Text input
@@ -236,7 +240,7 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: isDark ? Colors.grey[800] : Colors.white,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 10,
@@ -245,6 +249,8 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
                 maxLines: null,
                 textCapitalization: TextCapitalization.sentences,
                 onSubmitted: widget.enabled ? (_) => widget.onSend() : null,
+                onTap:
+                    _onTextFieldTap, // Google Messages style: tap to show keyboard
               ),
             ),
 

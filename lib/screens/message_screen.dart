@@ -1042,10 +1042,6 @@ class _MessageScreenState extends State<MessageScreen>
   Widget build(BuildContext context) {
     final apiService = Provider.of<ApiService>(context, listen: false);
     return Scaffold(
-      bottomSheet:
-          _emojiPickerState.isVisible
-              ? _emojiPickerState.emojiPickerWidget
-              : null,
       backgroundColor: UIConfig.useDarkMode ? Colors.black : Colors.white,
       appBar: AppBar(
         backgroundColor: AppTheme.getAppBarColor(context),
@@ -1278,6 +1274,10 @@ class _MessageScreenState extends State<MessageScreen>
                 },
               ),
             ),
+
+            // Emoji picker (when visible)
+            if (_emojiPickerState.isVisible)
+              _emojiPickerState.emojiPickerWidget ?? const SizedBox.shrink(),
           ],
         ),
       ),

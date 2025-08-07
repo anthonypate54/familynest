@@ -85,9 +85,19 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   // Emoji picker state (managed by reusable component)
   EmojiPickerState _emojiPickerState = const EmojiPickerState(isVisible: false);
 
+  // Send button state
+  final ValueNotifier<bool> _isSendButtonEnabled = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
+
+    // Add text controller listener for send button state
+    _messageController.addListener(() {
+      final hasText = _messageController.text.trim().isNotEmpty;
+      _isSendButtonEnabled.value = hasText;
+    });
+
     // Store WebSocket service reference early
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
     // Store DMMessageProvider reference early
@@ -200,6 +210,7 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     _messageFocusNode.dispose();
+    _isSendButtonEnabled.dispose();
     // Clean up DM media controllers
     _dmVideoController?.dispose();
     _dmChewieController?.dispose();
@@ -1191,10 +1202,6 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      bottomSheet:
-          _emojiPickerState.isVisible
-              ? _emojiPickerState.emojiPickerWidget
-              : null,
       appBar: AppBar(
         backgroundColor: AppTheme.getAppBarColor(context),
         elevation: 0,
@@ -1227,19 +1234,9 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                     child: _buildGroupAvatar(),
                   ),
                 )
-                : CircleAvatar(
-                  radius: 16,
-                  backgroundColor: _getAvatarColor(widget.otherUserName),
-                  child: Text(
-                    _getInitials('', '', widget.otherUserName),
-                    style: TextStyle(
-                      color: _getTextColor(
-                        _getAvatarColor(widget.otherUserName),
-                      ),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
+                : _buildHeaderAvatar(
+                  widget.otherUserPhoto,
+                  widget.otherUserName,
                 ),
             const SizedBox(width: 12),
             Expanded(
@@ -1549,8 +1546,27 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
                           ),
                         ),
                       )
-                      : null,
+                      : ValueListenableBuilder<bool>(
+                        valueListenable: _isSendButtonEnabled,
+                        builder: (context, isEnabled, child) {
+                          return CircleAvatar(
+                            backgroundColor:
+                                isEnabled
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Colors.grey.shade400,
+                            child: IconButton(
+                              icon: const Icon(Icons.send, color: Colors.white),
+                              onPressed: isEnabled ? _sendMessage : null,
+                              tooltip: 'Send Message',
+                            ),
+                          );
+                        },
+                      ),
             ),
+
+            // Emoji picker (when visible)
+            if (_emojiPickerState.isVisible)
+              _emojiPickerState.emojiPickerWidget ?? const SizedBox.shrink(),
           ],
         ),
       ),
