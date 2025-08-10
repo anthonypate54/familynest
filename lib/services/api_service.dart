@@ -442,17 +442,30 @@ Network connection error. Please check:
     Uri uri, {
     Map<String, String>? headers,
     String? body,
+    bool requireAuth = true, // New parameter to make auth optional
   }) async {
-    // Ensure we have an access token
-    if (_token == null || _token!.isEmpty) {
-      throw Exception('No access token available');
-    }
-
-    // Prepare headers with authorization
+    // Prepare headers with conditional authorization (like original)
     final requestHeaders = <String, String>{
-      'Authorization': 'Bearer $_token',
+      if (_token != null && _token!.isNotEmpty)
+        'Authorization': 'Bearer $_token',
       ...?headers,
     };
+
+    // If auth is required but token is missing, try to load it
+    if (requireAuth && (_token == null || _token!.isEmpty)) {
+      debugPrint(
+        '*** API: Token required but missing, attempting to reload...',
+      );
+      await _loadToken();
+
+      // If still null after reload, throw exception
+      if (_token == null || _token!.isEmpty) {
+        throw Exception('No access token available');
+      }
+
+      // Add the token to headers after loading
+      requestHeaders['Authorization'] = 'Bearer $_token';
+    }
 
     // Make the request
     late http.Response response;
@@ -743,10 +756,13 @@ Network connection error. Please check:
       // We have a token, try to validate it with the server
       final currentUserPath = _getApiEndpoint('/api/users/current');
 
-      final response = await _makeAuthenticatedRequest(
-        'GET',
+      // Use direct client call for validation to avoid exceptions (like original)
+      final response = await client.get(
         Uri.parse('$baseUrl$currentUserPath'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
       );
 
       if (response.statusCode == 200) {
@@ -991,7 +1007,10 @@ Network connection error. Please check:
   // Get messages for a user
   Future<List<Map<String, dynamic>>> getMessages(int userId) async {
     final apiUrl = '$baseUrl/api/users/$userId/messages';
-    debugPrint('API URL for messages: $apiUrl');
+    debugPrint('🔍 getMessages: API URL for messages: $apiUrl');
+    debugPrint(
+      '🔍 getMessages: userId type: ${userId.runtimeType}, value: $userId',
+    );
 
     final response = await _makeAuthenticatedRequest(
       'GET',
@@ -999,8 +1018,14 @@ Network connection error. Please check:
       headers: {'Content-Type': 'application/json'},
     );
 
+    debugPrint('🔍 getMessages: Response status: ${response.statusCode}');
+    debugPrint('🔍 getMessages: Response body: ${response.body}');
+
     if (response.statusCode == 200) {
-      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+      final result =
+          (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+      debugPrint('🔍 getMessages: Returning ${result.length} messages');
+      return result;
     } else {
       throw Exception('Failed to get messages: ${response.body}');
     }
@@ -1756,7 +1781,17 @@ Network connection error. Please check:
       debugPrint('Invitations response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+        final invitations =
+            (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+        debugPrint(
+          '✅ INVITATIONS API: Retrieved ${invitations.length} invitations',
+        );
+        for (var inv in invitations) {
+          debugPrint(
+            '✅ INVITATION: ${inv['id']} - ${inv['status']} - ${inv['familyName']} - ${inv['email']}',
+          );
+        }
+        return invitations;
       } else if (response.statusCode == 404) {
         // Endpoint might have moved or changed - log the issue but don't crash
         debugPrint('Invitations endpoint not found (404): ${response.body}');
@@ -1967,7 +2002,7 @@ Network connection error. Please check:
   ) async {
     final response = await _makeAuthenticatedRequest(
       'POST',
-      Uri.parse('$baseUrl/api/users/$userId/message-preferences'),
+      Uri.parse('$baseUrl/api/message-preferences/$userId/update'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'familyId': familyId,
@@ -1991,7 +2026,7 @@ Network connection error. Please check:
   ) async {
     final response = await _makeAuthenticatedRequest(
       'POST',
-      Uri.parse('$baseUrl/api/users/$userId/member-message-preferences'),
+      Uri.parse('$baseUrl/api/member-message-preferences/$userId/update'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'familyId': familyId,
@@ -2215,19 +2250,19 @@ Network connection error. Please check:
   // Message-related methods
   Future<List<Message>> getUserMessages(String userId) async {
     try {
-      final response = await _makeAuthenticatedRequest(
-        'GET',
+      // Revert to original approach to fix navigation - bypass _makeAuthenticatedRequest
+      final response = await client.get(
         Uri.parse('$baseUrl/api/users/$userId/messages'),
-        headers: {'Accept': 'application/json'},
+        headers: {
+          'Accept': 'application/json',
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
       );
 
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(response.body);
         final messages =
-            jsonList.map((json) {
-              return Message.fromJson(json);
-            }).toList();
-
+            jsonList.map((json) => Message.fromJson(json)).toList();
         return messages;
 
         //       return jsonList.map((json) => Message.fromJson(json)).toList();
@@ -2235,7 +2270,7 @@ Network connection error. Please check:
         throw Exception('Failed to load messages: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Error getting user messages: $e');
+      debugPrint('❌ getUserMessages: Error getting user messages: $e');
       rethrow;
     }
   }

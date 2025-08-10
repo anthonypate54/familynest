@@ -327,8 +327,12 @@ class WebSocketService extends ChangeNotifier {
       _stompClient!.subscribe(
         destination: topic,
         callback: (StompFrame frame) {
+          debugPrint('### WebSocket: STOMP frame received for $topic ###');
           if (frame.body != null) {
+            debugPrint('### WebSocket: Frame has body: ${frame.body!} ###');
             _handleMessage(topic, frame.body!);
+          } else {
+            debugPrint('### WebSocket: Frame has NO BODY for $topic ###');
           }
         },
       );
@@ -354,6 +358,8 @@ class WebSocketService extends ChangeNotifier {
       _messagesReceived++;
       _lastMessageTime = DateTime.now();
 
+      debugPrint('*** WebSocket: RECEIVED MESSAGE for topic: $topic ***');
+      debugPrint('*** WebSocket: Message body: $body ***');
       debugPrint('📨 WebSocket: Received message on $topic: $body');
       final jsonData = jsonDecode(body);
 

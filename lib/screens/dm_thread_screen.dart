@@ -56,7 +56,8 @@ class DMThreadScreen extends StatefulWidget {
   State<DMThreadScreen> createState() => _DMThreadScreenState();
 }
 
-class _DMThreadScreenState extends State<DMThreadScreen> {
+class _DMThreadScreenState extends State<DMThreadScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
@@ -92,6 +93,9 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
   void initState() {
     super.initState();
 
+    // Add lifecycle observer
+    WidgetsBinding.instance.addObserver(this);
+
     // Add text controller listener for send button state
     _messageController.addListener(() {
       final hasText = _messageController.text.trim().isNotEmpty;
@@ -112,6 +116,15 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initWebSocket();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && mounted) {
+      debugPrint('🔄 DMThreadScreen: App resumed, reloading messages...');
+      _loadMessages(showLoading: false);
+    }
   }
 
   // Load real messages from the API
@@ -194,6 +207,9 @@ class _DMThreadScreenState extends State<DMThreadScreen> {
 
   @override
   void dispose() {
+    // Remove lifecycle observer
+    WidgetsBinding.instance.removeObserver(this);
+
     // Clean up WebSocket subscription
     if (_dmMessageHandler != null && _webSocketService != null) {
       _webSocketService!.unsubscribe(

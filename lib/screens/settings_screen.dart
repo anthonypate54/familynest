@@ -196,8 +196,11 @@ class SettingsScreenState extends State<SettingsScreen>
                           ),
                         );
                       } else if (errorMessage.contains(
-                        'already in your family',
-                      )) {
+                            'already in your family',
+                          ) ||
+                          errorMessage.contains(
+                            'already a member of this family',
+                          )) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(

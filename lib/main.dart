@@ -38,6 +38,32 @@ import 'services/notification_service.dart';
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   debugPrint('🌙 Background message received: ${message.messageId}');
+
+  // For data-only messages, we need to show local notifications when app is backgrounded
+  try {
+    // Get title and body from data (since we're using data-only messages now)
+    final title = message.data['title'] ?? 'New Message';
+    final body = message.data['body'] ?? 'You have a new message';
+    final senderId = message.data['senderId'];
+
+    debugPrint('🌙 Background notification: $title - $body');
+
+    // Don't show notification if current user is sender
+    // Note: We can't easily get current user ID in background handler,
+    // so we'll rely on the backend not sending notifications to senders
+
+    // Initialize local notifications service
+    await NotificationService.initializeBasic();
+
+    // Show local notification
+    await NotificationService.showLocalNotificationFromData(
+      title: title,
+      body: body,
+      data: message.data,
+    );
+  } catch (e) {
+    debugPrint('❌ Error in background message handler: $e');
+  }
 }
 
 // Function to get device model name

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../controllers/bottom_navigation_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/file_picker_test_widget.dart';
+import '../providers/message_provider.dart';
 
 class FamilyManagementScreen extends StatefulWidget {
   final int userId;
@@ -406,27 +407,38 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
 
-      // Map frontend field names to backend field names
-      String backendField;
-      switch (field) {
-        case 'familyMessages':
-          backendField = 'familyMessagesNotifications';
-          break;
-        case 'newMemberAlerts':
-          backendField = 'newMemberNotifications';
-          break;
-        case 'invitationNotifications':
-          backendField = 'invitationNotifications';
-          break;
-        default:
-          backendField = field;
+      // Handle family-specific vs global notification preferences
+      if (field == 'familyMessages' && _selectedFamily != null) {
+        // Family message notifications are family-specific
+        final response = await apiService.updateMessagePreference(
+          widget.userId,
+          _selectedFamily!.id,
+          value,
+        );
+        debugPrint(
+          '📝 Family message preference saved successfully: $response',
+        );
+      } else {
+        // Other notifications are global user preferences
+        String backendField;
+        switch (field) {
+          case 'newMemberAlerts':
+            backendField = 'newMemberNotifications';
+            break;
+          case 'invitationNotifications':
+            backendField = 'invitationNotifications';
+            break;
+          default:
+            backendField = field;
+        }
+
+        final response = await apiService.updateUserPreferences({
+          backendField: value,
+        });
+        debugPrint(
+          '📝 Global notification preference saved successfully: $response',
+        );
       }
-
-      final response = await apiService.updateUserPreferences({
-        backendField: value,
-      });
-
-      debugPrint('📝 Notification backend saved successfully: $response');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1892,6 +1904,30 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Member ${mute ? 'muted' : 'unmuted'}')),
         );
+
+        // Auto-refresh messages to reflect muting changes
+        try {
+          final apiService = Provider.of<ApiService>(context, listen: false);
+          final messageProvider = Provider.of<MessageProvider>(
+            context,
+            listen: false,
+          );
+
+          // Reload messages from the API to reflect muting changes
+          apiService
+              .getUserMessages(widget.userId.toString())
+              .then((messages) {
+                messageProvider.setMessages(messages);
+                debugPrint('✅ Messages refreshed after muting change');
+              })
+              .catchError((e) {
+                debugPrint(
+                  'Failed to refresh messages after muting change: $e',
+                );
+              });
+        } catch (e) {
+          debugPrint('Failed to refresh messages after muting change: $e');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -2349,7 +2385,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         return;
       }
 
-      await Provider.of<ApiService>(
+      final response = await Provider.of<ApiService>(
         context,
         listen: false,
       ).inviteUserToFamily(selectedFamily.id, email);
@@ -2370,9 +2406,36 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error sending invitation: $e')));
+
+        // Handle specific error cases with better UI
+        String errorMessage = e.toString();
+        debugPrint('🔍 Invitation error: $errorMessage');
+        if (errorMessage.contains('already a member of this family')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                errorMessage.replaceAll('InvitationException: ', ''),
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        } else if (errorMessage.contains('already pending')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'There is already a pending invitation for this email.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error sending invitation: $errorMessage'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -2522,26 +2585,6 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                             ),
                           ),
                         ),
-                        if (isNew) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'NEW',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                     Text(
@@ -2557,24 +2600,25 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                 ),
               ),
 
-              // Mute checkbox - right column
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Mute',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 4),
-                  Checkbox(
-                    value: member['isMuted'] ?? false,
-                    onChanged: (value) {
-                      _toggleMemberMute(member, value ?? false);
-                    },
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ],
-              ),
+              // Mute checkbox - right column (only show for other users)
+              if (member['userId'] != widget.userId)
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Mute',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 4),
+                    Checkbox(
+                      value: member['isMuted'] ?? false,
+                      onChanged: (value) {
+                        _toggleMemberMute(member, value ?? false);
+                      },
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ],
+                ),
             ],
           ),
         ),

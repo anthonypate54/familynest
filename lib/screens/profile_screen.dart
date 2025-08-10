@@ -261,7 +261,24 @@ class ProfileScreenState extends State<ProfileScreen>
                           result['error'] ?? 'Failed to send invitation';
                       final suggestedEmails = result['suggestedEmails'];
 
-                      if (suggestedEmails != null &&
+                      // Handle specific error cases with better UI
+                      if (error.contains('already a member of this family')) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(error),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      } else if (error.contains('already pending')) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'There is already a pending invitation for this email.',
+                            ),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      } else if (suggestedEmails != null &&
                           suggestedEmails.isNotEmpty) {
                         _showEmailSuggestionsDialog(
                           email,

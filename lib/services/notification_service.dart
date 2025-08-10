@@ -463,8 +463,13 @@ class NotificationService {
   /// Handle messages when app is in foreground
   static Future<void> _handleForegroundMessage(RemoteMessage message) async {
     debugPrint('🔔 Foreground message received: ${message.messageId}');
-    debugPrint('📱 Title: ${message.notification?.title}');
-    debugPrint('📝 Body: ${message.notification?.body}');
+
+    // Handle both old-style (notification payload) and new-style (data-only) messages
+    final title = message.notification?.title ?? message.data['title'];
+    final body = message.notification?.body ?? message.data['body'];
+
+    debugPrint('📱 Title: $title');
+    debugPrint('📝 Body: $body');
     debugPrint('📊 Data: ${message.data}');
 
     // Check if current user is the sender - don't show notification to sender
@@ -506,6 +511,55 @@ class NotificationService {
     // TODO: Navigate to specific screen based on message data
     // For example, if it's a family message, navigate to that family's thread
     _handleNotificationNavigation(message.data);
+  }
+
+  /// Show local notification from data (for background messages)
+  static Future<void> showLocalNotificationFromData({
+    required String title,
+    required String body,
+    required Map<String, dynamic> data,
+  }) async {
+    try {
+      // _localNotifications is always available (static final)
+
+      const AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+            'familynest_channel',
+            'FamilyNest Notifications',
+            channelDescription: 'Notifications for family messages and updates',
+            importance: Importance.high,
+            priority: Priority.high,
+            showWhen: true,
+          );
+
+      const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      );
+
+      const NotificationDetails notificationDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      // Generate unique notification ID based on message data
+      final notificationId =
+          data['messageId']?.hashCode ??
+          DateTime.now().millisecondsSinceEpoch % 100000;
+
+      await _localNotifications.show(
+        notificationId,
+        title,
+        body,
+        notificationDetails,
+        payload: data.toString(),
+      );
+
+      debugPrint('✅ Local notification shown: $title');
+    } catch (e) {
+      debugPrint('❌ Error showing local notification: $e');
+    }
   }
 
   /// Show local notification for foreground messages

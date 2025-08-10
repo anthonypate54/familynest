@@ -71,7 +71,21 @@ class _MessageScreenState extends State<MessageScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _loadMessages(showLoading: false);
+      // Only reload if we don't have messages already
+      final messageProvider = Provider.of<MessageProvider>(
+        context,
+        listen: false,
+      );
+      if (messageProvider.messages.isEmpty) {
+        debugPrint(
+          '🔄 MessageScreen: App resumed with no messages, reloading...',
+        );
+        _loadMessages(showLoading: false);
+      } else {
+        debugPrint(
+          '📱 MessageScreen: App resumed with ${messageProvider.messages.length} messages, skipping reload',
+        );
+      }
     }
   }
 
@@ -87,8 +101,24 @@ class _MessageScreenState extends State<MessageScreen>
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
     _messageProvider = Provider.of<MessageProvider>(context, listen: false);
 
-    _loadMessages();
+    // Only load messages if we don't have any yet
+    final messageProvider = Provider.of<MessageProvider>(
+      context,
+      listen: false,
+    );
+    if (messageProvider.messages.isEmpty) {
+      debugPrint('🔄 MessageScreen: initState with no messages, loading...');
+      _loadMessages();
+    } else {
+      debugPrint(
+        '📱 MessageScreen: initState with ${messageProvider.messages.length} messages, skipping load',
+      );
+      setState(() {
+        _isLoading = false;
+      });
+    }
     _initializeUserAndWebSocket();
+    _checkIfFirstTimeUser(); // Check if user should see welcome screen
   }
 
   Future<void> _initializeUserAndWebSocket() async {
@@ -128,8 +158,12 @@ class _MessageScreenState extends State<MessageScreen>
     }
     final apiService = Provider.of<ApiService>(context, listen: false);
     try {
+      debugPrint(
+        '🔄 MessageScreen: Loading messages for user ${widget.userId}',
+      );
       final messages = await apiService.getUserMessages(widget.userId);
       if (mounted) {
+        debugPrint('✅ MessageScreen: Loaded ${messages.length} messages');
         // Always use setMessages - refresh should get authoritative database state
         Provider.of<MessageProvider>(
           context,
@@ -148,6 +182,7 @@ class _MessageScreenState extends State<MessageScreen>
         }
       }
     } catch (e) {
+      debugPrint('❌ MessageScreen: Error loading messages: $e');
       if (mounted) {
         if (showLoading) {
           setState(() {
@@ -1069,216 +1104,226 @@ class _MessageScreenState extends State<MessageScreen>
           ),
         ],
       ),
-      body: GradientBackground(
-        child: Column(
-          children: [
-            Expanded(
-              child:
-                  _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : RefreshIndicator(
-                        onRefresh: () async {
-                          await _loadMessages();
-                        },
-                        child: Consumer<MessageProvider>(
-                          builder: (context, messageProvider, child) {
-                            return MessageService.buildMessageListView(
-                              context,
-                              messageProvider.messages,
-                              apiService: apiService,
-                              scrollController: _scrollController,
-                              currentUserId: widget.userId.toString(),
-                              onTap: (message) {
-                                if (message.mediaType == 'video') {
-                                  setState(() {
-                                    _currentlyPlayingVideoId = message.id;
-                                  });
-                                }
-                              },
-                              currentlyPlayingVideoId: _currentlyPlayingVideoId,
-                              isFirstTimeUser: _isFirstTimeUser,
-                            );
-                          },
-                        ),
-                      ),
-            ),
-            if (_selectedMediaFile != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
+      body: GestureDetector(
+        onTap: () {
+          // Dismiss keyboard when tapping outside text field (standard iOS behavior)
+          FocusScope.of(context).unfocus();
+        },
+        child: GradientBackground(
+          child: Column(
+            children: [
+              Expanded(
                 child:
-                    _selectedMediaType == 'photo'
-                        ? ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Stack(
-                            children: [
-                              SizedBox(
-                                width: MediaQuery.of(context).size.width * 0.7,
-                                height: 200,
-                                child: Image.file(
-                                  _selectedMediaFile!,
+                    _isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : RefreshIndicator(
+                          onRefresh: () async {
+                            await _loadMessages();
+                          },
+                          child: Consumer<MessageProvider>(
+                            builder: (context, messageProvider, child) {
+                              return MessageService.buildMessageListView(
+                                context,
+                                messageProvider.messages,
+                                apiService: apiService,
+                                scrollController: _scrollController,
+                                currentUserId: widget.userId.toString(),
+                                onTap: (message) {
+                                  if (message.mediaType == 'video') {
+                                    setState(() {
+                                      _currentlyPlayingVideoId = message.id;
+                                    });
+                                  }
+                                },
+                                currentlyPlayingVideoId:
+                                    _currentlyPlayingVideoId,
+                                isFirstTimeUser: _isFirstTimeUser,
+                              );
+                            },
+                          ),
+                        ),
+              ),
+              if (_selectedMediaFile != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child:
+                      _selectedMediaType == 'photo'
+                          ? ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Stack(
+                              children: [
+                                SizedBox(
                                   width:
                                       MediaQuery.of(context).size.width * 0.7,
                                   height: 200,
-                                  fit: BoxFit.cover,
+                                  child: Image.file(
+                                    _selectedMediaFile!,
+                                    width:
+                                        MediaQuery.of(context).size.width * 0.7,
+                                    height: 200,
+                                    fit: BoxFit.cover,
+                                  ),
                                 ),
-                              ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.grey,
-                                      width: 2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.08),
-                                        blurRadius: 2,
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.grey,
+                                        width: 2,
                                       ),
-                                    ],
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.close,
-                                      color: Colors.black,
-                                      size: 18,
-                                    ),
-                                    padding: EdgeInsets.zero,
-                                    splashRadius: 18,
-                                    onPressed: () {
-                                      setState(() {
-                                        _selectedMediaFile = null;
-                                        _selectedMediaType = null;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                        : _selectedMediaType == 'video'
-                        ? ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Stack(
-                            children: [
-                              SizedBox(
-                                width: MediaQuery.of(context).size.width * 0.7,
-                                height: 200,
-                                child:
-                                    _chewieController != null
-                                        ? Chewie(
-                                          key: const ValueKey(
-                                            'message-composition-video',
-                                          ),
-                                          controller: _chewieController!,
-                                        )
-                                        : _selectedVideoThumbnail != null
-                                        ? Image.file(
-                                          _selectedVideoThumbnail!,
-                                          width:
-                                              MediaQuery.of(
-                                                context,
-                                              ).size.width *
-                                              0.7,
-                                          height: 200,
-                                          fit: BoxFit.cover,
-                                        )
-                                        : Container(
-                                          color: Colors.black,
-                                          child: const Center(
-                                            child: CircularProgressIndicator(),
-                                          ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.08),
+                                          blurRadius: 2,
                                         ),
-                              ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.grey,
-                                      width: 2,
+                                      ],
                                     ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.08),
-                                        blurRadius: 2,
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.black,
+                                        size: 18,
                                       ),
-                                    ],
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.close,
-                                      color: Colors.black,
-                                      size: 18,
+                                      padding: EdgeInsets.zero,
+                                      splashRadius: 18,
+                                      onPressed: () {
+                                        setState(() {
+                                          _selectedMediaFile = null;
+                                          _selectedMediaType = null;
+                                        });
+                                      },
                                     ),
-                                    padding: EdgeInsets.zero,
-                                    splashRadius: 18,
-                                    onPressed: () {
-                                      setState(() {
-                                        _selectedMediaFile = null;
-                                        _selectedMediaType = null;
-                                        _videoController?.dispose();
-                                        _chewieController?.dispose();
-                                        _videoController = null;
-                                        _chewieController = null;
-                                        _selectedVideoThumbnail = null;
-                                      });
-                                    },
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        )
-                        : const SizedBox.shrink(),
-              ),
-            // Message input (using reusable component)
-            EmojiMessageInput(
-              controller: _messageController,
-              hintText: 'Type a message...',
-              onSend: () => _postMessage(apiService),
-              onMediaAttach: _showMediaPicker,
-              enabled: true,
-              isDarkMode: UIConfig.useDarkMode,
-              onEmojiPickerStateChanged: (state) {
-                setState(() {
-                  _emojiPickerState = state;
-                });
-              },
-              sendButton: ValueListenableBuilder<bool>(
-                valueListenable: _isSendButtonEnabled,
-                builder: (context, isEnabled, child) {
-                  return CircleAvatar(
-                    backgroundColor:
-                        isEnabled
-                            ? Theme.of(context).primaryColor
-                            : Colors.grey.shade400,
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white),
-                      onPressed:
-                          isEnabled ? () => _postMessage(apiService) : null,
-                      tooltip: 'Send Message',
-                    ),
-                  );
+                              ],
+                            ),
+                          )
+                          : _selectedMediaType == 'video'
+                          ? ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Stack(
+                              children: [
+                                SizedBox(
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.7,
+                                  height: 200,
+                                  child:
+                                      _chewieController != null
+                                          ? Chewie(
+                                            key: const ValueKey(
+                                              'message-composition-video',
+                                            ),
+                                            controller: _chewieController!,
+                                          )
+                                          : _selectedVideoThumbnail != null
+                                          ? Image.file(
+                                            _selectedVideoThumbnail!,
+                                            width:
+                                                MediaQuery.of(
+                                                  context,
+                                                ).size.width *
+                                                0.7,
+                                            height: 200,
+                                            fit: BoxFit.cover,
+                                          )
+                                          : Container(
+                                            color: Colors.black,
+                                            child: const Center(
+                                              child:
+                                                  CircularProgressIndicator(),
+                                            ),
+                                          ),
+                                ),
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.grey,
+                                        width: 2,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.08),
+                                          blurRadius: 2,
+                                        ),
+                                      ],
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.black,
+                                        size: 18,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                      splashRadius: 18,
+                                      onPressed: () {
+                                        setState(() {
+                                          _selectedMediaFile = null;
+                                          _selectedMediaType = null;
+                                          _videoController?.dispose();
+                                          _chewieController?.dispose();
+                                          _videoController = null;
+                                          _chewieController = null;
+                                          _selectedVideoThumbnail = null;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                          : const SizedBox.shrink(),
+                ),
+              // Message input (using reusable component)
+              EmojiMessageInput(
+                controller: _messageController,
+                hintText: 'Type a message...',
+                onSend: () => _postMessage(apiService),
+                onMediaAttach: _showMediaPicker,
+                enabled: true,
+                isDarkMode: UIConfig.useDarkMode,
+                onEmojiPickerStateChanged: (state) {
+                  setState(() {
+                    _emojiPickerState = state;
+                  });
                 },
+                sendButton: ValueListenableBuilder<bool>(
+                  valueListenable: _isSendButtonEnabled,
+                  builder: (context, isEnabled, child) {
+                    return CircleAvatar(
+                      backgroundColor:
+                          isEnabled
+                              ? Theme.of(context).primaryColor
+                              : Colors.grey.shade400,
+                      child: IconButton(
+                        icon: const Icon(Icons.send, color: Colors.white),
+                        onPressed:
+                            isEnabled ? () => _postMessage(apiService) : null,
+                        tooltip: 'Send Message',
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
 
-            // Emoji picker (when visible)
-            if (_emojiPickerState.isVisible)
-              _emojiPickerState.emojiPickerWidget ?? const SizedBox.shrink(),
-          ],
+              // Emoji picker (when visible)
+              if (_emojiPickerState.isVisible)
+                _emojiPickerState.emojiPickerWidget ?? const SizedBox.shrink(),
+            ],
+          ),
         ),
       ),
     );
