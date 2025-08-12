@@ -3,6 +3,7 @@ import '../services/api_service.dart';
 import '../screens/login_screen.dart';
 import '../utils/page_transitions.dart';
 import 'package:provider/provider.dart';
+import '../providers/message_provider.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -67,6 +68,17 @@ class AuthUtils {
 
       // Clear authentication data
       await apiService.logout();
+
+      // Clear message cache to prevent data leaks between users
+      if (context.mounted) {
+        try {
+          final messageProvider = Provider.of<MessageProvider>(context, listen: false);
+          messageProvider.clear();
+          debugPrint('✅ Cleared MessageProvider cache');
+        } catch (e) {
+          debugPrint('⚠️ Could not clear MessageProvider: $e');
+        }
+      }
 
       // Verify the token was actually cleared
       final prefs = await SharedPreferences.getInstance();

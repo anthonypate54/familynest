@@ -104,6 +104,12 @@ class MessageProvider extends ChangeNotifier {
     }
   }
 
+  // Clear all messages (for logout)
+  void clear() {
+    _messages = [];
+    notifyListeners();
+  }
+
   void updateMessageCommentCount(String messageId, int commentCount) {
     final idx = _messages.indexWhere((m) => m.id == messageId);
     if (idx != -1) {

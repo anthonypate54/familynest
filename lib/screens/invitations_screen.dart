@@ -47,7 +47,11 @@ class _InvitationsScreenState extends State<InvitationsScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+    debugPrint('🔄 INVITATIONS_SCREEN: App lifecycle changed to: $state');
     if (state == AppLifecycleState.resumed && mounted) {
+      debugPrint(
+        '🔄 INVITATIONS_SCREEN: App resumed, refreshing invitations...',
+      );
       // Refresh when app comes back into focus
       _loadInvitations();
     }
@@ -56,8 +60,12 @@ class _InvitationsScreenState extends State<InvitationsScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    debugPrint('🔄 INVITATIONS_SCREEN: didChangeDependencies called');
     // Refresh invitations when screen comes into focus
     if (mounted && !_isLoading) {
+      debugPrint(
+        '🔄 INVITATIONS_SCREEN: Refreshing via didChangeDependencies...',
+      );
       _loadInvitations();
     }
   }
@@ -90,6 +98,40 @@ class _InvitationsScreenState extends State<InvitationsScreen>
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  // Update badge count directly without full UI refresh
+  Future<void> _updateBadgeCountDirectly() async {
+    try {
+      debugPrint(
+        '🔄 INVITATIONS_SCREEN: Fetching invitations for badge count...',
+      );
+      final response = await _apiService.getInvitations();
+
+      // Count pending invitations
+      final pendingCount =
+          response
+              .where(
+                (inv) => inv['status'] != null && inv['status'] == 'PENDING',
+              )
+              .length;
+
+      debugPrint(
+        '🔄 INVITATIONS_SCREEN: Found $pendingCount pending invitations',
+      );
+
+      // Update the badge count if navigation controller is available
+      if (widget.navigationController != null) {
+        widget.navigationController!.setPendingInvitationsCount(pendingCount);
+        debugPrint(
+          '🔄 INVITATIONS_SCREEN: Updated badge count to $pendingCount',
+        );
+      } else {
+        debugPrint('❌ INVITATIONS_SCREEN: navigationController is null');
+      }
+    } catch (e) {
+      debugPrint('❌ Error updating badge count directly: $e');
     }
   }
 
@@ -149,9 +191,16 @@ class _InvitationsScreenState extends State<InvitationsScreen>
         if (messageType == 'NEW_INVITATION' ||
             messageType == 'INVITATION_ACCEPTED' ||
             messageType == 'INVITATION_DECLINED') {
+          debugPrint('🔄 INVITATIONS_SCREEN: Processing $messageType message');
           // Refresh the invitations list
           if (mounted) {
             _loadInvitations();
+          } else {
+            // If screen isn't mounted, still try to update badge count directly
+            debugPrint(
+              '🔄 INVITATIONS_SCREEN: Screen not mounted, updating badge count directly',
+            );
+            _updateBadgeCountDirectly();
           }
         }
       };

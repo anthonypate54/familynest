@@ -454,6 +454,14 @@ class SettingsScreenState extends State<SettingsScreen>
     final bool emailEnabled =
         _notificationPreferences?['emailNotificationsEnabled'] ?? false;
 
+    // DEBUG: Log what we're getting from API
+    debugPrint('🔔 SETTINGS: API response: $_notificationPreferences');
+    debugPrint(
+      '🔔 SETTINGS: devicePermissionGranted = $devicePermissionGranted',
+    );
+    debugPrint('🔔 SETTINGS: pushEnabled = $pushEnabled');
+    debugPrint('🔔 SETTINGS: emailEnabled = $emailEnabled');
+
     return Column(
       children: [
         // Push Notifications
@@ -597,8 +605,12 @@ class SettingsScreenState extends State<SettingsScreen>
 
   // Simplified notification preference update method
   Future<void> _updateNotificationSetting(String key, bool value) async {
+    debugPrint(
+      '🔔 SETTINGS: _updateNotificationSetting called with $key = $value',
+    );
     try {
       final currentPrefs = _notificationPreferences ?? {};
+      debugPrint('🔔 SETTINGS: currentPrefs = $currentPrefs');
 
       // Create updated preferences map
       final updatedPrefs = <String, bool>{
@@ -611,6 +623,7 @@ class SettingsScreenState extends State<SettingsScreen>
                 ? value
                 : (currentPrefs['emailNotificationsEnabled'] ?? false) as bool,
       };
+      debugPrint('🔔 SETTINGS: updatedPrefs = $updatedPrefs');
 
       final success = await widget.apiService.updateNotificationPreferences(
         widget.userId,
@@ -618,9 +631,14 @@ class SettingsScreenState extends State<SettingsScreen>
       );
 
       if (success) {
-        // Update local state
+        // Update local state - preserve devicePermissionGranted from previous API response
         setState(() {
-          _notificationPreferences = updatedPrefs;
+          _notificationPreferences = {
+            ...updatedPrefs,
+            'devicePermissionGranted':
+                _notificationPreferences?['devicePermissionGranted'] ?? false,
+            'userId': _notificationPreferences?['userId'],
+          };
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

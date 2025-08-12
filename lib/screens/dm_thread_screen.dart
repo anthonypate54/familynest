@@ -1911,6 +1911,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                           )
                           : // Local video - use VideoMessageCard
                           GestureDetector(
+                            behavior: HitTestBehavior.deferToChild,
                             onTap: () => _onVideoTap(message.id),
                             child: VideoMessageCard(
                               videoUrl: fullMediaUrl,

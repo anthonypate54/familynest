@@ -9,6 +9,7 @@ import '../controllers/bottom_navigation_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/file_picker_test_widget.dart';
 import '../providers/message_provider.dart';
+import '../services/websocket_service.dart';
 
 class FamilyManagementScreen extends StatefulWidget {
   final int userId;
@@ -58,11 +59,16 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
   final _familyNameController = TextEditingController();
   final _inviteEmailController = TextEditingController();
 
+  // WebSocket support for real-time updates
+  WebSocketService? _webSocketService;
+  Function(Map<String, dynamic>)? _invitationHandler;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadData();
+    _initWebSocket();
   }
 
   @override
@@ -71,6 +77,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     _searchController.dispose();
     _familyNameController.dispose();
     _inviteEmailController.dispose();
+    _cleanupWebSocket();
     super.dispose();
   }
 
@@ -361,23 +368,45 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
 
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
+
+      // Load global user settings for non-family-specific preferences
       final userSettings = await apiService.getCurrentUserSettings();
 
-      if (userSettings != null && mounted) {
+      // Load family-specific message preferences
+      final familyPreferences = await apiService.getMessagePreferences(
+        widget.userId,
+      );
+
+      if (mounted) {
         setState(() {
-          // Load individual notification preferences from the backend
+          // Start with global settings
           _notificationPreferences = {
-            'familyMessages':
-                userSettings['familyMessagesNotifications'] ?? true,
-            'newMemberAlerts': userSettings['newMemberNotifications'] ?? true,
-            'invitationNotifications':
-                userSettings['invitationNotifications'] ?? true,
+            'newMemberAlerts': userSettings?['newMemberNotifications'] ?? true,
+            // invitationNotifications removed - now always enabled as system notifications
           };
+
+          // Add family-specific message preferences
+          if (_selectedFamily != null) {
+            // Find the preference for the currently selected family
+            final familyPref = familyPreferences.firstWhere(
+              (pref) => pref['familyId'] == _selectedFamily!.id,
+              orElse:
+                  () => {
+                    'receiveMessages': true,
+                  }, // Default to true if not found
+            );
+            _notificationPreferences!['familyMessages'] =
+                familyPref['receiveMessages'] ?? true;
+          } else {
+            // No family selected, default to true
+            _notificationPreferences!['familyMessages'] = true;
+          }
+
           _loadingNotifications = false;
         });
 
         debugPrint(
-          '📋 Loaded notification settings: $_notificationPreferences',
+          '📋 Loaded notification settings for family ${_selectedFamily?.name}: $_notificationPreferences',
         );
       }
     } catch (e) {
@@ -425,9 +454,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
           case 'newMemberAlerts':
             backendField = 'newMemberNotifications';
             break;
-          case 'invitationNotifications':
-            backendField = 'invitationNotifications';
-            break;
+          // invitationNotifications removed - now always enabled as system notifications
           default:
             backendField = field;
         }
@@ -474,11 +501,10 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
   String _getNotificationDisplayName(String field) {
     switch (field) {
       case 'familyMessages':
-        return 'Family message notifications';
+        return 'Your notifications from this family';
       case 'newMemberAlerts':
         return 'New member notifications';
-      case 'invitationNotifications':
-        return 'Invitation notifications';
+      // invitationNotifications removed - now always enabled as system notifications
       default:
         return field;
     }
@@ -518,7 +544,13 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       // If user has no families, fetch pending invitations
       List<Map<String, dynamic>> pendingInvitations = [];
       if (families.isEmpty) {
-        try {} catch (e) {
+        try {
+          final apiService = Provider.of<ApiService>(context, listen: false);
+          pendingInvitations = await apiService.getInvitations();
+          debugPrint(
+            '📧 FAMILY_MGMT: Found ${pendingInvitations.length} pending invitations for user without families',
+          );
+        } catch (e) {
           debugPrint('Error fetching pending invitations: $e');
         }
       }
@@ -700,6 +732,9 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                   items:
                       _families.map((family) {
                         String roleLabel = family.isOwned ? 'Owner' : 'Member';
+                        debugPrint(
+                          '🔔 DROPDOWN: Family ID=${family.id}, Name="${family.name}", Role=$roleLabel, IsOwned=${family.isOwned}',
+                        );
                         return DropdownMenuItem<Family>(
                           value: family,
                           child: Text('${family.name} ($roleLabel)'),
@@ -973,11 +1008,11 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                 const SizedBox(height: 12),
                 SwitchListTile(
                   title: const Text(
-                    'Family messages',
+                    'Your notifications from this family',
                     style: TextStyle(color: Colors.white),
                   ),
                   subtitle: const Text(
-                    'Receive notifications for family messages',
+                    'Get notifications when messages are posted in this family (personal setting)',
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: _notificationPreferences?['familyMessages'] ?? true,
@@ -1015,29 +1050,27 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                             );
                           },
                 ),
-                SwitchListTile(
-                  title: const Text(
-                    'Invitation notifications',
-                    style: TextStyle(color: Colors.white),
+                // Invitation notifications removed - they are now system notifications that always work
+                Container(
+                  padding: const EdgeInsets.all(16.0),
+                  margin: const EdgeInsets.symmetric(vertical: 8.0),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8.0),
+                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
                   ),
-                  subtitle: const Text(
-                    'Receive notifications for new invitations',
-                    style: TextStyle(color: Colors.white70),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info, color: Colors.blue, size: 20),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Family invitations are always enabled as system notifications',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                      ),
+                    ],
                   ),
-                  value:
-                      _notificationPreferences?['invitationNotifications'] ??
-                      true,
-                  activeColor: Colors.white,
-                  activeTrackColor: AppTheme.getSwitchColor(context),
-                  onChanged:
-                      _loadingNotifications
-                          ? null
-                          : (value) {
-                            _updateNotificationPreference(
-                              'invitationNotifications',
-                              value,
-                            );
-                          },
                 ),
               ],
             ),
@@ -1049,7 +1082,9 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
 
   Widget _buildFamilyOverviewCard() {
     final selectedFamily = _selectedFamily;
+    final userOwnsAnyFamily = _families.any((family) => family.isOwned);
 
+    // Show create family UI if user has no families at all
     if (selectedFamily == null) {
       // Check if user has pending invitations
       if (_pendingInvitations.isNotEmpty) {
@@ -1197,12 +1232,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Create Your Family',
+                  'Get Started with Your Family',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Start connecting with your family members',
+                  'Join an existing family or create your own',
                   style: TextStyle(
                     color: Theme.of(
                       context,
@@ -1212,20 +1247,58 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: _showCreateFamilyDialog,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 12,
+                // Check for invitations button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => _refreshInvitations(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.refresh, size: 18),
+                        SizedBox(width: 8),
+                        Text('Check for Invitations'),
+                      ],
                     ),
                   ),
-                  child: const Text('Create Family'),
+                ),
+                const SizedBox(height: 12),
+                // Create family button
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: _showCreateFamilyDialog,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange,
+                      side: const BorderSide(color: Colors.orange),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add, size: 18),
+                        SizedBox(width: 8),
+                        Text('Create Your Own Family'),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1411,6 +1484,38 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                       ],
                     ),
                     const SizedBox(height: 8),
+                    // Show create family option if user doesn't own any family
+                    if (!userOwnsAnyFamily) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _showCreateFamilyDialog,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add, size: 16),
+                              SizedBox(width: 4),
+                              Text(
+                                'Create Your Family',
+                                style: TextStyle(fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     Builder(
                       builder: (context) {
                         // Find the owner from members list
@@ -1554,6 +1659,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       _filterMembers();
       _loadUpcomingBirthdays(); // Load birthdays for the new family
       _loadActivity(); // Load activity for the new family
+      _loadNotificationSettings(); // Load notification settings for the new family
     }
   }
 
@@ -2321,6 +2427,8 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
             title: const Text('Invite Member'),
             content: TextField(
               controller: _inviteEmailController,
+              keyboardType: TextInputType.emailAddress,
+              autofocus: true,
               decoration: const InputDecoration(
                 labelText: 'Email Address',
                 hintText: 'Enter member email',
@@ -2363,6 +2471,23 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error creating family: $e')));
+      }
+    }
+  }
+
+  Future<void> _refreshInvitations() async {
+    try {
+      await _loadData(); // Reload all data including invitations
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Checked for new invitations')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error checking invitations: $e')),
+        );
       }
     }
   }
@@ -2735,6 +2860,80 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Resend invitation feature coming soon!')),
     );
+  }
+
+  // Initialize WebSocket for real-time family updates
+  void _initWebSocket() {
+    try {
+      _webSocketService = WebSocketService();
+
+      // Create invitation handler for invitation responses
+      _invitationHandler = (Map<String, dynamic> data) {
+        _handleInvitationResponse(data);
+      };
+
+      // Subscribe to invitation events for this user
+      _webSocketService!.subscribe(
+        '/user/${widget.userId}/invitations',
+        _invitationHandler!,
+      );
+
+      debugPrint(
+        '✅ FAMILY_MGMT: WebSocket initialized and subscribed to /user/${widget.userId}/invitations',
+      );
+    } catch (e) {
+      debugPrint('❌ FAMILY_MGMT: Error initializing WebSocket: $e');
+    }
+  }
+
+  // Cleanup WebSocket connections
+  void _cleanupWebSocket() {
+    try {
+      if (_webSocketService != null && _invitationHandler != null) {
+        _webSocketService!.unsubscribe(
+          '/user/${widget.userId}/invitations',
+          _invitationHandler!,
+        );
+        debugPrint('✅ FAMILY_MGMT: WebSocket cleaned up');
+      }
+    } catch (e) {
+      debugPrint('❌ FAMILY_MGMT: Error cleaning up WebSocket: $e');
+    }
+  }
+
+  // Handle invitation response (accepted/declined)
+  void _handleInvitationResponse(Map<String, dynamic> data) {
+    try {
+      debugPrint('📨 FAMILY_MGMT: Received invitation response: $data');
+
+      final type = data['type'] as String?;
+      final status = data['status'] as String?;
+
+      if (type == 'INVITATION_ACCEPTED' && status == 'ACCEPTED') {
+        final responderName = data['responderName'] as String?;
+        final familyName = data['familyName'] as String?;
+
+        debugPrint(
+          '🎉 FAMILY_MGMT: ${responderName} accepted invitation to ${familyName}',
+        );
+
+        // Refresh family data to show new member
+        _loadData();
+
+        // Show a brief success message
+        if (mounted && responderName != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$responderName joined your family!'),
+              duration: const Duration(seconds: 2),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ FAMILY_MGMT: Error handling invitation response: $e');
+    }
   }
 }
 

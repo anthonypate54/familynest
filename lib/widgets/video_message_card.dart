@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'dart:math' as math;
+
 import '../services/api_service.dart';
 
 class VideoMessageCard extends StatefulWidget {
@@ -10,6 +10,7 @@ class VideoMessageCard extends StatefulWidget {
   final String? thumbnailUrl;
   final ApiService apiService;
   final bool isCurrentlyPlaying;
+  final VoidCallback? onTap;
 
   const VideoMessageCard({
     Key? key,
@@ -17,6 +18,7 @@ class VideoMessageCard extends StatefulWidget {
     this.thumbnailUrl,
     required this.apiService,
     this.isCurrentlyPlaying = false,
+    this.onTap,
   }) : super(key: key);
 
   @override
@@ -26,8 +28,6 @@ class VideoMessageCard extends StatefulWidget {
 class VideoMessageCardState extends State<VideoMessageCard> {
   VideoPlayerController? _controller;
   ChewieController? _chewieController;
-  bool _isPlaying = false;
-  String? _errorMessage;
   bool _isDisposing = false;
 
   @override
@@ -87,16 +87,9 @@ class VideoMessageCardState extends State<VideoMessageCard> {
             bufferedColor: Colors.lightBlue,
           ),
         );
-        setState(() {
-          _isPlaying = true;
-        });
       }
     } catch (error) {
-      if (mounted && !_isDisposing) {
-        setState(() {
-          _errorMessage = 'Failed to load video: $error';
-        });
-      }
+      debugPrint('Error initializing video: $error');
     }
 
     _controller?.addListener(_onVideoError);
@@ -104,9 +97,7 @@ class VideoMessageCardState extends State<VideoMessageCard> {
 
   void _onVideoError() {
     if (_controller?.value.hasError == true && mounted && !_isDisposing) {
-      setState(() {
-        _errorMessage = _controller!.value.errorDescription;
-      });
+      debugPrint('Video error: ${_controller!.value.errorDescription}');
     }
   }
 
@@ -117,11 +108,10 @@ class VideoMessageCardState extends State<VideoMessageCard> {
     _chewieController = null;
     _controller = null;
 
-    // Only setState if we're not in the middle of disposing and widget is still mounted
+    // Reset state if widget is still mounted
     if (mounted && !_isDisposing) {
       setState(() {
-        _isPlaying = false;
-        _errorMessage = null;
+        // Reset any local state if needed
       });
     }
   }
@@ -139,6 +129,10 @@ class VideoMessageCardState extends State<VideoMessageCard> {
       borderRadius: BorderRadius.circular(6),
       child: GestureDetector(
         onTap: () {
+          // Call parent callback first (to manage currentlyPlayingVideoId)
+          widget.onTap?.call();
+
+          // Then initialize this video if needed
           if (_controller == null) {
             _initializeVideo();
           }

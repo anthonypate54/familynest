@@ -306,7 +306,7 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
           Text(
             _hasPendingInvitations
                 ? 'Great news! You have pending family invitations waiting for you.'
-                : 'Choose how you\'d like to start your FamilyNest journey.',
+                : 'Since this is your first time and you have no pending invitations, you can skip for now and explore the app.\n\nYou\'ll be able to check for invitations or create a family anytime from the Family tab.',
             style: const TextStyle(
               fontSize: 16,
               color: Colors.grey,
@@ -394,11 +394,34 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
 
           const SizedBox(height: 16),
 
+          // Make "Skip for now" more prominent for users without invitations
+          if (!_hasPendingInvitations) ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => _exploreApp(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Explore the App',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+
           TextButton(
             onPressed: () => _exploreApp(),
-            child: const Text(
-              'Skip for now',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
+            child: Text(
+              _hasPendingInvitations ? 'Skip for now' : 'Or skip for now',
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
             ),
           ),
         ],

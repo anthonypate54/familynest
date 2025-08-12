@@ -13,6 +13,7 @@ import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../utils/video_thumbnail_util.dart';
@@ -39,7 +40,8 @@ class ThreadScreen extends StatefulWidget {
   State<ThreadScreen> createState() => _ThreadScreenState();
 }
 
-class _ThreadScreenState extends State<ThreadScreen> {
+class _ThreadScreenState extends State<ThreadScreen>
+    with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _messageController = TextEditingController();
   final ValueNotifier<bool> _isSendButtonEnabled = ValueNotifier(false);
@@ -52,6 +54,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
   String? _currentlyPlayingVideoId;
   bool _isLoading = true;
   String? _error;
+  bool _isSending = false; // Prevent duplicate comment sending
 
   // WebSocket state variables
   WebSocketMessageHandler? _commentMessageHandler;
@@ -66,8 +69,21 @@ class _ThreadScreenState extends State<ThreadScreen> {
   EmojiPickerState _emojiPickerState = const EmojiPickerState(isVisible: false);
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Reload comments when app comes back to foreground
+      debugPrint('🔄 ThreadScreen: App resumed, reloading comments...');
+      _loadComments(showLoading: false);
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
+
+    // Add lifecycle observer
+    WidgetsBinding.instance.addObserver(this);
+
     _messageController.addListener(() {
       _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
     });
@@ -218,13 +234,15 @@ class _ThreadScreenState extends State<ThreadScreen> {
     }
   }
 
-  Future<void> _loadComments() async {
+  Future<void> _loadComments({bool showLoading = true}) async {
     if (!mounted) return;
 
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
@@ -267,6 +285,9 @@ class _ThreadScreenState extends State<ThreadScreen> {
 
   @override
   void dispose() {
+    // Remove lifecycle observer
+    WidgetsBinding.instance.removeObserver(this);
+
     // Clean up WebSocket subscription
     if (_commentMessageHandler != null &&
         _webSocketService != null &&
@@ -318,7 +339,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                 title: const Text('Take a photo'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia('photo');
+                  _pickMediaFromCamera('photo');
                 },
               ),
               ListTile(
@@ -334,7 +355,7 @@ class _ThreadScreenState extends State<ThreadScreen> {
                 title: const Text('Record a video'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia('video');
+                  _pickMediaFromCamera('video');
                 },
               ),
               ListTile(
@@ -439,6 +460,46 @@ class _ThreadScreenState extends State<ThreadScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _pickMediaFromCamera(String type) async {
+    try {
+      XFile? pickedFile;
+
+      if (type == 'photo') {
+        pickedFile = await ImagePicker().pickImage(
+          source: ImageSource.camera,
+          imageQuality: 80,
+          maxWidth: 1920,
+          maxHeight: 1920,
+        );
+      } else if (type == 'video') {
+        pickedFile = await ImagePicker().pickVideo(
+          source: ImageSource.camera,
+          maxDuration: const Duration(minutes: 5),
+        );
+      }
+
+      if (!mounted) return;
+
+      if (pickedFile != null) {
+        File file = File(pickedFile.path);
+        debugPrint('📸 Camera ${type} captured: ${file.path}');
+
+        // Process the captured file
+        await _processLocalFile(file, type);
+      }
+    } catch (e) {
+      debugPrint('Error capturing ${type} with camera: $e');
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error accessing camera: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -726,6 +787,12 @@ class _ThreadScreenState extends State<ThreadScreen> {
   }
 
   Future<void> _postComment(ApiService apiService) async {
+    // Prevent duplicate sends
+    if (_isSending) {
+      debugPrint('⚠️ _postComment: Already sending, ignoring duplicate tap');
+      return;
+    }
+
     final commentProvider = Provider.of<CommentProvider>(
       context,
       listen: false,
@@ -737,6 +804,10 @@ class _ThreadScreenState extends State<ThreadScreen> {
 
     final userMessage = _messageController.text.trim();
     if (userMessage.isEmpty && _selectedMediaFile == null) return;
+
+    setState(() {
+      _isSending = true;
+    });
 
     try {
       Message? newComment;
@@ -793,6 +864,11 @@ class _ThreadScreenState extends State<ThreadScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('Error posting comment: $e')));
       }
+    } finally {
+      // Always reset sending state, even on errors
+      setState(() {
+        _isSending = false;
+      });
     }
   }
 
@@ -839,108 +915,121 @@ class _ThreadScreenState extends State<ThreadScreen> {
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
-      body: GradientBackground(
-        child: Column(
-          children: [
-            Expanded(
-              child:
-                  _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : RefreshIndicator(
-                        onRefresh: () async {
-                          await _loadComments();
-                        },
-                        child: Consumer<CommentProvider>(
-                          builder: (context, commentProvider, child) {
-                            if (_error != null) {
-                              return Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(_error!),
-                                    ElevatedButton(
-                                      onPressed: _loadComments,
-                                      child: const Text('Retry'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }
-                            return MessageService.buildMessageListView(
-                              context,
-                              commentProvider.comments,
-                              apiService: apiService,
-                              scrollController: _scrollController,
-                              currentUserId: widget.userId.toString(),
-                              onTap: (message) {
-                                if (message.mediaType == 'video') {
-                                  setState(() {
-                                    _currentlyPlayingVideoId = message.id;
-                                  });
-                                }
-                              },
-                              currentlyPlayingVideoId: _currentlyPlayingVideoId,
-                              isThreadView: true,
-                              isFirstTimeUser: false,
-                            );
-                          },
-                        ),
-                      ),
-            ),
-            // Add back the media preview
-            if (_selectedMediaFile != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
+      body: GestureDetector(
+        onTap: () {
+          // Dismiss keyboard when tapping outside text field
+          FocusScope.of(context).unfocus();
+          // Also dismiss emoji picker if visible
+          if (_emojiPickerState.isVisible) {
+            setState(() {
+              _emojiPickerState = const EmojiPickerState(isVisible: false);
+            });
+          }
+        },
+        child: GradientBackground(
+          child: Column(
+            children: [
+              Expanded(
                 child:
-                    _selectedMediaType == 'photo'
-                        ? ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Image.file(
-                            _selectedMediaFile!,
-                            width: MediaQuery.of(context).size.width * 0.7,
-                            height: 200,
-                            fit: BoxFit.cover,
+                    _isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : RefreshIndicator(
+                          onRefresh: () async {
+                            await _loadComments();
+                          },
+                          child: Consumer<CommentProvider>(
+                            builder: (context, commentProvider, child) {
+                              if (_error != null) {
+                                return Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(_error!),
+                                      ElevatedButton(
+                                        onPressed: _loadComments,
+                                        child: const Text('Retry'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                              return MessageService.buildMessageListView(
+                                context,
+                                commentProvider.comments,
+                                apiService: apiService,
+                                scrollController: _scrollController,
+                                currentUserId: widget.userId.toString(),
+                                onTap: (message) {
+                                  if (message.mediaType == 'video') {
+                                    setState(() {
+                                      _currentlyPlayingVideoId = message.id;
+                                    });
+                                  }
+                                },
+                                currentlyPlayingVideoId:
+                                    _currentlyPlayingVideoId,
+                                isThreadView: true,
+                                isFirstTimeUser: false,
+                              );
+                            },
                           ),
-                        )
-                        : _selectedMediaType == 'video'
-                        ? ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Container(
-                            width: MediaQuery.of(context).size.width * 0.7,
-                            height: 200,
-                            constraints: const BoxConstraints(
-                              maxHeight: 200,
-                              minHeight: 200,
+                        ),
+              ),
+              // Add back the media preview
+              if (_selectedMediaFile != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child:
+                      _selectedMediaType == 'photo'
+                          ? ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.file(
+                              _selectedMediaFile!,
+                              width: MediaQuery.of(context).size.width * 0.7,
+                              height: 200,
+                              fit: BoxFit.cover,
                             ),
-                            child: ConstrainedBox(
+                          )
+                          : _selectedMediaType == 'video'
+                          ? ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              width: MediaQuery.of(context).size.width * 0.7,
+                              height: 200,
                               constraints: const BoxConstraints(
                                 maxHeight: 200,
                                 minHeight: 200,
                               ),
-                              child: ClipRect(
-                                child:
-                                    _chewieController != null
-                                        ? Chewie(
-                                          key: const ValueKey(
-                                            'thread-composition-video',
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxHeight: 200,
+                                  minHeight: 200,
+                                ),
+                                child: ClipRect(
+                                  child:
+                                      _chewieController != null
+                                          ? Chewie(
+                                            key: const ValueKey(
+                                              'thread-composition-video',
+                                            ),
+                                            controller: _chewieController!,
+                                          )
+                                          : const Center(
+                                            child: CircularProgressIndicator(),
                                           ),
-                                          controller: _chewieController!,
-                                        )
-                                        : const Center(
-                                          child: CircularProgressIndicator(),
-                                        ),
+                                ),
                               ),
                             ),
-                          ),
-                        )
-                        : const SizedBox.shrink(),
-              ),
-            _buildMessageComposer(),
+                          )
+                          : const SizedBox.shrink(),
+                ),
+              _buildMessageComposer(),
 
-            // Emoji picker (when visible)
-            if (_emojiPickerState.isVisible)
-              _emojiPickerState.emojiPickerWidget ?? const SizedBox.shrink(),
-          ],
+              // Emoji picker (when visible)
+              if (_emojiPickerState.isVisible)
+                _emojiPickerState.emojiPickerWidget ?? const SizedBox.shrink(),
+            ],
+          ),
         ),
       ),
     );
@@ -961,27 +1050,45 @@ class _ThreadScreenState extends State<ThreadScreen> {
           _emojiPickerState = state;
         });
       },
-      sendButton: ValueListenableBuilder<bool>(
-        valueListenable: _isSendButtonEnabled,
-        builder: (context, isEnabled, child) {
-          return CircleAvatar(
-            backgroundColor:
-                isEnabled
-                    ? Theme.of(context).primaryColor
-                    : Colors.grey.shade400,
-            child: IconButton(
-              icon: const Icon(Icons.send, color: Colors.white),
-              onPressed:
-                  isEnabled
-                      ? () => _postComment(
-                        Provider.of<ApiService>(context, listen: false),
-                      )
-                      : null,
-              tooltip: 'Send Comment',
-            ),
-          );
-        },
-      ),
+      sendButton:
+          _isSending
+              ? Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  shape: BoxShape.circle,
+                ),
+                child: const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              )
+              : ValueListenableBuilder<bool>(
+                valueListenable: _isSendButtonEnabled,
+                builder: (context, isEnabled, child) {
+                  return CircleAvatar(
+                    backgroundColor:
+                        isEnabled
+                            ? Theme.of(context).primaryColor
+                            : Colors.grey.shade400,
+                    child: IconButton(
+                      icon: const Icon(Icons.send, color: Colors.white),
+                      onPressed:
+                          isEnabled
+                              ? () => _postComment(
+                                Provider.of<ApiService>(context, listen: false),
+                              )
+                              : null,
+                      tooltip: 'Send Comment',
+                    ),
+                  );
+                },
+              ),
     );
   }
 }

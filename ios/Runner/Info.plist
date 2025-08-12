@@ -51,6 +51,10 @@
 	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Allow access to photos for selecting videos and images to share with family</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access to take photos and videos for sharing with family members.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs microphone access to record videos for sharing with family members.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

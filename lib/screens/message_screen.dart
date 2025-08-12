@@ -11,6 +11,7 @@ import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/cloud_file_service.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
@@ -50,6 +51,7 @@ class _MessageScreenState extends State<MessageScreen>
 
   bool _isLoading = true;
   bool _isFirstTimeUser = true; // Track if user is truly new
+  bool _isSending = false; // Prevent duplicate message sending
 
   // --- Inline video playback for message feed ---
   String? _currentlyPlayingVideoId;
@@ -606,7 +608,7 @@ class _MessageScreenState extends State<MessageScreen>
                 title: const Text('Take a photo'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia('photo');
+                  _pickMediaFromCamera('photo');
                 },
               ),
               ListTile(
@@ -622,7 +624,7 @@ class _MessageScreenState extends State<MessageScreen>
                 title: const Text('Record a video'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickMedia('video');
+                  _pickMediaFromCamera('video');
                 },
               ),
               ListTile(
@@ -827,6 +829,46 @@ class _MessageScreenState extends State<MessageScreen>
     }
   }
 
+  Future<void> _pickMediaFromCamera(String type) async {
+    try {
+      XFile? pickedFile;
+
+      if (type == 'photo') {
+        pickedFile = await ImagePicker().pickImage(
+          source: ImageSource.camera,
+          imageQuality: 80,
+          maxWidth: 1920,
+          maxHeight: 1920,
+        );
+      } else if (type == 'video') {
+        pickedFile = await ImagePicker().pickVideo(
+          source: ImageSource.camera,
+          maxDuration: const Duration(minutes: 5),
+        );
+      }
+
+      if (!mounted) return;
+
+      if (pickedFile != null) {
+        File file = File(pickedFile.path);
+        debugPrint('📸 Camera ${type} captured: ${file.path}');
+
+        // Process the captured file
+        await _processLocalFile(file, type);
+      }
+    } catch (e) {
+      debugPrint('Error capturing ${type} with camera: $e');
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error accessing camera: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   Future<void> _processLocalFile(File file, String type) async {
     // Dispose previous controllers
     _videoController?.dispose();
@@ -986,6 +1028,9 @@ class _MessageScreenState extends State<MessageScreen>
           ),
         );
       }
+      setState(() {
+        _isSending = false;
+      });
     } catch (e) {
       debugPrint('Error processing external video: $e');
       if (!mounted) return;
@@ -1009,32 +1054,91 @@ class _MessageScreenState extends State<MessageScreen>
   }
 
   Future<void> _postMessage(ApiService apiService) async {
+    // Prevent duplicate sends
+    if (_isSending) {
+      debugPrint('⚠️ _postMessage: Already sending, ignoring duplicate tap');
+      return;
+    }
+
     final text = _messageController.text.trim();
     if (_isFirstTimeUser) {
       await _markWelcomeSeen();
     }
 
+    setState(() {
+      _isSending = true;
+    });
+
     debugPrint('🚀 _postMessage: Starting to post message: "$text"');
 
     Message? newMessage;
-    if (_selectedMediaFile != null) {
-      debugPrint('🚀 _postMessage: Posting message with media');
-      newMessage = await apiService.postMessage(
-        int.tryParse(widget.userId) ?? 0,
-        text,
-        mediaPath: _selectedMediaFile!.path,
-        mediaType: _selectedMediaType ?? 'photo',
-      );
+    try {
+      if (_selectedMediaFile != null) {
+        debugPrint('🚀 _postMessage: Posting message with media');
+        newMessage = await apiService.postMessage(
+          int.tryParse(widget.userId) ?? 0,
+          text,
+          mediaPath: _selectedMediaFile!.path,
+          mediaType: _selectedMediaType ?? 'photo',
+        );
+        setState(() {
+          _selectedMediaFile = null;
+          _selectedMediaType = null;
+        });
+      } else if (text.isNotEmpty) {
+        debugPrint('🚀 _postMessage: Posting text-only message');
+        newMessage = await apiService.postMessage(
+          int.tryParse(widget.userId) ?? 0,
+          text,
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ _postMessage: Error posting message: $e');
+
+      // Handle "no family" error specifically
+      if (e.toString().contains('User is not a member of any family') ||
+          e.toString().contains(
+            '"error":"User is not a member of any family"',
+          )) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'You need to join a family before posting messages. Go to Family Management to join or create a family.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Family Management',
+                textColor: Colors.white,
+                onPressed: () {
+                  // Navigate to family management (tab index 3)
+                  Navigator.of(context).pop(); // Go back to main app
+                  // Could add navigation to family tab here if needed
+                },
+              ),
+            ),
+          );
+        }
+        return; // Exit early, don't process further
+      }
+
+      // Handle other errors
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to post message: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return; // Exit early on any error
+    } finally {
+      // Always reset sending state, even on errors
       setState(() {
-        _selectedMediaFile = null;
-        _selectedMediaType = null;
+        _isSending = false;
       });
-    } else if (text.isNotEmpty) {
-      debugPrint('🚀 _postMessage: Posting text-only message');
-      newMessage = await apiService.postMessage(
-        int.tryParse(widget.userId) ?? 0,
-        text,
-      );
     }
 
     if (newMessage != null) {
@@ -1108,6 +1212,12 @@ class _MessageScreenState extends State<MessageScreen>
         onTap: () {
           // Dismiss keyboard when tapping outside text field (standard iOS behavior)
           FocusScope.of(context).unfocus();
+          // Also dismiss emoji picker if visible
+          if (_emojiPickerState.isVisible) {
+            setState(() {
+              _emojiPickerState = const EmojiPickerState(isVisible: false);
+            });
+          }
         },
         child: GradientBackground(
           child: Column(
@@ -1300,23 +1410,48 @@ class _MessageScreenState extends State<MessageScreen>
                     _emojiPickerState = state;
                   });
                 },
-                sendButton: ValueListenableBuilder<bool>(
-                  valueListenable: _isSendButtonEnabled,
-                  builder: (context, isEnabled, child) {
-                    return CircleAvatar(
-                      backgroundColor:
-                          isEnabled
-                              ? Theme.of(context).primaryColor
-                              : Colors.grey.shade400,
-                      child: IconButton(
-                        icon: const Icon(Icons.send, color: Colors.white),
-                        onPressed:
-                            isEnabled ? () => _postMessage(apiService) : null,
-                        tooltip: 'Send Message',
-                      ),
-                    );
-                  },
-                ),
+                sendButton:
+                    _isSending
+                        ? Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade400,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          ),
+                        )
+                        : ValueListenableBuilder<bool>(
+                          valueListenable: _isSendButtonEnabled,
+                          builder: (context, isEnabled, child) {
+                            return CircleAvatar(
+                              backgroundColor:
+                                  isEnabled
+                                      ? Theme.of(context).primaryColor
+                                      : Colors.grey.shade400,
+                              child: IconButton(
+                                icon: const Icon(
+                                  Icons.send,
+                                  color: Colors.white,
+                                ),
+                                onPressed:
+                                    isEnabled
+                                        ? () => _postMessage(apiService)
+                                        : null,
+                                tooltip: 'Send Message',
+                              ),
+                            );
+                          },
+                        ),
               ),
 
               // Emoji picker (when visible)

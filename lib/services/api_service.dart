@@ -1142,7 +1142,7 @@ Network connection error. Please check:
         return Message.fromJson(responseData);
       } else {
         debugPrint('❌ Failed to post message: $responseString');
-        throw Exception('Failed to post message: ${response.statusCode}');
+        throw Exception('Failed to post message: $responseString');
       }
     } catch (e) {
       debugPrint('Exception in postMessage: $e');
@@ -1962,7 +1962,7 @@ Network connection error. Please check:
   Future<List<Map<String, dynamic>>> getMessagePreferences(int userId) async {
     final response = await _makeAuthenticatedRequest(
       'GET',
-      Uri.parse('$baseUrl/api/users/$userId/message-preferences'),
+      Uri.parse('$baseUrl/api/message-preferences/$userId'),
       headers: {'Content-Type': 'application/json'},
     );
     if (response.statusCode == 200) {
@@ -3366,6 +3366,42 @@ Network connection error. Please check:
       }
     } catch (e) {
       debugPrint('❌ Error enabling all notification preferences: $e');
+      return false;
+    }
+  }
+
+  // Sync device permission status without overriding user preferences
+  Future<bool> syncDevicePermissionStatus(int userId) async {
+    try {
+      debugPrint(
+        '🔔 API_SERVICE: Syncing device permission status for user $userId',
+      );
+
+      final url =
+          '$baseUrl/api/notification-preferences/$userId/sync-device-permission';
+      debugPrint('🔔 API_SERVICE: Making POST request to: $url');
+
+      final response = await _makeAuthenticatedRequest(
+        'POST',
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      debugPrint('🔔 API_SERVICE: Response status: ${response.statusCode}');
+      debugPrint('🔔 API_SERVICE: Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        debugPrint('✅ Device permission status synced for user $userId');
+        return true;
+      } else {
+        debugPrint(
+          '❌ Failed to sync device permission status: ${response.statusCode}',
+        );
+        debugPrint('Response body: ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ Error syncing device permission status: $e');
       return false;
     }
   }

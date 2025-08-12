@@ -289,7 +289,8 @@ class MainAppContainer extends StatefulWidget {
   MainAppContainerState createState() => MainAppContainerState();
 }
 
-class MainAppContainerState extends State<MainAppContainer> {
+class MainAppContainerState extends State<MainAppContainer>
+    with WidgetsBindingObserver {
   int _currentIndex = 0;
   late final List<Widget> _screens;
   int _pendingInvitationsCount = 0;
@@ -314,6 +315,10 @@ class MainAppContainerState extends State<MainAppContainer> {
   @override
   void initState() {
     super.initState();
+
+    // Add lifecycle observer to refresh invitations when app resumes
+    WidgetsBinding.instance.addObserver(this);
+
     _screens = [
       MessageScreen(userId: widget.userId.toString()),
       MessagesHomeScreen(userId: widget.userId),
@@ -482,26 +487,36 @@ class MainAppContainerState extends State<MainAppContainer> {
   // Check if we're still authenticated
   Future<void> _checkAuthenticationState() async {
     try {
+      debugPrint('🔍 MAIN: Starting authentication check...');
       // If token is missing or invalid, this will throw an exception
       final apiService = Provider.of<ApiService>(context, listen: false);
       final user = await apiService.getCurrentUser();
 
       // If we got null but didn't throw an exception, we're not authenticated
       if (user == null && mounted) {
-        debugPrint('Authentication check failed - redirecting to login');
+        debugPrint(
+          '❌ MAIN: Authentication check failed - user is null, redirecting to login',
+        );
         _redirectToLogin();
+      } else {
+        debugPrint(
+          '✅ MAIN: Authentication check passed for user: ${user?['username']}',
+        );
       }
     } catch (e) {
+      debugPrint('❌ MAIN: Authentication check exception: $e');
       if (e.toString().contains('401') ||
           e.toString().contains('403') ||
           e.toString().contains('Not authenticated')) {
-        debugPrint('Authentication error detected: $e');
+        debugPrint(
+          '🔒 MAIN: Authentication error detected, redirecting to login',
+        );
         if (mounted) {
           _redirectToLogin();
         }
       } else {
         // For other errors (like network issues), don't redirect
-        debugPrint('Non-authentication error in periodic check: $e');
+        debugPrint('⚠️ MAIN: Non-authentication error in periodic check: $e');
       }
     }
   }
@@ -656,24 +671,22 @@ class MainAppContainerState extends State<MainAppContainer> {
       } else if (hasPermissions && mounted) {
         debugPrint('✅ MAIN: User already has notification permissions');
 
-        // For existing users on fresh installs, ensure database reflects the granted permission
-        debugPrint(
-          '🔔 MAIN: Syncing permission state with backend for existing user',
-        );
+        // For existing users, just sync device permission status without overriding preferences
+        debugPrint('🔔 MAIN: Syncing device permission status with backend');
         try {
           final apiService = Provider.of<ApiService>(context, listen: false);
-          bool success = await apiService.enableAllNotificationPreferences(
+          bool success = await apiService.syncDevicePermissionStatus(
             widget.userId,
           );
-          debugPrint('🔔 MAIN: Backend sync result: $success');
+          debugPrint('🔔 MAIN: Device permission sync result: $success');
 
           if (success) {
-            debugPrint('✅ MAIN: Notification preferences synced successfully');
+            debugPrint('✅ MAIN: Device permission status synced successfully');
           } else {
-            debugPrint('❌ MAIN: Failed to sync notification preferences');
+            debugPrint('❌ MAIN: Failed to sync device permission status');
           }
         } catch (e) {
-          debugPrint('❌ MAIN: Error syncing notification preferences: $e');
+          debugPrint('❌ MAIN: Error syncing device permission status: $e');
         }
       }
     } catch (e) {
@@ -774,7 +787,23 @@ class MainAppContainerState extends State<MainAppContainer> {
     _tokenRefreshTimer?.cancel();
     // Note: _invitationCheckTimer removed - now using WebSocket instead of polling
     _pageController.dispose();
+
+    // Remove lifecycle observer
+    WidgetsBinding.instance.removeObserver(this);
+
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    debugPrint('🔄 MAIN_APP: App lifecycle changed to: $state');
+
+    if (state == AppLifecycleState.resumed && mounted) {
+      debugPrint('🔄 MAIN_APP: App resumed, refreshing invitation count...');
+      // Refresh invitation count when app resumes from background
+      _refreshInvitationCount();
+    }
   }
 
   @override

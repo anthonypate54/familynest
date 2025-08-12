@@ -1067,6 +1067,7 @@ class _MessageCardState extends State<MessageCard> {
           apiService: apiService,
           isCurrentlyPlaying:
               widget.currentlyPlayingVideoId == widget.message.id,
+          onTap: () => widget.onTap?.call(widget.message),
         );
       }
     }
@@ -1086,7 +1087,8 @@ class _MessageCardState extends State<MessageCard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        GestureDetector(
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
           onTap: () {
             // If this is a comment (has parentMessageId), navigate to the parent message's thread
             // If this is a root message, navigate to its own thread
@@ -1132,61 +1134,66 @@ class _MessageCardState extends State<MessageCard> {
               ),
             );
           },
-          child: Row(
-            children: [
-              if (showCommentIcon)
-                FutureBuilder<bool>(
-                  future: CommentNotificationTracker().hasNewComments(
-                    message['id'].toString(),
-                    commentCount,
-                  ),
-                  builder: (context, snapshot) {
-                    final hasNewComments = snapshot.data ?? false;
-                    final Color commentColor =
-                        hasNewComments
-                            ? (Theme.of(context).brightness == Brightness.light
-                                ? Colors.indigo[800]!
-                                : Colors.white)
-                            : Theme.of(context).colorScheme.onSurface;
-                    final IconData commentIcon =
-                        hasNewComments
-                            ? Icons
-                                .comment // filled = "bolder"
-                            : Icons.comment_outlined; // outlined = normal
+          child: Padding(
+            padding: const EdgeInsets.all(8.0), // Increase tap target size
+            child: Row(
+              children: [
+                if (showCommentIcon)
+                  FutureBuilder<bool>(
+                    future: CommentNotificationTracker().hasNewComments(
+                      message['id'].toString(),
+                      commentCount,
+                    ),
+                    builder: (context, snapshot) {
+                      final hasNewComments = snapshot.data ?? false;
+                      final Color commentColor =
+                          hasNewComments
+                              ? (Theme.of(context).brightness ==
+                                      Brightness.light
+                                  ? Colors.indigo[800]!
+                                  : Colors.white)
+                              : Theme.of(context).colorScheme.onSurface;
+                      final IconData commentIcon =
+                          hasNewComments
+                              ? Icons
+                                  .comment // filled = "bolder"
+                              : Icons.comment_outlined; // outlined = normal
 
-                    return Icon(commentIcon, size: 16, color: commentColor);
-                  },
-                ),
-              const SizedBox(width: 2),
-              if (showCommentIcon)
-                FutureBuilder<bool>(
-                  future: CommentNotificationTracker().hasNewComments(
-                    message['id'].toString(),
-                    commentCount,
+                      return Icon(commentIcon, size: 16, color: commentColor);
+                    },
                   ),
-                  builder: (context, snapshot) {
-                    final hasNewComments = snapshot.data ?? false;
-                    final Color textColor =
-                        hasNewComments
-                            ? (Theme.of(context).brightness == Brightness.light
-                                ? Colors.indigo[800]!
-                                : Colors.white)
-                            : Theme.of(context).colorScheme.onSurface;
+                const SizedBox(width: 2),
+                if (showCommentIcon)
+                  FutureBuilder<bool>(
+                    future: CommentNotificationTracker().hasNewComments(
+                      message['id'].toString(),
+                      commentCount,
+                    ),
+                    builder: (context, snapshot) {
+                      final hasNewComments = snapshot.data ?? false;
+                      final Color textColor =
+                          hasNewComments
+                              ? (Theme.of(context).brightness ==
+                                      Brightness.light
+                                  ? Colors.indigo[800]!
+                                  : Colors.white)
+                              : Theme.of(context).colorScheme.onSurface;
 
-                    return Text(
-                      commentCount.toString(),
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        fontSize: 12,
-                        color: textColor,
-                        fontWeight:
-                            hasNewComments
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                      ),
-                    );
-                  },
-                ),
-            ],
+                      return Text(
+                        commentCount.toString(),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontSize: 12,
+                          color: textColor,
+                          fontWeight:
+                              hasNewComments
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
           ),
         ),
         const SizedBox(width: 12),
@@ -1195,10 +1202,15 @@ class _MessageCardState extends State<MessageCard> {
           children: [
             GestureDetector(
               onTap: _toggleLike,
-              child: Icon(
-                isLiked ? Icons.thumb_up : Icons.thumb_up_outlined,
-                size: 16,
-                color: customColors.redColor,
+              child: Padding(
+                padding: const EdgeInsets.all(
+                  8.0,
+                ), // Increased for better tap target
+                child: Icon(
+                  isLiked ? Icons.thumb_up : Icons.thumb_up_outlined,
+                  size: 16,
+                  color: customColors.redColor,
+                ),
               ),
             ),
             const SizedBox(width: 2),
@@ -1214,12 +1226,18 @@ class _MessageCardState extends State<MessageCard> {
         //
         Row(
           children: [
-            GestureDetector(
+            InkWell(
+              borderRadius: BorderRadius.circular(16),
               onTap: _toggleLove,
-              child: Icon(
-                isLoved ? Icons.favorite : Icons.favorite_outline,
-                size: 16,
-                color: customColors.redColor,
+              child: Padding(
+                padding: const EdgeInsets.all(
+                  8.0,
+                ), // Increased for better tap target
+                child: Icon(
+                  isLoved ? Icons.favorite : Icons.favorite_outline,
+                  size: 16,
+                  color: customColors.redColor,
+                ),
               ),
             ),
             const SizedBox(width: 2),
@@ -1234,8 +1252,8 @@ class _MessageCardState extends State<MessageCard> {
 
         const SizedBox(width: 12),
         // Share icon (no count)
-        // Share icon (no count)
-        GestureDetector(
+        InkWell(
+          borderRadius: BorderRadius.circular(16),
           onTap: () {
             ShareService.shareMessage(
               context,
@@ -1243,10 +1261,15 @@ class _MessageCardState extends State<MessageCard> {
               widget.apiService.baseUrl,
             );
           },
-          child: Icon(
-            Icons.share_outlined,
-            size: 16,
-            color: Theme.of(context).colorScheme.onSurface,
+          child: Padding(
+            padding: const EdgeInsets.all(
+              8.0,
+            ), // Increased for better tap target
+            child: Icon(
+              Icons.share_outlined,
+              size: 16,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
         ),
       ],
