@@ -24,6 +24,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 import 'group_management_screen.dart';
 import '../screens/messages_home_screen.dart';
 import '../widgets/emoji_message_input.dart';
+import 'package:image_picker/image_picker.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
@@ -347,7 +348,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                 title: const Text('Take a photo'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickDMMedia('photo');
+                  _pickDMMediaFromCamera('photo');
                 },
               ),
               ListTile(
@@ -363,7 +364,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                 title: const Text('Record a video'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickDMMedia('video');
+                  _pickDMMediaFromCamera('video');
                 },
               ),
               ListTile(
@@ -547,6 +548,46 @@ class _DMThreadScreenState extends State<DMThreadScreen>
           SnackBar(
             content: Text('Error picking media: $e'),
             duration: const Duration(seconds: 10),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickDMMediaFromCamera(String type) async {
+    try {
+      XFile? pickedFile;
+
+      if (type == 'photo') {
+        pickedFile = await ImagePicker().pickImage(
+          source: ImageSource.camera,
+          imageQuality: 80,
+          maxWidth: 1920,
+          maxHeight: 1920,
+        );
+      } else if (type == 'video') {
+        pickedFile = await ImagePicker().pickVideo(
+          source: ImageSource.camera,
+          maxDuration: const Duration(minutes: 5),
+        );
+      }
+
+      if (!mounted) return;
+
+      if (pickedFile != null) {
+        File file = File(pickedFile.path);
+        debugPrint('📸 DM Camera ${type} captured: ${file.path}');
+
+        // Process the captured file
+        await _processDMLocalFile(file, type);
+      }
+    } catch (e) {
+      debugPrint('Error picking DM media from camera: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error accessing camera: $e'),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -1227,15 +1268,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         ),
         title: Row(
           children: [
-            // Debug: Log conversation details
-            Builder(
-              builder: (context) {
-                debugPrint(
-                  '🔍 DMThreadScreen: isGroup=${widget.isGroup}, participants=${widget.participants?.length ?? 0}, otherUserName=${widget.otherUserName}',
-                );
-                return const SizedBox.shrink();
-              },
-            ),
             (widget.isGroup && (widget.participants?.length ?? 0) > 1)
                 ? GestureDetector(
                   onTap: () => _navigateToGroupManagement(),
@@ -1303,287 +1335,304 @@ class _DMThreadScreenState extends State<DMThreadScreen>
           ),
         ],
       ),
-      body: GradientBackground(
-        child: Column(
-          children: [
-            // Messages list
-            Expanded(
-              child:
-                  _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : Consumer<DMMessageProvider>(
-                        builder: (context, provider, child) {
-                          final messages = provider.getMessages(
-                            widget.conversationId,
-                          );
-                          return messages.isEmpty
-                              ? Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.message_outlined,
-                                      size: 64,
-                                      color: Colors.white.withAlpha(179),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    const Text(
-                                      'No messages yet',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Start the conversation with ${widget.otherUserName}',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.white.withAlpha(204),
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                ),
-                              )
-                              : Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha(26),
-                                  borderRadius: const BorderRadius.only(
-                                    topLeft: Radius.circular(20),
-                                    topRight: Radius.circular(20),
-                                  ),
-                                ),
-                                child: RefreshIndicator(
-                                  onRefresh: () async {
-                                    await _loadMessages();
-                                  },
-                                  child: ListView.builder(
-                                    controller: _scrollController,
-                                    reverse: true,
-                                    padding: const EdgeInsets.all(16),
-                                    itemCount: messages.length,
-                                    itemBuilder: (context, index) {
-                                      final message = messages[index];
-                                      return _buildMessageRow(message);
-                                    },
-                                  ),
-                                ),
-                              );
-                        },
-                      ),
-            ),
-
-            // Media preview (if any)
-            if (_selectedDMMediaFile != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
+      body: GestureDetector(
+        behavior: HitTestBehavior.deferToChild,
+        onTap: () {
+          FocusScope.of(context).unfocus();
+          if (_emojiPickerState.isVisible) {
+            setState(() {
+              _emojiPickerState = const EmojiPickerState(isVisible: false);
+            });
+          }
+        },
+        child: GradientBackground(
+          child: Column(
+            children: [
+              // Messages list
+              Expanded(
                 child:
-                    _selectedDMMediaType == 'photo'
-                        ? ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Stack(
-                            children: [
-                              SizedBox(
-                                width: MediaQuery.of(context).size.width * 0.7,
-                                height: 200,
-                                child: Image.file(
-                                  _selectedDMMediaFile!,
+                    _isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : Consumer<DMMessageProvider>(
+                          builder: (context, provider, child) {
+                            final messages = provider.getMessages(
+                              widget.conversationId,
+                            );
+                            return messages.isEmpty
+                                ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.message_outlined,
+                                        size: 64,
+                                        color: Colors.white.withAlpha(179),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'No messages yet',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Start the conversation with ${widget.otherUserName}',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.white.withAlpha(204),
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                )
+                                : Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withAlpha(26),
+                                    borderRadius: const BorderRadius.only(
+                                      topLeft: Radius.circular(20),
+                                      topRight: Radius.circular(20),
+                                    ),
+                                  ),
+                                  child: RefreshIndicator(
+                                    onRefresh: () async {
+                                      await _loadMessages();
+                                    },
+                                    child: ListView.builder(
+                                      controller: _scrollController,
+                                      reverse: true,
+                                      padding: const EdgeInsets.all(16),
+                                      itemCount: messages.length,
+                                      itemBuilder: (context, index) {
+                                        final message = messages[index];
+                                        return _buildMessageRow(message);
+                                      },
+                                    ),
+                                  ),
+                                );
+                          },
+                        ),
+              ),
+
+              // Media preview (if any)
+              if (_selectedDMMediaFile != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child:
+                      _selectedDMMediaType == 'photo'
+                          ? ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Stack(
+                              children: [
+                                SizedBox(
                                   width:
                                       MediaQuery.of(context).size.width * 0.7,
                                   height: 200,
-                                  fit: BoxFit.cover,
+                                  child: Image.file(
+                                    _selectedDMMediaFile!,
+                                    width:
+                                        MediaQuery.of(context).size.width * 0.7,
+                                    height: 200,
+                                    fit: BoxFit.cover,
+                                  ),
                                 ),
-                              ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.grey.shade400,
-                                      width: 2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.3,
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.grey.shade400,
+                                        width: 2,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.3,
+                                          ),
+                                          blurRadius: 4,
+                                          spreadRadius: 1,
                                         ),
-                                        blurRadius: 4,
-                                        spreadRadius: 1,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(16),
-                                      onTap: () {
-                                        setState(() {
-                                          _selectedDMMediaFile = null;
-                                          _selectedDMMediaType = null;
-                                        });
-                                      },
-                                      child: const Icon(
-                                        Icons.close,
-                                        color: Colors.red,
-                                        size: 20,
+                                      ],
+                                    ),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(16),
+                                        onTap: () {
+                                          setState(() {
+                                            _selectedDMMediaFile = null;
+                                            _selectedDMMediaType = null;
+                                          });
+                                        },
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.red,
+                                          size: 20,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
+                              ],
+                            ),
+                          )
+                          : _selectedDMMediaType == 'video'
+                          ? ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Stack(
+                              children: [
+                                SizedBox(
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.7,
+                                  height: 200,
+                                  child:
+                                      _dmChewieController != null
+                                          ? Chewie(
+                                            key: const ValueKey(
+                                              'dm-composition-video',
+                                            ),
+                                            controller: _dmChewieController!,
+                                          )
+                                          : _selectedDMVideoThumbnail != null
+                                          ? Image.file(
+                                            _selectedDMVideoThumbnail!,
+                                            width:
+                                                MediaQuery.of(
+                                                  context,
+                                                ).size.width *
+                                                0.7,
+                                            height: 200,
+                                            fit: BoxFit.cover,
+                                          )
+                                          : Container(
+                                            color: Colors.black,
+                                            child: const Center(
+                                              child:
+                                                  CircularProgressIndicator(),
+                                            ),
+                                          ),
+                                ),
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.grey.shade400,
+                                        width: 2,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.3,
+                                          ),
+                                          blurRadius: 4,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(16),
+                                        onTap: () {
+                                          setState(() {
+                                            _selectedDMMediaFile = null;
+                                            _selectedDMMediaType = null;
+                                            _dmVideoController?.dispose();
+                                            _dmChewieController?.dispose();
+                                            _dmVideoController = null;
+                                            _dmChewieController = null;
+                                            _selectedDMVideoThumbnail = null;
+                                          });
+                                        },
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.red,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                          : const SizedBox.shrink(),
+                ),
+
+              // Message input (using reusable component)
+              EmojiMessageInput(
+                controller: _messageController,
+                focusNode: _messageFocusNode,
+                hintText: 'Message ${widget.otherUserName}...',
+                onSend: _sendMessage,
+                onMediaAttach: _showDMMediaPicker,
+                enabled: !_isSending,
+                isDarkMode: Theme.of(context).brightness == Brightness.dark,
+                onEmojiPickerStateChanged: (state) {
+                  setState(() {
+                    _emojiPickerState = state;
+                  });
+                },
+                sendButton:
+                    _isSending
+                        ? Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade400,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
                               ),
-                            ],
+                            ),
                           ),
                         )
-                        : _selectedDMMediaType == 'video'
-                        ? ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Stack(
-                            children: [
-                              SizedBox(
-                                width: MediaQuery.of(context).size.width * 0.7,
-                                height: 200,
-                                child:
-                                    _dmChewieController != null
-                                        ? Chewie(
-                                          key: const ValueKey(
-                                            'dm-composition-video',
-                                          ),
-                                          controller: _dmChewieController!,
-                                        )
-                                        : _selectedDMVideoThumbnail != null
-                                        ? Image.file(
-                                          _selectedDMVideoThumbnail!,
-                                          width:
-                                              MediaQuery.of(
-                                                context,
-                                              ).size.width *
-                                              0.7,
-                                          height: 200,
-                                          fit: BoxFit.cover,
-                                        )
-                                        : Container(
-                                          color: Colors.black,
-                                          child: const Center(
-                                            child: CircularProgressIndicator(),
-                                          ),
-                                        ),
-                              ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.grey.shade400,
-                                      width: 2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.3,
-                                        ),
-                                        blurRadius: 4,
-                                        spreadRadius: 1,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(16),
-                                      onTap: () {
-                                        setState(() {
-                                          _selectedDMMediaFile = null;
-                                          _selectedDMMediaType = null;
-                                          _dmVideoController?.dispose();
-                                          _dmChewieController?.dispose();
-                                          _dmVideoController = null;
-                                          _dmChewieController = null;
-                                          _selectedDMVideoThumbnail = null;
-                                        });
-                                      },
-                                      child: const Icon(
-                                        Icons.close,
-                                        color: Colors.red,
-                                        size: 20,
-                                      ),
-                                    ),
-                                  ),
+                        : ValueListenableBuilder<bool>(
+                          valueListenable: _isSendButtonEnabled,
+                          builder: (context, isEnabled, child) {
+                            return CircleAvatar(
+                              backgroundColor:
+                                  isEnabled
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.grey.shade400,
+                              child: IconButton(
+                                icon: const Icon(
+                                  Icons.send,
+                                  color: Colors.white,
                                 ),
+                                onPressed: isEnabled ? _sendMessage : null,
+                                tooltip: 'Send Message',
                               ),
-                            ],
-                          ),
-                        )
-                        : const SizedBox.shrink(),
+                            );
+                          },
+                        ),
               ),
 
-            // Message input (using reusable component)
-            EmojiMessageInput(
-              controller: _messageController,
-              focusNode: _messageFocusNode,
-              hintText: 'Message ${widget.otherUserName}...',
-              onSend: _sendMessage,
-              onMediaAttach: _showDMMediaPicker,
-              enabled: !_isSending,
-              isDarkMode: Theme.of(context).brightness == Brightness.dark,
-              onEmojiPickerStateChanged: (state) {
-                setState(() {
-                  _emojiPickerState = state;
-                });
-              },
-              sendButton:
-                  _isSending
-                      ? Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade400,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
-                          ),
-                        ),
-                      )
-                      : ValueListenableBuilder<bool>(
-                        valueListenable: _isSendButtonEnabled,
-                        builder: (context, isEnabled, child) {
-                          return CircleAvatar(
-                            backgroundColor:
-                                isEnabled
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Colors.grey.shade400,
-                            child: IconButton(
-                              icon: const Icon(Icons.send, color: Colors.white),
-                              onPressed: isEnabled ? _sendMessage : null,
-                              tooltip: 'Send Message',
-                            ),
-                          );
-                        },
-                      ),
-            ),
-
-            // Emoji picker (when visible)
-            if (_emojiPickerState.isVisible)
-              _emojiPickerState.emojiPickerWidget ?? const SizedBox.shrink(),
-          ],
+              // Emoji picker (when visible)
+              if (_emojiPickerState.isVisible)
+                _emojiPickerState.emojiPickerWidget ?? const SizedBox.shrink(),
+            ],
+          ),
         ),
       ),
     );
