@@ -26,6 +26,8 @@ class WebSocketService extends ChangeNotifier {
   StompClient? _stompClient;
   bool _isConnected = false;
   bool _isConnecting = false;
+  bool _isGracefulDisconnect =
+      false; // Flag to prevent auto-reconnect during manual disconnect
 
   // Store subscriptions by topic
   final Map<String, List<WebSocketMessageHandler>> _subscriptions = {};
@@ -70,7 +72,9 @@ class WebSocketService extends ChangeNotifier {
   /// Enhanced connection with exponential backoff
   Future<void> initialize() async {
     if (_isConnecting || _isConnected) {
-      debugPrint('🔌 WebSocket: Already connecting or connected');
+      debugPrint(
+        '🔌 WebSocket: Already connecting or connected (connecting: $_isConnecting, connected: $_isConnected)',
+      );
       return;
     }
 
@@ -138,9 +142,31 @@ class WebSocketService extends ChangeNotifier {
   /// Enhanced error handler
   void _onError(dynamic error) {
     debugPrint('❌ WebSocket: Connection error: $error');
+
+    // If we're in a graceful disconnect, ignore the error - it's expected
+    if (_isGracefulDisconnect) {
+      debugPrint(
+        '🔌 WebSocket: Ignoring error during graceful disconnect - this is expected',
+      );
+      return;
+    }
+
     _consecutiveFailures++;
     _stopHealthMonitoring();
-    _handleConnectionFailure();
+
+    // Handle specific error types as suggested in debugging guide
+    if (error.toString().contains('EOFException') ||
+        error.toString().contains('Connection reset') ||
+        error.toString().contains('mobile_network_behavior') ||
+        error.toString().contains('Software caused connection abort') ||
+        error.toString().contains('errno = 103')) {
+      debugPrint(
+        '🔌 WebSocket: Detected mobile network behavior - scheduling faster reconnect',
+      );
+      _handleMobileNetworkFailure();
+    } else {
+      _handleConnectionFailure();
+    }
   }
 
   /// Enhanced disconnect handler
@@ -152,8 +178,14 @@ class WebSocketService extends ChangeNotifier {
     _safeNotifyListeners();
     _notifyConnectionListeners(false);
 
-    // Attempt to reconnect with exponential backoff
-    _scheduleReconnectWithBackoff();
+    // Only attempt to reconnect if this wasn't a graceful manual disconnect
+    if (!_isGracefulDisconnect) {
+      debugPrint('🔄 WebSocket: Unexpected disconnect - scheduling reconnect');
+      _scheduleReconnectWithBackoff();
+    } else {
+      debugPrint('🔌 WebSocket: Graceful disconnect - no auto-reconnect');
+      _isGracefulDisconnect = false; // Reset flag
+    }
   }
 
   /// Enhanced failure handler
@@ -168,6 +200,32 @@ class WebSocketService extends ChangeNotifier {
       _scheduleReconnectWithBackoff();
     } else {
       debugPrint('❌ WebSocket: Max retry attempts reached');
+    }
+  }
+
+  /// Handle mobile network behavior failures with faster reconnection
+  void _handleMobileNetworkFailure() {
+    _isConnected = false;
+    _isConnecting = false;
+    _safeNotifyListeners();
+    _notifyConnectionListeners(false);
+
+    // Faster reconnection for mobile network issues (as suggested in debugging guide)
+    _retryCount++;
+    if (_retryCount <= _maxRetries) {
+      debugPrint(
+        '🔌 WebSocket: Mobile network failure - attempting fast reconnect in 1s (attempt $_retryCount/$_maxRetries)',
+      );
+      _reconnectTimer?.cancel();
+      _reconnectTimer = Timer(const Duration(seconds: 1), () {
+        if (!_isConnected && !_isConnecting) {
+          initialize();
+        }
+      });
+    } else {
+      debugPrint(
+        '❌ WebSocket: Max retry attempts reached for mobile network failures',
+      );
     }
   }
 
@@ -474,6 +532,7 @@ class WebSocketService extends ChangeNotifier {
     // Reset state
     _isConnected = false;
     _isConnecting = false;
+    _isGracefulDisconnect = false; // Reset flag
     _retryCount = 0;
     _consecutiveFailures = 0;
     _subscriptions.clear();
@@ -486,6 +545,42 @@ class WebSocketService extends ChangeNotifier {
     _lastHealthCheck = null;
 
     notifyListeners();
+  }
+
+  /// Graceful disconnect without auto-reconnect (for Activity lifecycle management)
+  void disconnectWithoutReconnect() {
+    debugPrint(
+      '🔌 WebSocket: Graceful disconnect without auto-reconnect (current state: connected=$_isConnected, connecting=$_isConnecting)',
+    );
+
+    // Set flag to prevent auto-reconnect in _onDisconnect callback
+    _isGracefulDisconnect = true;
+
+    // Stop all timers
+    _stopHealthMonitoring();
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+
+    // Gracefully disconnect - this will trigger _onDisconnect but with our flag set
+    if (_stompClient != null) {
+      debugPrint('🔌 WebSocket: Deactivating StompClient');
+      _stompClient!.deactivate();
+      _stompClient = null;
+      debugPrint('🔌 WebSocket: StompClient deactivated and set to null');
+    } else {
+      debugPrint('🔌 WebSocket: No StompClient to deactivate');
+    }
+
+    // Update state but keep subscriptions and listeners for reconnection
+    _isConnected = false;
+    _isConnecting = false;
+    // Don't reset _retryCount or _subscriptions - we want to reconnect exactly as we were
+
+    debugPrint(
+      '🔌 WebSocket: State updated (connected=$_isConnected, connecting=$_isConnecting)',
+    );
+    _safeNotifyListeners();
+    _notifyConnectionListeners(false);
   }
 
   /// Get detailed connection status

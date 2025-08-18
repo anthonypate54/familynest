@@ -392,7 +392,7 @@ class MainAppContainerState extends State<MainAppContainer>
   }
 
   // Called after initial screen check completes
-  void _finishInitialization() {
+  Future<void> _finishInitialization() async {
     debugPrint('🎯 MAIN: Initial screen check complete');
   }
 
@@ -416,9 +416,9 @@ class MainAppContainerState extends State<MainAppContainer>
   void _setupInvitationWebSocket(WebSocketService webSocketService) {
     try {
       // Create invitation handler
-      final invitationHandler = (Map<String, dynamic> data) {
+      void invitationHandler(Map<String, dynamic> data) {
         _handleIncomingInvitation(data);
-      };
+      }
 
       // Subscribe to invitation updates
       webSocketService.subscribe(

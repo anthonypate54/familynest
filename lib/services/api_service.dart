@@ -2799,13 +2799,31 @@ Network connection error. Please check:
 
       if (response.statusCode == 201) {
         return jsonDecode(response.body) as Map<String, dynamic>;
+      } else if (response.statusCode == 413) {
+        throw Exception('File too large for upload. Maximum size is 100MB.');
+      } else if (response.statusCode == 403) {
+        throw Exception('Authentication failed. Please try logging in again.');
+      } else if (response.statusCode >= 500) {
+        throw Exception('Server error. Please try again later.');
       } else {
-        debugPrint('❌ Failed to send DM message: ${response.body}');
-        return null;
+        // Try to get error message from response body
+        try {
+          final errorData = jsonDecode(response.body);
+          final errorMessage =
+              errorData['error'] ?? errorData['message'] ?? 'Unknown error';
+          throw Exception('Upload failed: $errorMessage');
+        } catch (_) {
+          throw Exception(
+            'Upload failed (${response.statusCode}): ${response.body}',
+          );
+        }
       }
     } catch (e) {
       debugPrint('💥 Error sending DM message: $e');
-      return null;
+      if (e is Exception) {
+        rethrow; // Re-throw our custom exceptions
+      }
+      throw Exception('Network error: ${e.toString()}');
     }
   }
 

@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../config/app_config.dart';
 import 'local_file_service.dart';
 import 'google_drive_service.dart';
 import 'icloud_service.dart';
+import 'websocket_service.dart';
 
 /// Represents a file from any source (local, cloud, etc.)
 class CloudFile {
@@ -25,8 +27,9 @@ class CloudFile {
     required this.provider,
   });
 
-  /// Check if file size is within our limits (25MB like Google Messages)
-  bool get isWithinSizeLimit => size <= 25 * 1024 * 1024;
+  /// Check if file size is within our limits (100MB)
+  bool get isWithinSizeLimit =>
+      size <= AppConfig.maxFileUploadSizeMB * 1024 * 1024;
 
   /// Get file size in MB for display
   double get sizeInMB => size / (1024 * 1024);
@@ -39,8 +42,8 @@ class CloudFile {
 
 /// Main service for handling file selection from multiple sources
 class CloudFileService {
-  static const int maxFileSizeBytes =
-      25 * 1024 * 1024; // 25MB like Google Messages
+  static int get maxFileSizeBytes =>
+      (AppConfig.maxFileUploadSizeMB * 1024 * 1024).toInt();
 
   // Platform channel for native file access
   static const platform = MethodChannel('com.anthony.familynest/files');
@@ -71,6 +74,24 @@ class CloudFileService {
   Future<List<CloudFile>> browseDocuments() async {
     debugPrint('📄 CloudFileService.browseDocuments called');
 
+    // Android-specific: Handle Activity lifecycle to prevent WebSocket EOFException
+    bool wasWebSocketConnected = false;
+    if (Platform.isAndroid) {
+      final webSocketService = WebSocketService();
+      wasWebSocketConnected = webSocketService.isConnected;
+      if (wasWebSocketConnected) {
+        debugPrint(
+          '🔌 Android: Gracefully disconnecting WebSocket before document picker (connected: ${webSocketService.isConnected})',
+        );
+        webSocketService.disconnectWithoutReconnect();
+        // Longer delay to ensure complete cleanup
+        await Future.delayed(const Duration(milliseconds: 500));
+        debugPrint('🔌 Android: WebSocket disconnect completed');
+      } else {
+        debugPrint('🔌 Android: WebSocket not connected, skipping disconnect');
+      }
+    }
+
     try {
       final result = await platform.invokeMethod('browseDocuments');
       debugPrint('📄 Raw document picker result: $result');
@@ -79,25 +100,35 @@ class CloudFileService {
         debugPrint('📄 Document picker returned: ${result.length} files');
       }
 
+      List<CloudFile> files = [];
       if (result is List) {
-        return result.map<CloudFile>((fileData) {
-          final data = Map<String, dynamic>.from(fileData);
-          return CloudFile(
-            id: data['id'] ?? '',
-            name: data['name'] ?? 'Unknown',
-            size: data['size'] ?? 0,
-            localPath: data['path'],
-            mimeType: data['mimeType'] ?? 'application/octet-stream',
-            provider: 'document_picker',
-          );
-        }).toList(); // Don't filter by size here - let UI handle it
+        files =
+            result.map<CloudFile>((fileData) {
+              final data = Map<String, dynamic>.from(fileData);
+              return CloudFile(
+                id: data['id'] ?? '',
+                name: data['name'] ?? 'Unknown',
+                size: data['size'] ?? 0,
+                localPath: data['path'],
+                mimeType: data['mimeType'] ?? 'application/octet-stream',
+                provider: 'document_picker',
+              );
+            }).toList(); // Don't filter by size here - let UI handle it
       } else {
         debugPrint('📄 Unexpected result type: ${result.runtimeType}');
-        return [];
       }
+
+      return files;
     } catch (e) {
       debugPrint('📄 Error in browseDocuments: $e');
       return [];
+    } finally {
+      // Android-specific: Let app lifecycle handle reconnection to avoid race conditions
+      if (Platform.isAndroid && wasWebSocketConnected) {
+        debugPrint(
+          '🔌 Android: File picker completed - app lifecycle will handle WebSocket reconnection',
+        );
+      }
     }
   }
 
@@ -138,7 +169,8 @@ class CloudFileService {
       case 'icloud':
         return await _icloudService.getFileForUsage(file);
       case 'document_picker':
-        // Document picker files already have direct access via localPath
+        // Document picker files: return path for direct usage
+        // Content URIs will be handled by MultipartFile.fromPath()
         return file.localPath;
       default:
         return null;

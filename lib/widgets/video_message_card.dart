@@ -28,14 +28,14 @@ class VideoMessageCard extends StatefulWidget {
 class VideoMessageCardState extends State<VideoMessageCard> {
   VideoPlayerController? _controller;
   ChewieController? _chewieController;
-  bool _isDisposing = false;
+  bool _isInitialized = false;
+  bool _isPreloaded = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.isCurrentlyPlaying) {
-      _initializeVideo();
-    }
+    // Pre-load the video controller for faster playback
+    _preloadVideo();
   }
 
   @override
@@ -43,340 +43,156 @@ class VideoMessageCardState extends State<VideoMessageCard> {
     super.didUpdateWidget(oldWidget);
     if (widget.isCurrentlyPlaying != oldWidget.isCurrentlyPlaying) {
       if (widget.isCurrentlyPlaying) {
-        _initializeVideo();
+        _initializePlayer();
       } else {
-        _controller?.pause();
-        _disposeControllers();
+        _pauseAndHidePlayer();
       }
     }
   }
 
-  void _initializeVideo() async {
-    if (_isDisposing) return;
-    _disposeControllers();
-
-    final String displayUrl =
+  Future<void> _preloadVideo() async {
+    final String videoUrl =
         widget.videoUrl.startsWith('http')
             ? widget.videoUrl
             : widget.apiService.mediaBaseUrl + widget.videoUrl;
 
-    _controller = VideoPlayerController.networkUrl(Uri.parse(displayUrl));
-
     try {
+      _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
       await _controller!.initialize();
-      if (mounted && !_isDisposing) {
-        _chewieController = ChewieController(
-          videoPlayerController: _controller!,
-          autoPlay: true,
-          looping: false,
-          aspectRatio: _controller!.value.aspectRatio,
-          showControls: true,
-          showOptions: false,
-          showControlsOnInitialize: false,
-          hideControlsTimer: const Duration(seconds: 3),
-          allowFullScreen: true,
-          allowMuting: true,
-          allowPlaybackSpeedChanging:
-              false, // Disable to reduce control bar width
-          // Custom controls that handle overflow properly
-          customControls: const _CustomMaterialControls(),
-          materialProgressColors: ChewieProgressColors(
-            playedColor: Colors.blue,
-            handleColor: Colors.blueAccent,
-            backgroundColor: Colors.grey,
-            bufferedColor: Colors.lightBlue,
-          ),
-        );
-      }
-    } catch (error) {
-      debugPrint('Error initializing video: $error');
-    }
 
-    _controller?.addListener(_onVideoError);
+      if (mounted) {
+        setState(() {
+          _isPreloaded = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error preloading video: $e');
+    }
   }
 
-  void _onVideoError() {
-    if (_controller?.value.hasError == true && mounted && !_isDisposing) {
-      debugPrint('Video error: ${_controller!.value.errorDescription}');
+  Future<void> _initializePlayer() async {
+    if (!_isPreloaded || _controller == null) {
+      // Fallback: preload if not already done
+      await _preloadVideo();
     }
+
+    if (_controller != null && mounted) {
+      _chewieController = ChewieController(
+        videoPlayerController: _controller!,
+        autoPlay: true,
+        looping: false,
+        aspectRatio: _controller!.value.aspectRatio,
+        showControls: true,
+        allowFullScreen: true,
+        allowMuting: true,
+        materialProgressColors: ChewieProgressColors(
+          playedColor: Colors.blue,
+          handleColor: Colors.blueAccent,
+          backgroundColor: Colors.grey,
+          bufferedColor: Colors.lightBlue,
+        ),
+      );
+
+      setState(() {
+        _isInitialized = true;
+      });
+    }
+  }
+
+  void _pauseAndHidePlayer() {
+    _controller?.pause();
+    _chewieController?.dispose();
+    _chewieController = null;
+    setState(() {
+      _isInitialized = false;
+    });
   }
 
   void _disposeControllers() {
-    _controller?.removeListener(_onVideoError); // Remove listener first
-    _chewieController?.dispose(); // Dispose Chewie first
-    _controller?.dispose(); // Then VideoPlayer
-    _chewieController = null;
+    _controller?.dispose();
+    _chewieController?.dispose();
     _controller = null;
-
-    // Reset state if widget is still mounted
-    if (mounted && !_isDisposing) {
-      setState(() {
-        // Reset any local state if needed
-      });
-    }
+    _chewieController = null;
+    _isInitialized = false;
   }
 
   @override
   void dispose() {
-    _isDisposing = true; // Set flag before disposal
-    _disposeControllers(); // Use centralized disposal
+    _disposeControllers();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: GestureDetector(
-        onTap: () {
-          // Call parent callback first (to manage currentlyPlayingVideoId)
-          widget.onTap?.call();
-
-          // Then initialize this video if needed
-          if (_controller == null) {
-            _initializeVideo();
-          }
-        },
-        child: Container(
-          width: double.infinity,
-          height: 200,
-          color: Colors.black,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              if (_controller != null &&
-                  _controller!.value.isInitialized &&
-                  _chewieController != null)
-                Container(
-                  width: double.infinity,
-                  height: 200,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 200,
-                      child: Chewie(
-                        key: ValueKey('playback-${widget.videoUrl}'),
-                        controller: _chewieController!,
-                      ),
-                    ),
-                  ),
-                )
-              else if (widget.thumbnailUrl != null &&
-                  widget.thumbnailUrl!.isNotEmpty)
-                CachedNetworkImage(
-                  imageUrl:
-                      widget.thumbnailUrl!.startsWith('http')
-                          ? widget.thumbnailUrl!
-                          : widget.apiService.mediaBaseUrl +
-                              widget.thumbnailUrl!,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: double.infinity,
-                  placeholder:
-                      (context, url) => Container(
-                        color: Colors.black54,
-                        child: const Center(child: CircularProgressIndicator()),
-                      ),
-                  errorWidget: (context, url, error) {
-                    // Handle fake/corrupted thumbnails gracefully
-                    if (error.toString().contains('Invalid image data') ||
-                        error.toString().contains('Image file is corrupted') ||
-                        error.toString().contains('HttpException') ||
-                        url.contains(
-                          '15',
-                        ) || // catch any suspiciously small file references
-                        error.toString().toLowerCase().contains('format')) {
-                      // Show user-friendly message for corrupted thumbnails
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Video thumbnail temporarily unavailable',
-                              ),
-                              duration: Duration(seconds: 2),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
-                        }
-                      });
-                    }
-                    // Always return the default placeholder, don't log the error
-                    return _buildDefaultVideoPlaceholder();
-                  },
-                )
-              else
-                _buildDefaultVideoPlaceholder(),
-              if (_controller == null || !_controller!.value.isInitialized)
-                Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.black38,
-                    shape: BoxShape.circle,
-                  ),
-                  padding: const EdgeInsets.all(8),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    color: Colors.white,
-                    size: 40,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDefaultVideoPlaceholder() {
     return Container(
-      width: 200,
+      width: double.infinity,
       height: 200,
-      color: Colors.black,
-      child: const Center(
-        child: Icon(Icons.videocam, color: Colors.white, size: 40),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(6),
       ),
-    );
-  }
-}
-
-/// Custom controls widget that properly handles overflow in constrained spaces
-class _CustomMaterialControls extends StatefulWidget {
-  const _CustomMaterialControls();
-
-  @override
-  State<_CustomMaterialControls> createState() =>
-      _CustomMaterialControlsState();
-}
-
-class _CustomMaterialControlsState extends State<_CustomMaterialControls> {
-  ChewieController? _chewieController;
-  VideoPlayerController? _videoController;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final newChewieController = ChewieController.of(context);
-    if (newChewieController != _chewieController) {
-      _removeListener();
-      _chewieController = newChewieController;
-      _videoController = _chewieController?.videoPlayerController;
-      _addListener();
-    }
-  }
-
-  @override
-  void dispose() {
-    _removeListener();
-    super.dispose();
-  }
-
-  void _addListener() {
-    _videoController?.addListener(_videoListener);
-  }
-
-  void _removeListener() {
-    _videoController?.removeListener(_videoListener);
-  }
-
-  void _videoListener() {
-    if (mounted) {
-      setState(() {
-        // This will rebuild the widget with updated video state
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final chewieController = _chewieController;
-    final videoController = _videoController;
-    return Container(
-      height: 30,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.transparent, Colors.black54],
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Play/Pause button (fixed width)
-          SizedBox(
-            width: 30,
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              icon: Icon(
-                videoController?.value.isPlaying == true
-                    ? Icons.pause
-                    : Icons.play_arrow,
-                color: Colors.white,
-                size: 18,
-              ),
-              onPressed: () {
-                if (videoController?.value.isPlaying == true) {
-                  videoController?.pause();
-                } else {
-                  videoController?.play();
-                }
-              },
-            ),
-          ),
-          // Progress bar (flexible - takes remaining space)
-          Expanded(
-            child: Container(
-              height: 4,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-              child: FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: 0.3, // Example progress
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.blue,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child:
+            _isInitialized && _chewieController != null
+                ? Chewie(controller: _chewieController!)
+                : Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Show thumbnail if available
+                    if (widget.thumbnailUrl != null &&
+                        widget.thumbnailUrl!.isNotEmpty)
+                      CachedNetworkImage(
+                        imageUrl:
+                            widget.thumbnailUrl!.startsWith('http')
+                                ? widget.thumbnailUrl!
+                                : widget.apiService.mediaBaseUrl +
+                                    widget.thumbnailUrl!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        placeholder:
+                            (context, url) => Container(
+                              color: Colors.black54,
+                              child: const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            ),
+                        errorWidget:
+                            (context, url, error) => Container(
+                              color: Colors.black54,
+                              child: const Icon(
+                                Icons.play_circle_outline,
+                                color: Colors.white,
+                                size: 50,
+                              ),
+                            ),
+                      )
+                    else
+                      Container(
+                        color: Colors.black54,
+                        child: const Icon(
+                          Icons.play_circle_outline,
+                          color: Colors.white,
+                          size: 50,
+                        ),
+                      ),
+                    // Play button overlay
+                    if (!_isInitialized)
+                      Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.black38,
+                          shape: BoxShape.circle,
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: const Icon(
+                          Icons.play_arrow,
+                          color: Colors.white,
+                          size: 40,
+                        ),
+                      ),
+                  ],
                 ),
-              ),
-            ),
-          ),
-          // Mute button (fixed width)
-          SizedBox(
-            width: 30,
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              icon: Icon(
-                videoController?.value.volume == 0
-                    ? Icons.volume_off
-                    : Icons.volume_up,
-                color: Colors.white,
-                size: 18,
-              ),
-              onPressed: () {
-                final currentVolume = videoController?.value.volume ?? 1.0;
-                videoController?.setVolume(currentVolume == 0 ? 1.0 : 0.0);
-              },
-            ),
-          ),
-          // Fullscreen button (fixed width)
-          SizedBox(
-            width: 30,
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              icon: const Icon(Icons.fullscreen, color: Colors.white, size: 18),
-              onPressed: () {
-                chewieController?.enterFullScreen();
-              },
-            ),
-          ),
-        ],
       ),
     );
   }
