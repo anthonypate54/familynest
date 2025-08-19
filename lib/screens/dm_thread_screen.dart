@@ -88,9 +88,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   // Emoji picker state (managed by reusable component)
   EmojiPickerState _emojiPickerState = const EmojiPickerState(isVisible: false);
 
-  // Send button state
-  final ValueNotifier<bool> _isSendButtonEnabled = ValueNotifier<bool>(false);
-
   @override
   void initState() {
     super.initState();
@@ -100,8 +97,9 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
     // Add text controller listener for send button state
     _messageController.addListener(() {
-      final hasText = _messageController.text.trim().isNotEmpty;
-      _isSendButtonEnabled.value = hasText;
+      setState(() {
+        // Re-trigger build for send button state changes
+      });
     });
 
     // Store WebSocket service reference early
@@ -228,7 +226,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     _messageController.dispose();
     _scrollController.dispose();
     _messageFocusNode.dispose();
-    _isSendButtonEnabled.dispose();
+
     // Clean up DM media controllers
     _dmVideoController?.dispose();
     _dmChewieController?.dispose();
@@ -1660,52 +1658,12 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                     onMediaAttach: _showDMMediaPicker,
                     enabled: !_isSending && !_isProcessingMedia,
                     isDarkMode: Theme.of(context).brightness == Brightness.dark,
+                    sendButton: _buildCustomSendButton(),
                     onEmojiPickerStateChanged: (state) {
                       setState(() {
                         _emojiPickerState = state;
                       });
                     },
-                    sendButton:
-                        _isSending || _isProcessingMedia
-                            ? Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade400,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              ),
-                            )
-                            : ValueListenableBuilder<bool>(
-                              valueListenable: _isSendButtonEnabled,
-                              builder: (context, isEnabled, child) {
-                                return CircleAvatar(
-                                  backgroundColor:
-                                      isEnabled
-                                          ? Theme.of(
-                                            context,
-                                          ).colorScheme.primary
-                                          : Colors.grey.shade400,
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.send,
-                                      color: Colors.white,
-                                    ),
-                                    onPressed: isEnabled ? _sendMessage : null,
-                                    tooltip: 'Send Message',
-                                  ),
-                                );
-                              },
-                            ),
                   ),
 
                   // Emoji picker (when visible)
@@ -2170,5 +2128,49 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       );
       return messageContent;
     }
+  }
+
+  // Build custom send button with circular progress indicator
+  Widget _buildCustomSendButton() {
+    final hasText = _messageController.text.trim().isNotEmpty;
+    final isEnabled = !_isSending && !_isProcessingMedia && hasText;
+    final isProcessing = _isProcessingMedia;
+
+    return CircleAvatar(
+      backgroundColor:
+          isEnabled || isProcessing
+              ? Theme.of(context).colorScheme.primary
+              : Colors.grey.shade400,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Single progress indicator with background track
+          if (isProcessing)
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                value:
+                    null, // Indeterminate for now - we can make this determinate later
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                backgroundColor: Colors.white.withValues(alpha: 0.3),
+              ),
+            ),
+
+          // Send icon
+          IconButton(
+            icon: Icon(
+              isProcessing ? Icons.upload : Icons.send,
+              color: Colors.white,
+              size: 20,
+            ),
+            onPressed: isEnabled ? _sendMessage : null,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ],
+      ),
+    );
   }
 }
