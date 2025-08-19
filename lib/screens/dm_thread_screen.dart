@@ -2023,12 +2023,20 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                           child: Container(
                             width: double.infinity,
                             height: 200,
-                            child: Image.network(
-                              fullMediaUrl,
+                            child: CachedNetworkImage(
+                              imageUrl: fullMediaUrl,
                               fit: BoxFit.cover,
-                              cacheWidth: 400,
-                              cacheHeight: 300,
-                              errorBuilder: (context, error, stackTrace) {
+                              cacheKey: fullMediaUrl,
+                              placeholder:
+                                  (context, url) => Container(
+                                    color: Colors.grey[300],
+                                    width: double.infinity,
+                                    height: 200,
+                                    child: const Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  ),
+                              errorWidget: (context, url, error) {
                                 return Container(
                                   width: double.infinity,
                                   height: 200,
