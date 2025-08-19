@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+
 import '../services/api_service.dart';
 import 'family_management_screen.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
 import 'package:intl/intl.dart';
-import 'dart:io';
+
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import '../services/service_provider.dart';
 import '../utils/page_transitions.dart';
@@ -42,15 +42,14 @@ class ProfileScreenState extends State<ProfileScreen>
   final ImagePicker _picker = ImagePicker();
   late AnimationController _animationController;
   Animation<double>? _animation;
-  XFile? _photoFile;
   Future<User?>? _userDataFuture;
-  final _profileKey = GlobalKey<State>();
-  late BottomNavigationController _navigationController;
 
   // Tab controller for Profile/Subscription tabs
   late TabController _tabController;
 
   Timer? _saveTimer;
+  String? _pendingSaveField;
+  String? _pendingSaveValue;
 
   @override
   void initState() {
@@ -68,17 +67,43 @@ class ProfileScreenState extends State<ProfileScreen>
     _animationController.forward();
 
     // Use the provided controller or create a new one
-    _navigationController =
-        widget.navigationController ?? BottomNavigationController();
+    // widget.navigationController ?? BottomNavigationController(); // Unused
     _userDataFuture = _loadUser();
+  }
+
+  @override
+  void deactivate() {
+    // Save any pending changes immediately when navigating away
+    _forceSavePendingChanges();
+    super.deactivate();
   }
 
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _saveTimer = null;
     _tabController.dispose();
     _animationController.dispose();
     super.dispose();
+  }
+
+  // Force save any pending changes immediately (for navigation away scenarios)
+  void _forceSavePendingChanges() {
+    if (_saveTimer?.isActive == true &&
+        _pendingSaveField != null &&
+        _pendingSaveValue != null) {
+      _saveTimer?.cancel();
+      debugPrint(
+        '💾 FORCE SAVING pending changes due to navigation: $_pendingSaveField = "$_pendingSaveValue"',
+      );
+
+      // Execute the save immediately (fire and forget)
+      _executeSave(_pendingSaveField!, _pendingSaveValue!);
+
+      // Clear pending data
+      _pendingSaveField = null;
+      _pendingSaveValue = null;
+    }
   }
 
   Future<User?> _loadUser() async {
@@ -89,13 +114,10 @@ class ProfileScreenState extends State<ProfileScreen>
       ).getUserById(widget.userId);
       debugPrint('User data loaded: $userMap');
 
-      if (userMap != null) {
-        final user = User.fromJson(userMap);
-        // For now, create a mock subscription for demo purposes
-        final mockSubscription = Subscription.createTrial(user.id);
-        return user.copyWith(subscription: mockSubscription);
-      }
-      return null;
+      final user = User.fromJson(userMap);
+      // For now, create a mock subscription for demo purposes
+      final mockSubscription = Subscription.createTrial(user.id);
+      return user.copyWith(subscription: mockSubscription);
     } catch (e) {
       debugPrint('Error loading user: $e');
       return null;
@@ -166,6 +188,7 @@ class ProfileScreenState extends State<ProfileScreen>
     );
   }
 
+  // ignore: unused_element
   Future<void> _sendInvitation() async {
     try {
       // First check if user has a family
@@ -535,6 +558,7 @@ class ProfileScreenState extends State<ProfileScreen>
   }
 
   // Show dialog to edit demographics
+  // ignore: unused_element
   Future<void> _showDemographicsDialog(Map<String, dynamic> user) async {
     final TextEditingController firstNameController = TextEditingController(
       text: user['firstName'] as String? ?? '',
@@ -590,6 +614,7 @@ class ProfileScreenState extends State<ProfileScreen>
     // Format for date input and display
     final DateFormat dateFormat = DateFormat('yyyy-MM-dd');
 
+    // ignore: unused_element
     Future<void> _selectDate(BuildContext context) async {
       // Parse existing date or use current date
       DateTime initialDate;
@@ -794,6 +819,7 @@ class ProfileScreenState extends State<ProfileScreen>
   }
 
   // Show a message about the invitation backend issue
+  // ignore: unused_element
   void _showInvitationBackendError() {
     showDialog(
       context: context,
@@ -850,6 +876,7 @@ class ProfileScreenState extends State<ProfileScreen>
   }
 
   // Extract the app bar without tabs
+  // ignore: unused_element
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       automaticallyImplyLeading: false,
@@ -1153,6 +1180,7 @@ class ProfileScreenState extends State<ProfileScreen>
   }
 
   // Helper method to redirect to login
+  // ignore: unused_element
   void _redirectToLogin() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       slidePushAndRemoveUntil(context, LoginScreen(), (route) => false);
@@ -1488,35 +1516,52 @@ class ProfileScreenState extends State<ProfileScreen>
     // Cancel any existing timer
     _saveTimer?.cancel();
 
+    // Store pending save data for force save scenarios
+    _pendingSaveField = field;
+    _pendingSaveValue = value;
+
     // Start a new timer to save after 2 seconds of inactivity
     _saveTimer = Timer(const Duration(seconds: 2), () async {
-      try {
-        // Create the update data map
-        final updateData = {field: value};
-
-        // Call the API to save the field silently
-        await Provider.of<ApiService>(
-          context,
-          listen: false,
-        ).updateDemographics(widget.userId, updateData);
-
-        // No UI feedback - completely seamless
-      } catch (e) {
-        debugPrint('Error saving field $field: $e');
-        // Only show error messages, no success messages
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Error saving: ${e.toString().contains('Exception:') ? e.toString().split('Exception: ')[1] : e.toString()}',
-              ),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      }
+      await _executeSave(field, value);
+      // Clear pending data after successful timer execution
+      _pendingSaveField = null;
+      _pendingSaveValue = null;
     });
+  }
+
+  // Execute the save operation (used by both timer and force save)
+  Future<void> _executeSave(String field, String value) async {
+    try {
+      // Create the update data map
+      final updateData = {field: value};
+      debugPrint(
+        '💾 SAVING FIELD: $field = "$value" for userId: ${widget.userId}',
+      );
+      debugPrint('💾 Update data: $updateData');
+
+      // Call the API to save the field silently
+      final response = await Provider.of<ApiService>(
+        context,
+        listen: false,
+      ).updateDemographics(widget.userId, updateData);
+      debugPrint('💾 SAVE RESPONSE: $response');
+
+      // No UI feedback - completely seamless
+    } catch (e) {
+      debugPrint('❌ Error saving field $field: $e');
+      // Only show error messages, no success messages
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error saving: ${e.toString().contains('Exception:') ? e.toString().split('Exception: ')[1] : e.toString()}',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 }
 

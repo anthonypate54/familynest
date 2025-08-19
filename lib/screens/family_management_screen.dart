@@ -246,7 +246,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       final apiService = Provider.of<ApiService>(context, listen: false);
       final userSettings = await apiService.getCurrentUserSettings();
 
-      if (userSettings != null && mounted) {
+      if (mounted) {
         setState(() {
           // Now we have individual fields for each demographic setting
           _demographicsSettings = {
@@ -381,7 +381,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         setState(() {
           // Start with global settings
           _notificationPreferences = {
-            'newMemberAlerts': userSettings?['newMemberNotifications'] ?? true,
+            'newMemberAlerts': userSettings['newMemberNotifications'] ?? true,
             // invitationNotifications removed - now always enabled as system notifications
           };
 
@@ -2510,7 +2510,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         return;
       }
 
-      final response = await Provider.of<ApiService>(
+      await Provider.of<ApiService>(
         context,
         listen: false,
       ).inviteUserToFamily(selectedFamily.id, email);

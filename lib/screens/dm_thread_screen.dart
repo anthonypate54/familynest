@@ -1742,6 +1742,8 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
   // Clean header avatar for app bar (no margins or shadows)
   Widget _buildHeaderAvatar(String? senderPhoto, String displayName) {
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
     return CircleAvatar(
       radius: 16,
       backgroundColor: _getAvatarColor(displayName),
@@ -1749,7 +1751,10 @@ class _DMThreadScreenState extends State<DMThreadScreen>
           senderPhoto != null && senderPhoto.isNotEmpty
               ? ClipOval(
                 child: CachedNetworkImage(
-                  imageUrl: senderPhoto,
+                  imageUrl:
+                      senderPhoto.startsWith('http')
+                          ? senderPhoto
+                          : '${apiService.mediaBaseUrl}$senderPhoto',
                   fit: BoxFit.cover,
                   width: 32,
                   height: 32,
