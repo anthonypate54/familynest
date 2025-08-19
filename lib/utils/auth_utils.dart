@@ -72,7 +72,10 @@ class AuthUtils {
       // Clear message cache to prevent data leaks between users
       if (context.mounted) {
         try {
-          final messageProvider = Provider.of<MessageProvider>(context, listen: false);
+          final messageProvider = Provider.of<MessageProvider>(
+            context,
+            listen: false,
+          );
           messageProvider.clear();
           debugPrint('✅ Cleared MessageProvider cache');
         } catch (e) {

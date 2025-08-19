@@ -124,75 +124,78 @@ class VideoMessageCardState extends State<VideoMessageCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 200,
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child:
-            _isInitialized && _chewieController != null
-                ? Chewie(controller: _chewieController!)
-                : Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Show thumbnail if available
-                    if (widget.thumbnailUrl != null &&
-                        widget.thumbnailUrl!.isNotEmpty)
-                      CachedNetworkImage(
-                        imageUrl:
-                            widget.thumbnailUrl!.startsWith('http')
-                                ? widget.thumbnailUrl!
-                                : widget.apiService.mediaBaseUrl +
-                                    widget.thumbnailUrl!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                        placeholder:
-                            (context, url) => Container(
-                              color: Colors.black54,
-                              child: const Center(
-                                child: CircularProgressIndicator(),
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: Container(
+        width: double.infinity,
+        height: 200,
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child:
+              _isInitialized && _chewieController != null
+                  ? Chewie(controller: _chewieController!)
+                  : Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Show thumbnail if available
+                      if (widget.thumbnailUrl != null &&
+                          widget.thumbnailUrl!.isNotEmpty)
+                        CachedNetworkImage(
+                          imageUrl:
+                              widget.thumbnailUrl!.startsWith('http')
+                                  ? widget.thumbnailUrl!
+                                  : widget.apiService.mediaBaseUrl +
+                                      widget.thumbnailUrl!,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                          placeholder:
+                              (context, url) => Container(
+                                color: Colors.black54,
+                                child: const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
                               ),
-                            ),
-                        errorWidget:
-                            (context, url, error) => Container(
-                              color: Colors.black54,
-                              child: const Icon(
-                                Icons.play_circle_outline,
-                                color: Colors.white,
-                                size: 50,
+                          errorWidget:
+                              (context, url, error) => Container(
+                                color: Colors.black54,
+                                child: const Icon(
+                                  Icons.play_circle_outline,
+                                  color: Colors.white,
+                                  size: 50,
+                                ),
                               ),
-                            ),
-                      )
-                    else
-                      Container(
-                        color: Colors.black54,
-                        child: const Icon(
-                          Icons.play_circle_outline,
-                          color: Colors.white,
-                          size: 50,
+                        )
+                      else
+                        Container(
+                          color: Colors.black54,
+                          child: const Icon(
+                            Icons.play_circle_outline,
+                            color: Colors.white,
+                            size: 50,
+                          ),
                         ),
-                      ),
-                    // Play button overlay
-                    if (!_isInitialized)
-                      Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.black38,
-                          shape: BoxShape.circle,
+                      // Play button overlay
+                      if (!_isInitialized)
+                        Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.black38,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(12),
+                          child: const Icon(
+                            Icons.play_arrow,
+                            color: Colors.white,
+                            size: 40,
+                          ),
                         ),
-                        padding: const EdgeInsets.all(12),
-                        child: const Icon(
-                          Icons.play_arrow,
-                          color: Colors.white,
-                          size: 40,
-                        ),
-                      ),
-                  ],
-                ),
+                    ],
+                  ),
+        ),
       ),
     );
   }

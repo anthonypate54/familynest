@@ -257,7 +257,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       if (_selectedDMMediaFile != null) {
         // Send message with media using DMController's new postMessage endpoint
         debugPrint(
-          '🚀 DM: Sending media message, type: ${_selectedDMMediaType}, path: ${_selectedDMMediaFile!.path}',
+          '🚀 DM: Sending media message, type: $_selectedDMMediaType, path: ${_selectedDMMediaFile!.path}',
         );
         result = await apiService.sendDMMessage(
           conversationId: widget.conversationId,
@@ -464,6 +464,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
               if (action == VideoSizeAction.chooseDifferent) {
                 _showDMMediaPicker();
               } else if (action == VideoSizeAction.shareAsLink) {
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
@@ -561,8 +562,15 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         }
 
         // SMALL FILE (any source) - process normally
-        debugPrint('🔍 DM: Small file - processing normally');
-        await _processDMLocalFile(File(cloudFile.localPath!), type);
+        // Detect actual file type from MIME type, not from button pressed
+        String actualType = type; // Default to button pressed
+        if (cloudFile.mimeType.startsWith('image/')) {
+          actualType = 'photo';
+        } else if (cloudFile.mimeType.startsWith('video/')) {
+          actualType = 'video';
+        }
+
+        await _processDMLocalFile(file, actualType);
       }
     } catch (e) {
       if (e is PlatformException && e.code == 'unknown_path') {
@@ -606,7 +614,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
       if (pickedFile != null) {
         File file = File(pickedFile.path);
-        debugPrint('📸 DM Camera ${type} captured: ${file.path}');
+        debugPrint('📸 DM Camera $type captured: ${file.path}');
 
         // Process the captured file
         await _processDMLocalFile(file, type);
@@ -704,7 +712,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   }
 
   Future<void> _processDMLocalFile(File file, String type) async {
-    debugPrint('🔄 DM: Starting media processing for ${type}');
+    debugPrint('🔄 DM: Starting media processing for $type');
     setState(() {
       _isProcessingMedia = true;
     });
@@ -1329,7 +1337,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.3),
+                        color: Colors.white.withValues(alpha: 0.3),
                         width: 1.5,
                       ),
                     ),
@@ -1351,7 +1359,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                         Icon(
                           Icons.group,
                           size: 14,
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha: 0.8),
                         ),
                         const SizedBox(width: 4),
                       ],
@@ -1676,7 +1684,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
               // Loading overlay for media processing
               if (_isProcessingMedia)
                 Container(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   child: const Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -1983,7 +1991,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                         },
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Container(
+                          child: SizedBox(
                             width: double.infinity,
                             height: 200,
                             child: CachedNetworkImage(

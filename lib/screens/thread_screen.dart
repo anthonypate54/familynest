@@ -23,6 +23,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../config/app_config.dart';
 import '../dialogs/large_video_dialog.dart';
 import '../services/share_service.dart';
+import '../services/cloud_file_service.dart';
 import '../services/comment_notification_tracker.dart';
 import '../widgets/emoji_message_input.dart';
 
@@ -375,74 +376,70 @@ class _ThreadScreenState extends State<ThreadScreen>
 
   Future<void> _pickMedia(String type) async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: type == 'photo' ? FileType.image : FileType.video,
-        allowMultiple: false,
-        withData: false, // Don't download large cloud files to memory
-      );
+      List<CloudFile> files = await CloudFileService().browseDocuments();
 
       if (!mounted) return;
 
-      if (result != null) {
-        PlatformFile file = result.files.first;
+      if (files.isNotEmpty) {
+        CloudFile cloudFile = files.first;
 
         // Debug output
-        debugPrint('🔍 Picked file path: ${file.path}');
-        debugPrint('🔍 Picked file name: ${file.name}');
-        debugPrint('🔍 Picked file size: ${file.size}');
-        debugPrint('🔍 File identifier: ${file.identifier}');
+        debugPrint('🔍 Picked file path: ${cloudFile.localPath}');
+        debugPrint('🔍 Picked file name: ${cloudFile.name}');
+        debugPrint('🔍 Picked file size: ${cloudFile.size}');
+        debugPrint('🔍 File provider: ${cloudFile.provider}');
 
-        // Determine file source
-        bool isCloudFile =
-            file.identifier != null &&
-            file.identifier!.startsWith('content://') &&
-            !file.identifier!.contains('com.android.providers.media.documents');
-
-        if (isCloudFile) {
-          debugPrint('🔍 ☁️ CLOUD FILE detected (cached)');
-        } else {
-          debugPrint('🔍 ✅ LOCAL FILE detected');
+        // Detect actual file type from MIME type
+        String actualType = type;
+        if (cloudFile.mimeType.startsWith('image/')) {
+          actualType = 'photo';
+        } else if (cloudFile.mimeType.startsWith('video/')) {
+          actualType = 'video';
         }
 
-        if (type == 'video') {
-          final int fileSizeBytes = file.size;
+        if (actualType == 'video') {
+          final int fileSizeBytes = cloudFile.size;
           final double fileSizeMB = fileSizeBytes / (1024 * 1024);
           debugPrint(
             '🔍 File size: ${fileSizeMB}MB, limit: ${AppConfig.maxFileUploadSizeMB}MB',
           );
 
           if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
-            // LARGE FILE - different handling based on source
-            if (isCloudFile) {
-              // LARGE CLOUD FILE (cached) - handle as external video
-              debugPrint('🔍 Large cloud file - handling as external video');
-              await _processExternalVideo(File(file.path!));
-            } else {
-              // LARGE LOCAL FILE - show upload dialog
-              debugPrint('🔍 Large local file - showing upload dialog');
-              final action = await LargeVideoDialog.show(context, fileSizeMB);
+            // LARGE FILE - show upload dialog
+            debugPrint('🔍 Large file detected - showing upload dialog');
+            final action = await LargeVideoDialog.show(context, fileSizeMB);
 
-              if (action == VideoSizeAction.chooseDifferent) {
-                _showMediaPicker();
-              } else if (action == VideoSizeAction.shareAsLink) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Upload your video to Google Drive or Dropbox first, then select it from there.',
-                    ),
-                    duration: Duration(seconds: 4),
+            if (action == VideoSizeAction.chooseDifferent) {
+              _showMediaPicker();
+            } else if (action == VideoSizeAction.shareAsLink) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Upload your video to Google Drive or Dropbox first, then select it from there.',
                   ),
-                );
-                _showMediaPicker();
-              }
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              _showMediaPicker();
             }
             return; // Exit early for large files
           }
         }
 
+        // Check if we have a local path
+        if (cloudFile.localPath == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to access selected file'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+
         // SMALL FILE (any source) - process normally
         debugPrint('🔍 Small file - processing normally');
-        await _processLocalFile(File(file.path!), type);
+        await _processLocalFile(File(cloudFile.localPath!), actualType);
       }
     } catch (e) {
       if (e is PlatformException && e.code == 'unknown_path') {
@@ -562,6 +559,13 @@ class _ThreadScreenState extends State<ThreadScreen>
     setState(() {
       _selectedMediaFile = file;
       _selectedMediaType = type;
+    });
+
+    // Auto-scroll to show the media preview
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        _scrollToBottom();
+      }
     });
   }
 
@@ -786,6 +790,64 @@ class _ThreadScreenState extends State<ThreadScreen>
     }
   }
 
+  void _onVideoTap(String messageId) {
+    setState(() {
+      if (_currentlyPlayingVideoId == messageId) {
+        _currentlyPlayingVideoId = null; // Stop playing if already playing
+      } else {
+        _currentlyPlayingVideoId = messageId; // Start playing this video
+      }
+    });
+  }
+
+  // Build custom send button with circular progress indicator
+  Widget _buildCustomSendButton() {
+    final hasText = _messageController.text.trim().isNotEmpty;
+    final isEnabled = !_isSending && hasText;
+    final isProcessing = _isSending;
+
+    return CircleAvatar(
+      backgroundColor:
+          isEnabled || isProcessing
+              ? Theme.of(context).colorScheme.primary
+              : Colors.grey.shade400,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Single progress indicator with background track
+          if (isProcessing)
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                value: null, // Indeterminate for now
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                backgroundColor: Colors.white.withValues(alpha: 0.3),
+              ),
+            ),
+
+          // Send icon
+          IconButton(
+            icon: Icon(
+              isProcessing ? Icons.upload : Icons.send,
+              color: Colors.white,
+              size: 20,
+            ),
+            onPressed:
+                isEnabled
+                    ? () => _postComment(
+                      Provider.of<ApiService>(context, listen: false),
+                    )
+                    : null,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _postComment(ApiService apiService) async {
     // Prevent duplicate sends
     if (_isSending) {
@@ -961,9 +1023,7 @@ class _ThreadScreenState extends State<ThreadScreen>
                                 currentUserId: widget.userId.toString(),
                                 onTap: (message) {
                                   if (message.mediaType == 'video') {
-                                    setState(() {
-                                      _currentlyPlayingVideoId = message.id;
-                                    });
+                                    _onVideoTap(message.id);
                                   }
                                 },
                                 currentlyPlayingVideoId:
@@ -983,11 +1043,51 @@ class _ThreadScreenState extends State<ThreadScreen>
                       _selectedMediaType == 'photo'
                           ? ClipRRect(
                             borderRadius: BorderRadius.circular(6),
-                            child: Image.file(
-                              _selectedMediaFile!,
-                              width: MediaQuery.of(context).size.width * 0.7,
-                              height: 200,
-                              fit: BoxFit.cover,
+                            child: Stack(
+                              children: [
+                                Image.file(
+                                  _selectedMediaFile!,
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.7,
+                                  height: 200,
+                                  fit: BoxFit.cover,
+                                ),
+                                // Close button
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.black,
+                                        size: 18,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                      splashRadius: 18,
+                                      onPressed: () {
+                                        setState(() {
+                                          _selectedMediaFile = null;
+                                          _selectedMediaType = null;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           )
                           : _selectedMediaType == 'video'
@@ -1050,45 +1150,7 @@ class _ThreadScreenState extends State<ThreadScreen>
           _emojiPickerState = state;
         });
       },
-      sendButton:
-          _isSending
-              ? Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  shape: BoxShape.circle,
-                ),
-                child: const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                ),
-              )
-              : ValueListenableBuilder<bool>(
-                valueListenable: _isSendButtonEnabled,
-                builder: (context, isEnabled, child) {
-                  return CircleAvatar(
-                    backgroundColor:
-                        isEnabled
-                            ? Theme.of(context).primaryColor
-                            : Colors.grey.shade400,
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white),
-                      onPressed:
-                          isEnabled
-                              ? () => _postComment(
-                                Provider.of<ApiService>(context, listen: false),
-                              )
-                              : null,
-                      tooltip: 'Send Comment',
-                    ),
-                  );
-                },
-              ),
+      sendButton: _buildCustomSendButton(),
     );
   }
 }
