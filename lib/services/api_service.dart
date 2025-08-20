@@ -2296,37 +2296,7 @@ Network connection error. Please check:
     }
   }
 
-  // Mark a message as viewed
-  Future<Map<String, dynamic>> markMessageAsViewed(int? messageId) async {
-    if (messageId == null) {
-      debugPrint('Error: Cannot mark message as viewed - Message ID is null');
-      return {'error': 'Message ID is null'};
-    }
-
-    debugPrint('Marking message $messageId as viewed');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/$messageId/views');
-
-      final response = await _makeAuthenticatedRequest(
-        'POST',
-        url,
-        headers: {'Content-Type': 'application/json'},
-      );
-      debugPrint(
-        'Mark message as viewed response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to mark message as viewed: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error marking message as viewed: $e');
-      return {'error': e.toString()};
-    }
-  }
+  // Removed markMessageAsViewed (performance optimization)
 
   // Remove a reaction from a message
   Future<bool> removeReaction(int? messageId, String reactionType) async {
@@ -3660,57 +3630,7 @@ Network connection error. Please check:
     }
   }
 
-  // Mark multiple messages as viewed in a single API call (batch operation)
-  Future<Map<String, dynamic>> markMultipleMessagesAsViewed(
-    List<int> messageIds,
-  ) async {
-    if (messageIds.isEmpty) {
-      debugPrint(
-        'Error: Cannot mark messages as viewed - Message IDs list is empty',
-      );
-      return {'error': 'Message IDs list is empty'};
-    }
-
-    if (messageIds.length > 50) {
-      debugPrint('Error: Cannot mark more than 50 messages at once');
-      return {'error': 'Too many message IDs'};
-    }
-
-    debugPrint(
-      'Batch marking ${messageIds.length} messages as viewed: $messageIds',
-    );
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/batch-views');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final requestBody = {'messageIds': messageIds};
-
-      final response = await client.post(
-        url,
-        headers: headers,
-        body: jsonEncode(requestBody),
-      );
-
-      debugPrint(
-        'Batch mark messages as viewed response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception(
-          'Failed to batch mark messages as viewed: ${response.body}',
-        );
-      }
-    } catch (e) {
-      debugPrint('Error batch marking messages as viewed: $e');
-      return {'error': e.toString()};
-    }
-  }
+  // Removed markMultipleMessagesAsViewed (performance optimization)
 
   // Get unread message count for user (optionally for specific family)
   Future<Map<String, dynamic>> getUnreadMessageCount({int? familyId}) async {
@@ -3777,68 +3697,16 @@ Network connection error. Please check:
     }
   }
 
-  // =================================
-  // DM Message View Tracking Methods
-  // =================================
+  // Removed DM view tracking methods (performance optimization)
 
-  // Mark multiple DM messages as viewed in a single API call (batch operation)
-  Future<Map<String, dynamic>> markMultipleDMMessagesAsViewed(
-    List<int> dmMessageIds,
-  ) async {
-    if (dmMessageIds.isEmpty) {
-      debugPrint(
-        'Error: Cannot mark DM messages as viewed - Message IDs list is empty',
-      );
-      return {'error': 'DM Message IDs list is empty'};
-    }
+  // Removed markDMMessageAsViewed (performance optimization)
 
-    if (dmMessageIds.length > 50) {
-      debugPrint('Error: Cannot mark more than 50 DM messages at once');
-      return {'error': 'Too many DM message IDs'};
-    }
-
-    debugPrint(
-      'Batch marking ${dmMessageIds.length} DM messages as viewed: $dmMessageIds',
-    );
+  // Simple mark message as read - just one API call, one database update
+  Future<Map<String, dynamic>> markMessageAsRead(int messageId) async {
+    debugPrint('Marking message $messageId as read');
 
     try {
-      final url = Uri.parse('$baseUrl/api/messages/dm/batch-views');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      };
-
-      final requestBody = {'dmMessageIds': dmMessageIds};
-
-      final response = await client.post(
-        url,
-        headers: headers,
-        body: jsonEncode(requestBody),
-      );
-
-      debugPrint(
-        'Batch mark DM messages as viewed response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception(
-          'Failed to batch mark DM messages as viewed: ${response.body}',
-        );
-      }
-    } catch (e) {
-      debugPrint('Error batch marking DM messages as viewed: $e');
-      return {'error': e.toString()};
-    }
-  }
-
-  // Mark single DM message as viewed
-  Future<Map<String, dynamic>> markDMMessageAsViewed(int dmMessageId) async {
-    debugPrint('Marking DM message $dmMessageId as viewed');
-
-    try {
-      final url = Uri.parse('$baseUrl/api/messages/dm/$dmMessageId/views');
+      final url = Uri.parse('$baseUrl/api/users/messages/$messageId/mark-read');
       final response = await _makeAuthenticatedRequest(
         'POST',
         url,
@@ -3846,18 +3714,16 @@ Network connection error. Please check:
       );
 
       debugPrint(
-        'Mark DM message as viewed response: status=${response.statusCode}, body=${response.body}',
+        'Mark message as read response: status=${response.statusCode}, body=${response.body}',
       );
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       } else {
-        throw Exception(
-          'Failed to mark DM message as viewed: ${response.body}',
-        );
+        throw Exception('Failed to mark message as read: ${response.body}');
       }
     } catch (e) {
-      debugPrint('Error marking DM message as viewed: $e');
+      debugPrint('Error marking message as read: $e');
       return {'error': e.toString()};
     }
   }

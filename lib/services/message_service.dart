@@ -9,9 +9,7 @@ import '../widgets/external_video_message_card.dart';
 import '../screens/thread_screen.dart';
 import '../utils/page_transitions.dart';
 import '../services/share_service.dart';
-import 'package:visibility_detector/visibility_detector.dart';
-import '../services/message_view_tracker.dart';
-import '../services/comment_notification_tracker.dart';
+// Removed view tracking imports
 
 class MessageService {
   static Widget buildMessageListView(
@@ -691,54 +689,15 @@ class _MessageCardState extends State<MessageCard> {
       debugPrint('Message is null: widget.dayText = $widget.dayText');
     }
 
-    return ValueListenableBuilder<int>(
-      valueListenable: MessageViewTracker().viewedMessagesNotifier,
-      builder: (context, _, __) {
-        final bool isMessageViewed = MessageViewTracker().isMessageViewed(
-          widget.message.id,
-        );
-        final bool isReadOrOwnMessage = isMessageViewed || isCurrentUser;
-
-        // Debug logging for thread view issues
-        if (isCurrentUser) {
-          debugPrint(
-            '🔍 READ_TRACKING: Message ${widget.message.id} is current user\'s message - treating as read (currentUserId: ${widget.currentUserId}, senderId: ${widget.message.senderId})',
-          );
-        }
-
-        return VisibilityDetector(
-          key: Key('message_${widget.message.id}'),
-          onVisibilityChanged: (VisibilityInfo info) {
-            // Don't track own messages as viewed
-            if (!isCurrentUser && widget.message.id.isNotEmpty) {
-              final messageId = widget.message.id;
-              final viewTracker = MessageViewTracker();
-              // Set the authenticated ApiService instance
-              viewTracker.setApiService(widget.apiService);
-
-              // Only log significant visibility events, not every change
-              if (info.visibleFraction > 0) {
-                // Message became visible
-                viewTracker.onMessageVisible(messageId, info.visibleFraction);
-              } else {
-                // Message became invisible
-                viewTracker.onMessageInvisible(messageId);
-              }
-            } else {
-              // Skip logging for current user's messages to reduce noise
-            }
-          },
-          child: _buildMessageContent(
-            context,
-            isCurrentUser,
-            displayName,
-            displayTime,
-            displayDay,
-            mediaUrl,
-            isReadOrOwnMessage,
-          ),
-        );
-      },
+    // Simplified: no unread tracking needed, avatars show message ownership
+    return _buildMessageContent(
+      context,
+      isCurrentUser,
+      displayName,
+      displayTime,
+      displayDay,
+      mediaUrl,
+      isCurrentUser, // Pass isCurrentUser directly
     );
   }
 
@@ -749,7 +708,7 @@ class _MessageCardState extends State<MessageCard> {
     String displayTime,
     String displayDay,
     String? mediaUrl,
-    bool isReadOrOwnMessage,
+    bool isCurrentUserParam, // Simplified parameter name
   ) {
     return Column(
       children: [
@@ -793,20 +752,7 @@ class _MessageCardState extends State<MessageCard> {
                                       context,
                                     ).colorScheme.surface.withAlpha(220),
                             borderRadius: BorderRadius.circular(12),
-                            // Add left border for unread messages
-                            border:
-                                !isReadOrOwnMessage
-                                    ? Border(
-                                      left: BorderSide(
-                                        color:
-                                            Theme.of(context).brightness ==
-                                                    Brightness.light
-                                                ? Colors.indigo[800]!
-                                                : Colors.white,
-                                        width: 4.0,
-                                      ),
-                                    )
-                                    : null,
+                            // Removed blue border - avatars already show who sent messages
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.05),
@@ -825,18 +771,8 @@ class _MessageCardState extends State<MessageCard> {
                                   context,
                                 ).textTheme.bodyMedium?.copyWith(
                                   color:
-                                      !isReadOrOwnMessage
-                                          ? (Theme.of(context).brightness ==
-                                                  Brightness.light
-                                              ? Colors.indigo[800]!
-                                              : Colors.white)
-                                          : Theme.of(
-                                            context,
-                                          ).colorScheme.onSurface,
-                                  fontWeight:
-                                      !isReadOrOwnMessage
-                                          ? FontWeight.w600
-                                          : FontWeight.normal,
+                                      Theme.of(context).colorScheme.onSurface,
+                                  fontWeight: FontWeight.normal,
                                 ),
                               ),
                               if (mediaUrl != null && mediaUrl.isNotEmpty)
@@ -864,31 +800,7 @@ class _MessageCardState extends State<MessageCard> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Unread indicator dot
-                            if (!isReadOrOwnMessage)
-                              Container(
-                                width: 8,
-                                height: 8,
-                                margin: const EdgeInsets.only(right: 4),
-                                decoration: BoxDecoration(
-                                  color:
-                                      Theme.of(context).brightness ==
-                                              Brightness.light
-                                          ? Colors.indigo[800]!
-                                          : Colors.white,
-                                  shape: BoxShape.circle,
-                                  // Add a subtle shadow to make it more visible
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                      blurRadius: 2,
-                                      spreadRadius: 0.5,
-                                    ),
-                                  ],
-                                ),
-                              ),
+                            // Removed unread indicator dot
                             Text(
                               displayDay.isNotEmpty ? displayDay : '',
                               style: TextStyle(
@@ -1124,6 +1036,23 @@ class _MessageCardState extends State<MessageCard> {
               );
             }
 
+            // Mark message as read when user opens thread
+            final messageId = int.tryParse(threadMessage['id'].toString());
+            if (messageId != null) {
+              widget.apiService
+                  .markMessageAsRead(messageId)
+                  .then((result) {
+                    if (result.containsKey('error')) {
+                      debugPrint(
+                        'Error marking message as read: ${result['error']}',
+                      );
+                    }
+                  })
+                  .catchError((e) {
+                    debugPrint('Failed to mark message as read: $e');
+                  });
+            }
+
             Navigator.push(
               context,
               SlidePageRoute(
@@ -1139,58 +1068,34 @@ class _MessageCardState extends State<MessageCard> {
             child: Row(
               children: [
                 if (showCommentIcon)
-                  FutureBuilder<bool>(
-                    future: CommentNotificationTracker().hasNewComments(
-                      message['id'].toString(),
-                      commentCount,
-                    ),
-                    builder: (context, snapshot) {
-                      final hasNewComments = snapshot.data ?? false;
-                      final Color commentColor =
-                          hasNewComments
-                              ? (Theme.of(context).brightness ==
-                                      Brightness.light
-                                  ? Colors.indigo[800]!
-                                  : Colors.white)
-                              : Theme.of(context).colorScheme.onSurface;
-                      final IconData commentIcon =
-                          hasNewComments
-                              ? Icons
-                                  .comment // filled = "bolder"
-                              : Icons.comment_outlined; // outlined = normal
-
-                      return Icon(commentIcon, size: 16, color: commentColor);
-                    },
+                  Icon(
+                    Icons.comment_outlined,
+                    size: 16,
+                    color:
+                        _hasRecentActivity(message, commentCount)
+                            ? (Theme.of(context).brightness == Brightness.light
+                                ? Colors.indigo[800]!
+                                : Colors.white)
+                            : Theme.of(context).colorScheme.onSurface,
                   ),
                 const SizedBox(width: 2),
                 if (showCommentIcon)
-                  FutureBuilder<bool>(
-                    future: CommentNotificationTracker().hasNewComments(
-                      message['id'].toString(),
-                      commentCount,
-                    ),
-                    builder: (context, snapshot) {
-                      final hasNewComments = snapshot.data ?? false;
-                      final Color textColor =
-                          hasNewComments
+                  Text(
+                    commentCount.toString(),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontSize: 12,
+                      color:
+                          _hasRecentActivity(message, commentCount)
                               ? (Theme.of(context).brightness ==
                                       Brightness.light
                                   ? Colors.indigo[800]!
                                   : Colors.white)
-                              : Theme.of(context).colorScheme.onSurface;
-
-                      return Text(
-                        commentCount.toString(),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontSize: 12,
-                          color: textColor,
-                          fontWeight:
-                              hasNewComments
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                        ),
-                      );
-                    },
+                              : Theme.of(context).colorScheme.onSurface,
+                      fontWeight:
+                          _hasRecentActivity(message, commentCount)
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                    ),
                   ),
               ],
             ),
@@ -1274,5 +1179,52 @@ class _MessageCardState extends State<MessageCard> {
         ),
       ],
     );
+  }
+
+  // Simple check: message has comments AND latest comment is newer than when user last read
+  bool _hasRecentActivity(Map<String, dynamic> message, int commentCount) {
+    // Must have comments to show activity
+    if (commentCount == 0) return false;
+
+    final latestCommentTime = message['latestCommentTime'];
+    final readFlag = message['readFlag'];
+
+    // If no latest comment time, can't determine activity
+    if (latestCommentTime == null) return false;
+
+    DateTime? latestComment;
+    DateTime? lastRead;
+
+    try {
+      if (latestCommentTime is String) {
+        latestComment = DateTime.tryParse(latestCommentTime);
+      } else if (latestCommentTime is DateTime) {
+        latestComment = latestCommentTime;
+      }
+
+      if (readFlag != null) {
+        if (readFlag is String) {
+          lastRead = DateTime.tryParse(readFlag);
+        } else if (readFlag is DateTime) {
+          lastRead = readFlag;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error parsing timestamps: $e');
+      return false;
+    }
+
+    if (latestComment == null) return false;
+
+    // If never read, show activity if comment is from last 24 hours
+    if (lastRead == null) {
+      final twentyFourHoursAgo = DateTime.now().subtract(
+        const Duration(hours: 24),
+      );
+      return latestComment.isAfter(twentyFourHoursAgo);
+    }
+
+    // Show activity if latest comment is newer than last read
+    return latestComment.isAfter(lastRead);
   }
 }

@@ -4,7 +4,7 @@ import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'dart:io';
 import '../services/api_service.dart';
-import '../services/dm_message_view_tracker.dart';
+// Removed DM view tracker import
 import '../utils/video_thumbnail_util.dart';
 import '../widgets/gradient_background.dart';
 import '../widgets/video_message_card.dart';
@@ -15,7 +15,7 @@ import '../models/dm_message.dart';
 import '../providers/dm_message_provider.dart';
 import '../services/websocket_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:visibility_detector/visibility_detector.dart';
+// Removed visibility detector import
 import 'group_management_screen.dart';
 import '../screens/messages_home_screen.dart';
 import '../widgets/emoji_message_input.dart';
@@ -103,9 +103,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     // Store DMMessageProvider reference early
     _dmMessageProvider = Provider.of<DMMessageProvider>(context, listen: false);
 
-    // Initialize DM message view tracker
-    final apiService = Provider.of<ApiService>(context, listen: false);
-    DMMessageViewTracker().setApiService(apiService);
+    // Removed DM message view tracker initialization
 
     _loadMessages();
     // Delay WebSocket initialization until after first build
@@ -1580,7 +1578,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       timeString = '${difference.inDays}d ago';
     }
 
-    // Wrap with VisibilityDetector for read tracking (only for messages from other users)
+    // Message content without view tracking
     Widget messageContent = Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -1739,34 +1737,8 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       ),
     );
 
-    // Only wrap with VisibilityDetector for messages from other users
-    if (!isMe) {
-      return VisibilityDetector(
-        key: Key('dm_message_${message.id}'),
-        onVisibilityChanged: (visibilityInfo) {
-          final dmMessageId = message.id.toString();
-          final visibleFraction = visibilityInfo.visibleFraction;
-
-          // Removed excessive visibility logging to reduce console spam
-
-          if (visibleFraction > 0) {
-            DMMessageViewTracker().onMessageVisible(
-              dmMessageId,
-              visibleFraction,
-            );
-          } else {
-            DMMessageViewTracker().onMessageInvisible(dmMessageId);
-          }
-        },
-        child: messageContent,
-      );
-    } else {
-      // For current user's messages, just return the content without tracking
-      debugPrint(
-        '👁️ DM_VISIBILITY: Skipping DM message ${message.id} - current user\'s message',
-      );
-      return messageContent;
-    }
+    // Simplified: no view tracking, just return the message content
+    return messageContent;
   }
 
   // Build custom send button with circular progress indicator

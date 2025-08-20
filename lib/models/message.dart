@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+// Removed unused import
 
 /*                     messageMap.put("id", message.get("id"));
                 messageMap.put("content", message.get("content"));
@@ -36,6 +36,8 @@ class Message {
   final int? likeCount;
   final int? loveCount;
   final int? commentCount;
+  final DateTime? latestCommentTime;
+  final DateTime? readFlag;
   final int? parentMessageId;
   final String? userName;
   final bool isLiked;
@@ -55,6 +57,8 @@ class Message {
     this.likeCount,
     this.loveCount,
     this.commentCount,
+    this.latestCommentTime,
+    this.readFlag,
     this.parentMessageId,
     this.userName,
     this.isLiked = false,
@@ -100,6 +104,18 @@ class Message {
       loveCount: json['loveCount'] as int? ?? json['love_count'] as int?,
       commentCount:
           json['commentCount'] as int? ?? json['comment_count'] as int?,
+      latestCommentTime:
+          json['latestCommentTime'] != null
+              ? DateTime.tryParse(json['latestCommentTime'].toString())
+              : (json['latest_comment_time'] != null
+                  ? DateTime.tryParse(json['latest_comment_time'].toString())
+                  : null),
+      readFlag:
+          json['readFlag'] != null
+              ? DateTime.tryParse(json['readFlag'].toString())
+              : (json['read_flag'] != null
+                  ? DateTime.tryParse(json['read_flag'].toString())
+                  : null),
       parentMessageId:
           json['parentMessageId'] as int? ?? json['parent_message_id'] as int?,
       isLiked: json['isLiked'] as bool? ?? json['is_liked'] as bool? ?? false,
@@ -123,6 +139,8 @@ class Message {
       'likeCount': likeCount,
       'loveCount': loveCount,
       'commentCount': commentCount,
+      'latestCommentTime': latestCommentTime?.toIso8601String(),
+      'readFlag': readFlag?.toIso8601String(),
       'parentMessageId': parentMessageId,
       'userName': userName,
       'isLiked': isLiked,
@@ -147,6 +165,8 @@ class Message {
     int? likeCount,
     int? loveCount,
     int? commentCount,
+    DateTime? latestCommentTime,
+    DateTime? readFlag,
     int? parentMessageId,
     String? userName,
     bool? isLiked,
@@ -167,6 +187,8 @@ class Message {
       likeCount: likeCount ?? this.likeCount,
       loveCount: loveCount ?? this.loveCount,
       commentCount: commentCount ?? this.commentCount,
+      latestCommentTime: latestCommentTime ?? this.latestCommentTime,
+      readFlag: readFlag ?? this.readFlag,
       parentMessageId: parentMessageId ?? this.parentMessageId,
       userName: userName ?? this.userName,
       isLiked: isLiked ?? this.isLiked,

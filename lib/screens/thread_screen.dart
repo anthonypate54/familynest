@@ -24,7 +24,7 @@ import '../config/app_config.dart';
 import '../dialogs/large_video_dialog.dart';
 import '../services/share_service.dart';
 import '../services/cloud_file_service.dart';
-import '../services/comment_notification_tracker.dart';
+// Removed comment notification tracker import (performance optimization)
 import '../widgets/emoji_message_input.dart';
 import '../services/ios_media_picker.dart';
 
@@ -261,12 +261,7 @@ class _ThreadScreenState extends State<ThreadScreen>
           ...comments,
         ]);
 
-        // Mark comments as seen (for comment notification tracking)
-        final totalCommentCount = comments.length; // Don't count parent message
-        await CommentNotificationTracker().markAllCommentsAsSeen(
-          widget.message['id'].toString(),
-          totalCommentCount,
-        );
+        // Removed comment notification tracking (performance optimization)
 
         setState(() {
           _isLoading = false;
