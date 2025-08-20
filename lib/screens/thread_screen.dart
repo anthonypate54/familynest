@@ -1036,9 +1036,9 @@ class _ThreadScreenState extends State<ThreadScreen>
                             child: Stack(
                               children: [
                                 Container(
-                                  width: double.infinity,
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.7,
                                   height: 200,
-                                  margin: const EdgeInsets.symmetric(horizontal: 16),
                                   constraints: const BoxConstraints(
                                     maxHeight: 200,
                                     minHeight: 200,

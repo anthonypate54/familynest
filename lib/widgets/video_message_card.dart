@@ -71,6 +71,10 @@ class VideoMessageCardState extends State<VideoMessageCard> {
   }
 
   Future<void> _initializePlayer() async {
+    // Dispose any existing controller first to ensure fresh initialization
+    _chewieController?.dispose();
+    _chewieController = null;
+
     if (!_isPreloaded || _controller == null) {
       // Fallback: preload if not already done
       await _preloadVideo();
@@ -85,6 +89,7 @@ class VideoMessageCardState extends State<VideoMessageCard> {
         showControls: true,
         allowFullScreen: true,
         allowMuting: true,
+        // Force material controls to avoid iOS cupertino overflow issues
         materialProgressColors: ChewieProgressColors(
           playedColor: Colors.blue,
           handleColor: Colors.blueAccent,
@@ -129,6 +134,9 @@ class VideoMessageCardState extends State<VideoMessageCard> {
       child: Container(
         width: double.infinity,
         height: 200,
+        constraints: const BoxConstraints(
+          minWidth: 280, // Ensure minimum width for video controls
+        ),
         decoration: BoxDecoration(
           color: Colors.black,
           borderRadius: BorderRadius.circular(6),
@@ -137,7 +145,13 @@ class VideoMessageCardState extends State<VideoMessageCard> {
           borderRadius: BorderRadius.circular(6),
           child:
               _isInitialized && _chewieController != null
-                  ? Chewie(controller: _chewieController!)
+                  ? Theme(
+                    data: ThemeData(
+                      platform:
+                          TargetPlatform.android, // Force Material controls
+                    ),
+                    child: Chewie(controller: _chewieController!),
+                  )
                   : Stack(
                     alignment: Alignment.center,
                     children: [

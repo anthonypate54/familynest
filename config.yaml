@@ -21,7 +21,7 @@ platforms:
     setup_command: "adb reverse tcp:8080 tcp:8080"
     
   ios_simulator:
-    device_id: "A89B1CD3-C205-4189-8C8D-637E11698423"
+    device_id: "32EE6B99-A19F-4328-9082-A32C6F6F08E5"
     api_url: "http://localhost:8080"
     description: "iOS Simulator"
     
