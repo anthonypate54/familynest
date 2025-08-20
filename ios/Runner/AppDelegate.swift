@@ -34,20 +34,47 @@ import MobileCoreServices
           var files: [[String: Any]] = []
           let maxSizeBytes = 25 * 1024 * 1024
           
+          let imageManager = PHImageManager.default()
+          let thumbnailSize = CGSize(width: 150, height: 150)
+          let options = PHImageRequestOptions()
+          options.deliveryMode = .fastFormat
+          options.isSynchronous = true
+          
           assets.enumerateObjects { (asset, _, _) in
             let resources = PHAssetResource.assetResources(for: asset)
-            for resource in resources {
-              // For iOS, we'll use a conservative approach and include all files
-              // The actual size filtering will happen when we download the file
-              // This prevents crashes from trying to access unavailable file size info
+            if let resource = resources.first {
+              // Generate thumbnail for this asset
+              var thumbnailPath: String? = nil
+              
+              imageManager.requestImage(for: asset, targetSize: thumbnailSize, contentMode: .aspectFill, options: options) { (image, _) in
+                if let image = image, let imageData = image.jpegData(compressionQuality: 0.8) {
+                  // Save thumbnail to temp directory
+                  let tempDir = FileManager.default.temporaryDirectory
+                  let thumbnailFileName = "thumb_\(asset.localIdentifier.replacingOccurrences(of: "/", with: "_")).jpg"
+                  let thumbnailURL = tempDir.appendingPathComponent(thumbnailFileName)
+                  
+                  do {
+                    try imageData.write(to: thumbnailURL)
+                    thumbnailPath = thumbnailURL.path
+                    print("✅ Saved thumbnail: \(thumbnailPath!)")
+                  } catch {
+                    print("❌ Error saving thumbnail: \(error)")
+                  }
+                } else {
+                  print("❌ Failed to generate thumbnail for asset: \(asset.localIdentifier)")
+                }
+              }
               
               files.append([
                 "id": asset.localIdentifier,
-                "name": resource.originalFilename,
+                "name": resource.originalFilename ?? "Unknown",
                 "size": 1024 * 1024, // Default to 1MB for display purposes
-                "path": resource.originalFilename,
-                "mimeType": resource.uniformTypeIdentifier ?? "unknown"
+                "path": resource.originalFilename ?? "Unknown",
+                "mimeType": resource.uniformTypeIdentifier ?? "unknown",
+                "thumbnailPath": thumbnailPath ?? ""
               ])
+              
+              print("📄 Added file: \(resource.originalFilename ?? "Unknown"), thumbnail: \(thumbnailPath ?? "none")")
             }
           }
           result(files)

@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'dart:io';
 import '../services/api_service.dart';
-import '../services/share_service.dart';
 import '../services/dm_message_view_tracker.dart';
-import '../services/cloud_file_service.dart';
 import '../utils/video_thumbnail_util.dart';
-import '../config/app_config.dart';
-import '../dialogs/large_video_dialog.dart';
 import '../widgets/gradient_background.dart';
 import '../widgets/video_message_card.dart';
 import '../widgets/external_video_message_card.dart';
@@ -25,6 +20,7 @@ import 'group_management_screen.dart';
 import '../screens/messages_home_screen.dart';
 import '../widgets/emoji_message_input.dart';
 import 'package:image_picker/image_picker.dart';
+import '../services/ios_media_picker.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
@@ -403,192 +399,25 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
   Future<void> _pickDMMedia(String type) async {
     try {
-      // Use CloudFileService for fast metadata access (no file download needed)
-      List<CloudFile> files = await CloudFileService().browseDocuments();
+      final File? file = await UnifiedMediaPicker.pickMedia(
+        context: context,
+        type: type,
+        onShowPicker: () => _showDMMediaPicker(),
+      );
 
       if (!mounted) return;
 
-      if (files.isNotEmpty) {
-        CloudFile cloudFile = files.first;
-
-        // Filter by type if needed
-        bool isCorrectType =
-            type == 'photo'
-                ? (cloudFile.mimeType.startsWith('image/'))
-                : (cloudFile.mimeType.startsWith('video/'));
-
-        if (!isCorrectType) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Please select a ${type == 'photo' ? 'photo' : 'video'} file',
-              ),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-          return;
-        }
-
-        // Check file size first - handle large files immediately
-        final double fileSizeMB = cloudFile.size / (1024 * 1024);
-        if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
-          debugPrint('🔍 DM: Large file detected: ${fileSizeMB}MB');
-
-          if (type == 'photo') {
-            // Large photos - show simple rejection message
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Photo too large (${fileSizeMB.toStringAsFixed(1)}MB). Please select a photo under ${AppConfig.maxFileUploadSizeMB}MB.',
-                ),
-                duration: const Duration(seconds: 4),
-                action: SnackBarAction(
-                  label: 'Choose Another',
-                  onPressed: () => _showDMMediaPicker(),
-                ),
-              ),
-            );
-            return;
-          } else {
-            // Large videos - show upload dialog
-            bool isCloudFile = cloudFile.provider != 'local';
-
-            if (isCloudFile) {
-              debugPrint('🔍 DM: Large cloud video - immediate URL dialog');
-              await _handleDMVeryLargeCloudFile('video');
-              return;
-            } else {
-              debugPrint('🔍 DM: Large local video - showing upload dialog');
-              final action = await LargeVideoDialog.show(context, fileSizeMB);
-
-              if (action == VideoSizeAction.chooseDifferent) {
-                _showDMMediaPicker();
-              } else if (action == VideoSizeAction.shareAsLink) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Upload your video to Google Drive or Dropbox first, then select it from there.',
-                    ),
-                    duration: Duration(seconds: 4),
-                  ),
-                );
-                _showDMMediaPicker();
-              }
-              return;
-            }
-          }
-        }
-
-        // Check if we have a local path
-        if (cloudFile.localPath == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Unable to access selected file'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-          return;
-        }
-
-        // Check if we have a local path
-        if (cloudFile.localPath == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Unable to access selected file'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-          return;
-        }
-
-        // Convert CloudFile to File for existing logic
-        File file = File(cloudFile.localPath!);
-
-        // Debug output
-        debugPrint('🔍 DM: Picked file path: ${file.path}');
-        debugPrint('🔍 DM: Picked file name: ${cloudFile.name}');
-        debugPrint('🔍 DM: Picked file size: ${cloudFile.size}');
-        debugPrint('🔍 DM: File provider: ${cloudFile.provider}');
-
-        // Determine file source from Document Picker
-        bool isCloudFile =
-            cloudFile.provider != 'document_picker' ||
-            !file.path.startsWith('/private/var/mobile/Containers/');
-
-        if (isCloudFile) {
-          debugPrint('🔍 DM: ☁️ CLOUD FILE detected (cached)');
-        } else {
-          debugPrint('🔍 DM: ✅ LOCAL FILE detected');
-        }
-
-        if (type == 'video') {
-          final int fileSizeBytes = cloudFile.size;
-          final double fileSizeMB = fileSizeBytes / (1024 * 1024);
-          debugPrint(
-            '🔍 DM: File size: ${fileSizeMB}MB, limit: ${AppConfig.maxFileUploadSizeMB}MB',
-          );
-
-          if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
-            // LARGE FILE - different handling based on source
-            if (isCloudFile) {
-              // LARGE CLOUD FILE (cached) - handle as external video
-              debugPrint(
-                '🔍 DM: Large cloud file - handling as external video',
-              );
-              await _processDMExternalVideo(File(file.path));
-            } else {
-              // LARGE LOCAL FILE - show upload dialog
-              debugPrint('🔍 DM: Large local file - showing upload dialog');
-              final action = await LargeVideoDialog.show(context, fileSizeMB);
-
-              if (action == VideoSizeAction.chooseDifferent) {
-                _showDMMediaPicker();
-              } else if (action == VideoSizeAction.shareAsLink) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Upload your video to Google Drive or Dropbox first, then select it from there.',
-                    ),
-                    duration: Duration(seconds: 4),
-                  ),
-                );
-                _showDMMediaPicker();
-              }
-            }
-            return; // Exit early for large files
-          }
-        }
-
-        // SMALL FILE (any source) - process normally
-        // Detect actual file type from MIME type, not from button pressed
-        String actualType = type; // Default to button pressed
-        if (cloudFile.mimeType.startsWith('image/')) {
-          actualType = 'photo';
-        } else if (cloudFile.mimeType.startsWith('video/')) {
-          actualType = 'video';
-        }
-
-        await _processDMLocalFile(file, actualType);
+      if (file != null) {
+        await _processDMLocalFile(file, type);
       }
     } catch (e) {
-      if (e is PlatformException && e.code == 'unknown_path') {
-        // VERY LARGE CLOUD FILE - couldn't cache
-        debugPrint('🔍 DM: Very large cloud file - showing URL input dialog');
-        if (!mounted) return;
-        await _handleDMVeryLargeCloudFile('video');
-      } else {
-        debugPrint('DM Error picking media: $e');
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error picking media: $e'),
-            duration: const Duration(seconds: 10),
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking media: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -628,85 +457,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
             duration: const Duration(seconds: 3),
           ),
         );
-      }
-    }
-  }
-
-  Future<void> _handleDMVeryLargeCloudFile(String type) async {
-    // VERY LARGE CLOUD FILE - no cached file available, need user URL
-    if (type == 'video') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Video too large to cache. You can still share it using a direct link.',
-          ),
-          duration: Duration(seconds: 3),
-        ),
-      );
-
-      // Show URL input dialog for very large cloud files
-      final String? dialogResult = await ShareService.showVideoUrlDialog(
-        context,
-      );
-
-      if (dialogResult != null) {
-        final parts = dialogResult.split('|||');
-        final userMessage = parts.length > 1 ? parts[0] : '';
-        final userUrl = parts.length > 1 ? parts[1] : parts[0];
-
-        if (ShareService.isValidVideoUrl(userUrl)) {
-          try {
-            // Send DM message with external video URL
-            if (!mounted) return;
-            final apiService = Provider.of<ApiService>(context, listen: false);
-            final result = await apiService.sendDMMessage(
-              conversationId: widget.conversationId,
-              content:
-                  userMessage.isNotEmpty
-                      ? userMessage
-                      : 'Shared external video',
-              videoUrl: userUrl,
-            );
-
-            if (result != null && mounted) {
-              // Reload messages to get the latest
-              await _loadMessages();
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('External video shared successfully!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            } else {
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Failed to share video'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          } catch (e) {
-            debugPrint('Error sharing external video in DM: $e');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Error sharing video: $e'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          }
-        } else {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please enter a valid HTTPS video URL'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
       }
     }
   }
@@ -794,125 +544,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
           _isProcessingMedia = false;
         });
       }
-    }
-  }
-
-  Future<void> _processDMExternalVideo(File file) async {
-    // LARGE CLOUD FILE (cached) - we have cached file + cloud URI
-    try {
-      // Generate thumbnail from cached file
-      final File? thumbnailFile = await VideoThumbnailUtil.generateThumbnail(
-        'file://${file.path}',
-      );
-
-      if (thumbnailFile != null) {
-        debugPrint('🔍 DM: Generated thumbnail for external video');
-
-        // Show URL input dialog
-        if (!mounted) return;
-        final String? dialogResult = await ShareService.showVideoUrlDialog(
-          context,
-        );
-
-        if (dialogResult != null && dialogResult.trim().isNotEmpty) {
-          // Parse the result - format is "message|||url"
-          final parts = dialogResult.split('|||');
-          final userMessage = parts.isNotEmpty ? parts[0].trim() : '';
-          final userUrl = parts.length > 1 ? parts[1].trim() : '';
-
-          if (ShareService.isValidVideoUrl(userUrl)) {
-            debugPrint('🔍 DM: Valid URL provided: $userUrl');
-            debugPrint('🔍 DM: User message: $userMessage');
-
-            try {
-              // Send DM message with external video URL and thumbnail
-              if (!mounted) return;
-              final apiService = Provider.of<ApiService>(
-                context,
-                listen: false,
-              );
-              final result = await apiService.sendDMMessage(
-                conversationId: widget.conversationId,
-                content:
-                    userMessage.isNotEmpty
-                        ? userMessage
-                        : 'Shared external video',
-                videoUrl: userUrl,
-                // For external videos with thumbnails, we need to upload the thumbnail first
-                mediaPath: thumbnailFile.path,
-                mediaType: 'image',
-              );
-
-              if (result != null && mounted) {
-                // Reload messages to get the latest
-                await _loadMessages();
-
-                // Show success message
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('External video shared successfully!'),
-                    duration: Duration(seconds: 3),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-
-                // Scroll to bottom
-                _scrollToBottomIfNeeded();
-              } else {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Failed to share video'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            } catch (e) {
-              debugPrint('Error sharing external video in DM: $e');
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Error sharing external video: $e'),
-                  duration: const Duration(seconds: 3),
-                ),
-              );
-            }
-          } else {
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Please enter a valid video URL (must start with https://)',
-                ),
-                duration: Duration(seconds: 3),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        } else {
-          debugPrint('🔍 DM: User cancelled URL input');
-        }
-      } else {
-        debugPrint('🔍 DM: Failed to generate thumbnail');
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not generate thumbnail for external video'),
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error processing external video in DM: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error processing external video: $e'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
     }
   }
 

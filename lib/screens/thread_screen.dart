@@ -26,6 +26,7 @@ import '../services/share_service.dart';
 import '../services/cloud_file_service.dart';
 import '../services/comment_notification_tracker.dart';
 import '../widgets/emoji_message_input.dart';
+import '../services/ios_media_picker.dart';
 
 class ThreadScreen extends StatefulWidget {
   final int userId;
@@ -374,89 +375,28 @@ class _ThreadScreenState extends State<ThreadScreen>
     );
   }
 
+  // Unified media picker that accesses Photos AND Files
   Future<void> _pickMedia(String type) async {
     try {
-      List<CloudFile> files = await CloudFileService().browseDocuments();
+      final File? file = await UnifiedMediaPicker.pickMedia(
+        context: context,
+        type: type,
+        onShowPicker: () => _showMediaPicker(),
+      );
 
       if (!mounted) return;
 
-      if (files.isNotEmpty) {
-        CloudFile cloudFile = files.first;
-
-        // Debug output
-        debugPrint('🔍 Picked file path: ${cloudFile.localPath}');
-        debugPrint('🔍 Picked file name: ${cloudFile.name}');
-        debugPrint('🔍 Picked file size: ${cloudFile.size}');
-        debugPrint('🔍 File provider: ${cloudFile.provider}');
-
-        // Detect actual file type from MIME type
-        String actualType = type;
-        if (cloudFile.mimeType.startsWith('image/')) {
-          actualType = 'photo';
-        } else if (cloudFile.mimeType.startsWith('video/')) {
-          actualType = 'video';
-        }
-
-        if (actualType == 'video') {
-          final int fileSizeBytes = cloudFile.size;
-          final double fileSizeMB = fileSizeBytes / (1024 * 1024);
-          debugPrint(
-            '🔍 File size: ${fileSizeMB}MB, limit: ${AppConfig.maxFileUploadSizeMB}MB',
-          );
-
-          if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
-            // LARGE FILE - show upload dialog
-            debugPrint('🔍 Large file detected - showing upload dialog');
-            final action = await LargeVideoDialog.show(context, fileSizeMB);
-
-            if (action == VideoSizeAction.chooseDifferent) {
-              _showMediaPicker();
-            } else if (action == VideoSizeAction.shareAsLink) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Upload your video to Google Drive or Dropbox first, then select it from there.',
-                  ),
-                  duration: Duration(seconds: 4),
-                ),
-              );
-              _showMediaPicker();
-            }
-            return; // Exit early for large files
-          }
-        }
-
-        // Check if we have a local path
-        if (cloudFile.localPath == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Unable to access selected file'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-          return;
-        }
-
-        // SMALL FILE (any source) - process normally
-        debugPrint('🔍 Small file - processing normally');
-        await _processLocalFile(File(cloudFile.localPath!), actualType);
+      if (file != null) {
+        await _processLocalFile(file, type);
       }
     } catch (e) {
-      if (e is PlatformException && e.code == 'unknown_path') {
-        // VERY LARGE CLOUD FILE - couldn't cache
-        debugPrint('🔍 Very large cloud file - showing URL input dialog');
-        await _handleVeryLargeCloudFile(type);
-      } else {
-        debugPrint('Error picking media: $e');
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error picking media: $e'),
-            duration: const Duration(seconds: 10),
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking media: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -1093,32 +1033,78 @@ class _ThreadScreenState extends State<ThreadScreen>
                           : _selectedMediaType == 'video'
                           ? ClipRRect(
                             borderRadius: BorderRadius.circular(6),
-                            child: Container(
-                              width: MediaQuery.of(context).size.width * 0.7,
-                              height: 200,
-                              constraints: const BoxConstraints(
-                                maxHeight: 200,
-                                minHeight: 200,
-                              ),
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxHeight: 200,
-                                  minHeight: 200,
+                            child: Stack(
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  height: 200,
+                                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                                  constraints: const BoxConstraints(
+                                    maxHeight: 200,
+                                    minHeight: 200,
+                                  ),
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxHeight: 200,
+                                      minHeight: 200,
+                                    ),
+                                    child: ClipRect(
+                                      child:
+                                          _chewieController != null
+                                              ? Chewie(
+                                                key: const ValueKey(
+                                                  'thread-composition-video',
+                                                ),
+                                                controller: _chewieController!,
+                                              )
+                                              : const Center(
+                                                child:
+                                                    CircularProgressIndicator(),
+                                              ),
+                                    ),
+                                  ),
                                 ),
-                                child: ClipRect(
-                                  child:
-                                      _chewieController != null
-                                          ? Chewie(
-                                            key: const ValueKey(
-                                              'thread-composition-video',
-                                            ),
-                                            controller: _chewieController!,
-                                          )
-                                          : const Center(
-                                            child: CircularProgressIndicator(),
-                                          ),
+                                // Close button
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.black,
+                                        size: 18,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                      splashRadius: 18,
+                                      onPressed: () {
+                                        setState(() {
+                                          _selectedMediaFile = null;
+                                          _selectedMediaType = null;
+                                          // Clean up video controllers
+                                          _videoController?.dispose();
+                                          _chewieController?.dispose();
+                                          _videoController = null;
+                                          _chewieController = null;
+                                        });
+                                      },
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           )
                           : const SizedBox.shrink(),
