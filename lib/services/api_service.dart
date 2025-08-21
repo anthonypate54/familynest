@@ -3706,7 +3706,20 @@ Network connection error. Please check:
     debugPrint('Marking message $messageId as read');
 
     try {
-      final url = Uri.parse('$baseUrl/api/users/messages/$messageId/mark-read');
+      final currentUser = await getCurrentUser();
+      debugPrint('Current user data: $currentUser');
+      if (currentUser == null) {
+        throw Exception('User not authenticated');
+      }
+      final userId = currentUser['userId'] ?? currentUser['id'];
+      debugPrint('User ID: $userId, Message ID: $messageId');
+      if (userId == null) {
+        throw Exception('User ID is null');
+      }
+      final url = Uri.parse(
+        '$baseUrl/api/users/$userId/messages/$messageId/mark-read',
+      );
+      debugPrint('Making request to: $url');
       final response = await _makeAuthenticatedRequest(
         'POST',
         url,

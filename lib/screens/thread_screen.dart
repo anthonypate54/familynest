@@ -181,6 +181,24 @@ class _ThreadScreenState extends State<ThreadScreen>
       // Add comment to provider (provider will handle duplicates)
       _commentProvider?.addComment(message);
 
+      // Mark parent message as read since user is actively viewing the thread
+      if (_parentMessageId != null) {
+        final apiService = Provider.of<ApiService>(context, listen: false);
+        apiService
+            .markMessageAsRead(_parentMessageId!)
+            .then((result) {
+                          if (!result.containsKey('error')) {
+              
+              // Update local MessageProvider to reflect read status immediately
+              final messageProvider = Provider.of<MessageProvider>(context, listen: false);
+              messageProvider.markMessageAsRead(_parentMessageId!.toString());
+            }
+            })
+            .catchError((e) {
+              debugPrint('❌ THREAD: Failed to auto-mark message as read: $e');
+            });
+      }
+
       // Auto-scroll to show new comment
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom();
@@ -737,49 +755,55 @@ class _ThreadScreenState extends State<ThreadScreen>
 
   // Build custom send button with circular progress indicator
   Widget _buildCustomSendButton() {
-    final hasText = _messageController.text.trim().isNotEmpty;
-    final isEnabled = !_isSending && hasText;
-    final isProcessing = _isSending;
+    return ValueListenableBuilder<bool>(
+      valueListenable: _isSendButtonEnabled,
+      builder: (context, hasText, child) {
+        final isEnabled = !_isSending && hasText;
+        final isProcessing = _isSending;
 
-    return CircleAvatar(
-      backgroundColor:
-          isEnabled || isProcessing
-              ? Theme.of(context).colorScheme.primary
-              : Colors.grey.shade400,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Single progress indicator with background track
-          if (isProcessing)
-            SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                value: null, // Indeterminate for now
-                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                backgroundColor: Colors.white.withValues(alpha: 0.3),
+        return CircleAvatar(
+          backgroundColor:
+              isEnabled || isProcessing
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.grey.shade400,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Single progress indicator with background track
+              if (isProcessing)
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    value: null, // Indeterminate for now
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Colors.white,
+                    ),
+                    backgroundColor: Colors.white.withValues(alpha: 0.3),
+                  ),
+                ),
+
+              // Send icon
+              IconButton(
+                icon: Icon(
+                  isProcessing ? Icons.upload : Icons.send,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                onPressed:
+                    isEnabled
+                        ? () => _postComment(
+                          Provider.of<ApiService>(context, listen: false),
+                        )
+                        : null,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
-            ),
-
-          // Send icon
-          IconButton(
-            icon: Icon(
-              isProcessing ? Icons.upload : Icons.send,
-              color: Colors.white,
-              size: 20,
-            ),
-            onPressed:
-                isEnabled
-                    ? () => _postComment(
-                      Provider.of<ApiService>(context, listen: false),
-                    )
-                    : null,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -840,6 +864,16 @@ class _ThreadScreenState extends State<ThreadScreen>
       if (newComment != null && mounted) {
         commentProvider.addComment(newComment);
         messageProvider.incrementCommentCount(widget.message['id'].toString());
+
+        // Mark message as read since user just participated by posting a comment
+        final messageId = int.tryParse(widget.message['id'].toString());
+        if (messageId != null) {
+          debugPrint(
+            '### 📖 Marking message $messageId as read after posting comment',
+          );
+          apiService.markMessageAsRead(messageId);
+        }
+
         _messageController.clear();
         setState(() {
           _selectedMediaFile = null;

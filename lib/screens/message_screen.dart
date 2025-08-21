@@ -488,6 +488,7 @@ class _MessageScreenState extends State<MessageScreen>
 
       final messageId = data['messageId']?.toString();
       final commentCount = data['commentCount'] as int?;
+      final hasUnreadComments = data['has_unread_comments'] as bool?;
 
       if (messageId == null || commentCount == null) {
         debugPrint('⚠️ COMMENT_COUNT: Missing message ID or comment count');
@@ -495,13 +496,19 @@ class _MessageScreenState extends State<MessageScreen>
       }
 
       debugPrint(
-        '📨 COMMENT_COUNT: Updating message $messageId comment count to $commentCount',
+        '📨 COMMENT_COUNT: Updating message $messageId comment count to $commentCount (has_unread_comments: $hasUnreadComments)',
       );
 
-      // Update message provider with new comment count
+      // Update message provider with new comment count and read status
       if (_messageProvider != null) {
-        _messageProvider!.updateMessageCommentCount(messageId, commentCount);
-        debugPrint('✅ COMMENT_COUNT: Updated message $messageId comment count');
+        _messageProvider!.updateMessageCommentCount(
+          messageId,
+          commentCount,
+          hasUnreadComments: hasUnreadComments,
+        );
+        debugPrint(
+          '✅ COMMENT_COUNT: Updated message $messageId comment count and read status',
+        );
       } else {
         debugPrint('❌ COMMENT_COUNT: MessageProvider is null!');
       }

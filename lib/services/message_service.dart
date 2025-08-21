@@ -9,6 +9,8 @@ import '../widgets/external_video_message_card.dart';
 import '../screens/thread_screen.dart';
 import '../utils/page_transitions.dart';
 import '../services/share_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/message_provider.dart';
 // Removed view tracking imports
 
 class MessageService {
@@ -830,7 +832,7 @@ class _MessageCardState extends State<MessageCard> {
                     widget.message.likeCount ?? 0,
                     widget.message.loveCount ?? 0,
                     int.parse(widget.currentUserId ?? '0'),
-                    widget.message.toJson(),
+                    widget.message,
                     context,
                     widget.showCommentIcon,
                   ),
@@ -991,7 +993,7 @@ class _MessageCardState extends State<MessageCard> {
     int likeCount,
     int loveCount,
     int currentUserId,
-    Map<String, dynamic> message,
+    Message message,
     BuildContext context,
     bool showCommentIcon,
   ) {
@@ -1004,36 +1006,36 @@ class _MessageCardState extends State<MessageCard> {
           onTap: () {
             // If this is a comment (has parentMessageId), navigate to the parent message's thread
             // If this is a root message, navigate to its own thread
-            Map<String, dynamic> threadMessage = message;
+            Map<String, dynamic> threadMessage;
 
-            if (message['parentMessageId'] != null) {
+            if (message.parentMessageId != null) {
               // This is a comment - we need to create a thread message for the parent
               threadMessage = {
-                'id': message['parentMessageId'],
+                'id': message.parentMessageId,
                 'content':
                     'Original Message', // Placeholder - will be loaded in thread
-                'commentCount': message['commentCount'] ?? 0,
+                'commentCount': message.commentCount ?? 0,
                 // Add other required fields with defaults
-                'senderId': message['senderId'],
-                'senderUserName': message['senderUserName'],
-                'timestamp': message['timestamp'],
-                'mediaType': null,
-                'mediaUrl': null,
-                'thumbnailUrl': null,
-                'senderPhoto': message['senderPhoto'],
-                'likeCount': 0,
-                'loveCount': 0,
+                'senderId': message.senderId,
+                'senderUserName': message.senderUserName,
+                'timestamp': message.createdAt?.toIso8601String(),
+                'mediaType': message.mediaType,
+                'mediaUrl': message.mediaUrl,
+                'thumbnailUrl': message.thumbnailUrl,
+                'senderPhoto': message.senderPhoto,
+                'likeCount': message.likeCount ?? 0,
+                'loveCount': message.loveCount ?? 0,
                 'parentMessageId': null, // Root message has no parent
-                'isLiked': false,
-                'isLoved': false,
+                'isLiked': message.isLiked,
+                'isLoved': message.isLoved,
               };
               debugPrint(
-                '🔍 Navigating to parent thread for comment ${message['id']} -> parent ${message['parentMessageId']}',
+                '🔍 Navigating to parent thread for comment ${message.id} -> parent ${message.parentMessageId}',
               );
             } else {
-              debugPrint(
-                '🔍 Navigating to root message thread ${message['id']}',
-              );
+              // This is a root message - convert to map for ThreadScreen
+              threadMessage = message.toJson();
+              debugPrint('🔍 Navigating to root message thread ${message.id}');
             }
 
             // Mark message as read when user opens thread
@@ -1046,6 +1048,14 @@ class _MessageCardState extends State<MessageCard> {
                       debugPrint(
                         'Error marking message as read: ${result['error']}',
                       );
+                    } else {
+
+                      // Update the local MessageProvider to reflect the read status
+                      final messageProvider = Provider.of<MessageProvider>(
+                        context,
+                        listen: false,
+                      );
+                      messageProvider.markMessageAsRead(messageId.toString());
                     }
                   })
                   .catchError((e) {
@@ -1068,34 +1078,51 @@ class _MessageCardState extends State<MessageCard> {
             child: Row(
               children: [
                 if (showCommentIcon)
-                  Icon(
-                    Icons.comment_outlined,
-                    size: 16,
-                    color:
-                        _hasRecentActivity(message, commentCount)
-                            ? (Theme.of(context).brightness == Brightness.light
-                                ? Colors.indigo[800]!
-                                : Colors.white)
-                            : Theme.of(context).colorScheme.onSurface,
+                  Builder(
+                    builder: (context) {
+                      final shouldBeRed = _hasRecentActivity(
+                        message,
+                        commentCount,
+                      );
+                      final color =
+                          shouldBeRed
+                              ? (Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.orange
+                                  : Colors.deepOrange)
+                              : Theme.of(context).colorScheme.onSurface;
+
+                      return Icon(
+                        shouldBeRed ? Icons.comment : Icons.comment_outlined,
+                        size: 16,
+                        color: color,
+                      );
+                    },
                   ),
                 const SizedBox(width: 2),
                 if (showCommentIcon)
-                  Text(
-                    commentCount.toString(),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontSize: 12,
-                      color:
-                          _hasRecentActivity(message, commentCount)
-                              ? (Theme.of(context).brightness ==
-                                      Brightness.light
-                                  ? Colors.indigo[800]!
-                                  : Colors.white)
-                              : Theme.of(context).colorScheme.onSurface,
-                      fontWeight:
-                          _hasRecentActivity(message, commentCount)
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                    ),
+                  Builder(
+                    builder: (context) {
+                      final shouldBeRed = _hasRecentActivity(
+                        message,
+                        commentCount,
+                      );
+                      final color =
+                          shouldBeRed
+                              ? (Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.orange
+                                  : Colors.deepOrange)
+                              : Theme.of(context).colorScheme.onSurface;
+
+                      return Text(
+                        commentCount.toString(),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontSize: 12,
+                          color: color,
+                          fontWeight:
+                              shouldBeRed ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      );
+                    },
                   ),
               ],
             ),
@@ -1162,7 +1189,7 @@ class _MessageCardState extends State<MessageCard> {
           onTap: () {
             ShareService.shareMessage(
               context,
-              message,
+              message.toJson(),
               widget.apiService.baseUrl,
             );
           },
@@ -1181,50 +1208,14 @@ class _MessageCardState extends State<MessageCard> {
     );
   }
 
-  // Simple check: message has comments AND latest comment is newer than when user last read
-  bool _hasRecentActivity(Map<String, dynamic> message, int commentCount) {
+  // Simple check: use the has_unread_comments field from backend
+  bool _hasRecentActivity(Message message, int commentCount) {
     // Must have comments to show activity
     if (commentCount == 0) return false;
 
-    final latestCommentTime = message['latestCommentTime'];
-    final readFlag = message['readFlag'];
+    // Use the backend's has_unread_comments field
+    final hasUnreadComments = message.hasUnreadComments;
 
-    // If no latest comment time, can't determine activity
-    if (latestCommentTime == null) return false;
-
-    DateTime? latestComment;
-    DateTime? lastRead;
-
-    try {
-      if (latestCommentTime is String) {
-        latestComment = DateTime.tryParse(latestCommentTime);
-      } else if (latestCommentTime is DateTime) {
-        latestComment = latestCommentTime;
-      }
-
-      if (readFlag != null) {
-        if (readFlag is String) {
-          lastRead = DateTime.tryParse(readFlag);
-        } else if (readFlag is DateTime) {
-          lastRead = readFlag;
-        }
-      }
-    } catch (e) {
-      debugPrint('Error parsing timestamps: $e');
-      return false;
-    }
-
-    if (latestComment == null) return false;
-
-    // If never read, show activity if comment is from last 24 hours
-    if (lastRead == null) {
-      final twentyFourHoursAgo = DateTime.now().subtract(
-        const Duration(hours: 24),
-      );
-      return latestComment.isAfter(twentyFourHoursAgo);
-    }
-
-    // Show activity if latest comment is newer than last read
-    return latestComment.isAfter(lastRead);
+    return hasUnreadComments ?? false;
   }
 }

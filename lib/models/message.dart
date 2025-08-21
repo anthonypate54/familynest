@@ -38,6 +38,7 @@ class Message {
   final int? commentCount;
   final DateTime? latestCommentTime;
   final DateTime? readFlag;
+  final bool? hasUnreadComments;
   final int? parentMessageId;
   final String? userName;
   final bool isLiked;
@@ -59,6 +60,7 @@ class Message {
     this.commentCount,
     this.latestCommentTime,
     this.readFlag,
+    this.hasUnreadComments,
     this.parentMessageId,
     this.userName,
     this.isLiked = false,
@@ -116,6 +118,7 @@ class Message {
               : (json['read_flag'] != null
                   ? DateTime.tryParse(json['read_flag'].toString())
                   : null),
+      hasUnreadComments: json['has_unread_comments'] as bool?,
       parentMessageId:
           json['parentMessageId'] as int? ?? json['parent_message_id'] as int?,
       isLiked: json['isLiked'] as bool? ?? json['is_liked'] as bool? ?? false,
@@ -141,6 +144,7 @@ class Message {
       'commentCount': commentCount,
       'latestCommentTime': latestCommentTime?.toIso8601String(),
       'readFlag': readFlag?.toIso8601String(),
+      'hasUnreadComments': hasUnreadComments,
       'parentMessageId': parentMessageId,
       'userName': userName,
       'isLiked': isLiked,
@@ -167,6 +171,7 @@ class Message {
     int? commentCount,
     DateTime? latestCommentTime,
     DateTime? readFlag,
+    bool? hasUnreadComments,
     int? parentMessageId,
     String? userName,
     bool? isLiked,
@@ -189,6 +194,7 @@ class Message {
       commentCount: commentCount ?? this.commentCount,
       latestCommentTime: latestCommentTime ?? this.latestCommentTime,
       readFlag: readFlag ?? this.readFlag,
+      hasUnreadComments: hasUnreadComments ?? this.hasUnreadComments,
       parentMessageId: parentMessageId ?? this.parentMessageId,
       userName: userName ?? this.userName,
       isLiked: isLiked ?? this.isLiked,

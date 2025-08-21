@@ -110,11 +110,28 @@ class MessageProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateMessageCommentCount(String messageId, int commentCount) {
+  void updateMessageCommentCount(
+    String messageId,
+    int commentCount, {
+    bool? hasUnreadComments,
+  }) {
     final idx = _messages.indexWhere((m) => m.id == messageId);
     if (idx != -1) {
       final msg = _messages[idx];
-      _messages[idx] = msg.copyWith(commentCount: commentCount);
+      _messages[idx] = msg.copyWith(
+        commentCount: commentCount,
+        hasUnreadComments: hasUnreadComments,
+      );
+      notifyListeners();
+    }
+  }
+
+  void markMessageAsRead(String messageId) {
+    final idx = _messages.indexWhere((m) => m.id == messageId);
+    if (idx != -1) {
+      final msg = _messages[idx];
+      _messages[idx] = msg.copyWith(hasUnreadComments: false);
+
       notifyListeners();
     }
   }
