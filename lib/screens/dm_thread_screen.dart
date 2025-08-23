@@ -17,6 +17,7 @@ import '../services/websocket_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 // Removed visibility detector import
 import 'group_management_screen.dart';
+import '../widgets/photo_viewer.dart';
 import '../screens/messages_home_screen.dart';
 import '../widgets/emoji_message_input.dart';
 import 'package:image_picker/image_picker.dart';
@@ -1615,38 +1616,46 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                     if (mediaType == 'photo' || mediaType == 'image') ...[
                       GestureDetector(
                         onTap: () {
-                          // TODO: Add full-screen image view
-                          debugPrint('Photo tapped: $fullMediaUrl');
+                          PhotoViewer.show(
+                            context: context,
+                            imageUrl: fullMediaUrl,
+                            heroTag: 'dm_image_${message.id}',
+                            title:
+                                'Photo from ${message.senderFirstName ?? 'Unknown'}',
+                          );
                         },
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: SizedBox(
-                            width: double.infinity,
-                            height: 200,
-                            child: CachedNetworkImage(
-                              imageUrl: fullMediaUrl,
-                              fit: BoxFit.cover,
-                              cacheKey: fullMediaUrl,
-                              placeholder:
-                                  (context, url) => Container(
-                                    color: Colors.grey[300],
+                        child: Hero(
+                          tag: 'dm_image_${message.id}',
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              width: double.infinity,
+                              height: 200,
+                              child: CachedNetworkImage(
+                                imageUrl: fullMediaUrl,
+                                fit: BoxFit.cover,
+                                cacheKey: fullMediaUrl,
+                                placeholder:
+                                    (context, url) => Container(
+                                      color: Colors.grey[300],
+                                      width: double.infinity,
+                                      height: 200,
+                                      child: const Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    ),
+                                errorWidget: (context, url, error) {
+                                  return Container(
                                     width: double.infinity,
                                     height: 200,
-                                    child: const Center(
-                                      child: CircularProgressIndicator(),
+                                    color: Colors.grey.shade300,
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      color: Colors.grey.shade600,
                                     ),
-                                  ),
-                              errorWidget: (context, url, error) {
-                                return Container(
-                                  width: double.infinity,
-                                  height: 200,
-                                  color: Colors.grey.shade300,
-                                  child: Icon(
-                                    Icons.broken_image,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                );
-                              },
+                                  );
+                                },
+                              ),
                             ),
                           ),
                         ),

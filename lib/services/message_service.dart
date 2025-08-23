@@ -11,6 +11,7 @@ import '../utils/page_transitions.dart';
 import '../services/share_service.dart';
 import 'package:provider/provider.dart';
 import '../providers/message_provider.dart';
+import '../widgets/photo_viewer.dart';
 // Removed view tracking imports
 
 class MessageService {
@@ -926,52 +927,65 @@ class _MessageCardState extends State<MessageCard> {
             widget.message.mediaUrl!.startsWith('http')
                 ? widget.message.mediaUrl!
                 : apiService.mediaBaseUrl + widget.message.mediaUrl!;
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: CachedNetworkImage(
-            imageUrl: displayUrl,
-            fit: BoxFit.contain,
-            width: double.infinity,
-            height: 200,
-            placeholder:
-                (context, url) => Container(
-                  color: Colors.grey[300],
-                  width: double.infinity,
-                  height: 200,
-                  child: const Center(child: CircularProgressIndicator()),
-                ),
-            errorWidget: (context, url, error) {
-              // Handle fake/corrupted images gracefully
-              if (error.toString().contains('Invalid image data') ||
-                  error.toString().contains('Image file is corrupted') ||
-                  error.toString().contains('HttpException') ||
-                  url.contains(
-                    '15',
-                  ) || // catch any suspiciously small file references
-                  error.toString().toLowerCase().contains('format')) {
-                // Show user-friendly message for corrupted images
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Image temporarily unavailable'),
-                        duration: Duration(seconds: 2),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  }
-                });
-              }
-              // Always return the broken image icon, don't log the error
-              return Container(
-                color: Colors.grey[300],
+        return GestureDetector(
+          onTap: () {
+            PhotoViewer.show(
+              context: context,
+              imageUrl: displayUrl,
+              heroTag: 'message_image_${widget.message.id}',
+              title: 'Photo from ${widget.message.senderUserName ?? 'Unknown'}',
+            );
+          },
+          child: Hero(
+            tag: 'message_image_${widget.message.id}',
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: CachedNetworkImage(
+                imageUrl: displayUrl,
+                fit: BoxFit.contain,
                 width: double.infinity,
                 height: 200,
-                child: const Center(
-                  child: Icon(Icons.broken_image, color: Colors.grey),
-                ),
-              );
-            },
+                placeholder:
+                    (context, url) => Container(
+                      color: Colors.grey[300],
+                      width: double.infinity,
+                      height: 200,
+                      child: const Center(child: CircularProgressIndicator()),
+                    ),
+                errorWidget: (context, url, error) {
+                  // Handle fake/corrupted images gracefully
+                  if (error.toString().contains('Invalid image data') ||
+                      error.toString().contains('Image file is corrupted') ||
+                      error.toString().contains('HttpException') ||
+                      url.contains(
+                        '15',
+                      ) || // catch any suspiciously small file references
+                      error.toString().toLowerCase().contains('format')) {
+                    // Show user-friendly message for corrupted images
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Image temporarily unavailable'),
+                            duration: Duration(seconds: 2),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      }
+                    });
+                  }
+                  // Always return the broken image icon, don't log the error
+                  return Container(
+                    color: Colors.grey[300],
+                    width: double.infinity,
+                    height: 200,
+                    child: const Center(
+                      child: Icon(Icons.broken_image, color: Colors.grey),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
         );
       } else if (widget.message.mediaType == 'video') {
@@ -1049,7 +1063,6 @@ class _MessageCardState extends State<MessageCard> {
                         'Error marking message as read: ${result['error']}',
                       );
                     } else {
-
                       // Update the local MessageProvider to reflect the read status
                       final messageProvider = Provider.of<MessageProvider>(
                         context,
