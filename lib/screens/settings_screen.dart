@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
-import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 
@@ -9,10 +7,9 @@ import '../theme/app_theme.dart';
 import '../theme/app_styles.dart';
 import '../providers/theme_provider.dart';
 import '../providers/text_size_provider.dart';
-import 'login_screen.dart';
-import '../utils/page_transitions.dart';
 import '../widgets/gradient_background.dart';
-import 'profile_screen.dart';
+import '../widgets/demographics_dialog.dart';
+import '../utils/auth_utils.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ApiService apiService;
@@ -141,7 +138,13 @@ class SettingsScreenState extends State<SettingsScreen>
           leading: const Icon(Icons.person),
           title: const Text('Edit Profile'),
           subtitle: const Text('Update your profile information'),
-          onTap: _showEditProfileDialog,
+          onTap: () async {
+            await DemographicsDialog.show(
+              context: context,
+              userId: widget.userId,
+              apiService: widget.apiService,
+            );
+          },
         ),
         ListTile(
           leading: const Icon(Icons.password),
@@ -156,13 +159,7 @@ class SettingsScreenState extends State<SettingsScreen>
           leading: const Icon(Icons.logout, color: Colors.red),
           title: const Text('Logout', style: TextStyle(color: Colors.red)),
           onTap: () async {
-            await widget.apiService.logout();
-            if (!mounted) return;
-            slidePushAndRemoveUntil(
-              context,
-              const LoginScreen(),
-              (route) => false,
-            );
+            await AuthUtils.showLogoutConfirmation(context, widget.apiService);
           },
         ),
       ],
@@ -316,9 +313,7 @@ class SettingsScreenState extends State<SettingsScreen>
           title: const Text('Help & Support'),
           subtitle: const Text('Get assistance with using the app'),
           onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Help & Support tapped')),
-            );
+            _showHelpAndSupportDialog();
           },
         ),
         ListTile(
@@ -326,13 +321,211 @@ class SettingsScreenState extends State<SettingsScreen>
           title: const Text('Rate the App'),
           subtitle: const Text('Share your feedback'),
           onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Rate the App tapped')),
-            );
+            _showRateAppDialog();
           },
         ),
       ],
     );
+  }
+
+  void _showRateAppDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Rate FamilyNest'),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.star, size: 48, color: Colors.amber),
+                SizedBox(height: 16),
+                Text(
+                  'Enjoying FamilyNest? Please take a moment to rate us!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Your feedback helps us improve and reach more families.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Maybe Later'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  await _openAppStore();
+                },
+                child: const Text('Rate Now'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _openAppStore() async {
+    // You'll need to replace these with your actual app store URLs
+    const iosAppId = 'your-ios-app-id'; // Replace with actual App Store ID
+    const androidPackageName =
+        'com.familynest.app'; // Replace with actual package name
+
+    try {
+      // Try iOS App Store first
+      final iosUri = Uri.parse('https://apps.apple.com/app/id$iosAppId');
+      if (await canLaunchUrl(iosUri)) {
+        await launchUrl(iosUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+
+      // Try Android Play Store
+      final androidUri = Uri.parse(
+        'https://play.google.com/store/apps/details?id=$androidPackageName',
+      );
+      if (await canLaunchUrl(androidUri)) {
+        await launchUrl(androidUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+
+      // Fallback to generic app stores
+      final fallbackUri = Uri.parse('https://familynest.app/download');
+      if (await canLaunchUrl(fallbackUri)) {
+        await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please search for "FamilyNest" in your app store'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please search for "FamilyNest" in your app store'),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showHelpAndSupportDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Help & Support'),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Need help with FamilyNest? Choose an option below:',
+                  style: TextStyle(fontSize: 16),
+                ),
+                SizedBox(height: 16),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  await _contactSupport();
+                },
+                child: const Text('Contact Support'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  await _openFAQ();
+                },
+                child: const Text('View FAQ'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _contactSupport() async {
+    const supportEmail = 'support@familynest.app';
+    const subject = 'FamilyNest Support Request';
+    const body = 'Hello FamilyNest Support Team,\n\nI need help with:\n\n';
+
+    final emailUri = Uri(
+      scheme: 'mailto',
+      path: supportEmail,
+      query:
+          'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}',
+    );
+
+    try {
+      if (await canLaunchUrl(emailUri)) {
+        await launchUrl(emailUri);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please contact us at support@familynest.app'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please contact us at support@familynest.app'),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _openFAQ() async {
+    const faqUrl = 'https://familynest.app/faq';
+    final uri = Uri.parse(faqUrl);
+
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Visit familynest.app/faq for frequently asked questions',
+              ),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Visit familynest.app/faq for frequently asked questions',
+            ),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    }
   }
 
   void _showAboutDialog() {

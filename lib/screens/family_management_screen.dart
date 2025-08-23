@@ -7,7 +7,7 @@ import '../widgets/gradient_background.dart';
 import 'package:intl/intl.dart';
 import '../controllers/bottom_navigation_controller.dart';
 import '../theme/app_theme.dart';
-import '../widgets/file_picker_test_widget.dart';
+
 import '../providers/message_provider.dart';
 import '../services/websocket_service.dart';
 
@@ -277,9 +277,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     if (mounted) {
       setState(() {
         // Initialize _demographicsSettings if it's null
-        if (_demographicsSettings == null) {
-          _demographicsSettings = {};
-        }
+        _demographicsSettings ??= {};
 
         // Update the specific field that was toggled
         _demographicsSettings![field] = value;
@@ -423,9 +421,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     // IMMEDIATELY update the UI to respond to user input
     if (mounted) {
       setState(() {
-        if (_notificationPreferences == null) {
-          _notificationPreferences = {};
-        }
+        _notificationPreferences ??= {};
         _notificationPreferences![field] = value;
       });
     }
@@ -519,6 +515,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
 
     try {
       final familyService = FamilyService.of(context);
+      final apiService = Provider.of<ApiService>(context, listen: false);
 
       final families = await familyService.loadUserFamilies(widget.userId);
 
@@ -545,7 +542,6 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       List<Map<String, dynamic>> pendingInvitations = [];
       if (families.isEmpty) {
         try {
-          final apiService = Provider.of<ApiService>(context, listen: false);
           pendingInvitations = await apiService.getInvitations();
           debugPrint(
             '📧 FAMILY_MGMT: Found ${pendingInvitations.length} pending invitations for user without families',
@@ -608,55 +604,39 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       appBar: AppBar(
         title: const Text('Family Management'),
         backgroundColor: AppTheme.getAppBarColor(context),
-        actions: [
-          // Debug button for file service testing
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            tooltip: 'Test File Service',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const FilePickerTestWidget(),
-                ),
-              );
-            },
-          ),
-        ],
+        actions: const [],
       ),
       body: GradientBackground(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            return Container(
-              child: SizedBox(
-                height: constraints.maxHeight,
-                child: Column(
-                  children: [
-                    // Tab bar
-                    TabBar(
+            return SizedBox(
+              height: constraints.maxHeight,
+              child: Column(
+                children: [
+                  // Tab bar
+                  TabBar(
+                    controller: _tabController,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white70,
+                    indicatorColor: Colors.white,
+                    tabs: const [
+                      Tab(text: 'Family'),
+                      Tab(text: 'Members'),
+                      Tab(text: 'Settings'),
+                    ],
+                  ),
+                  // Tab content
+                  Expanded(
+                    child: TabBarView(
                       controller: _tabController,
-                      labelColor: Colors.white,
-                      unselectedLabelColor: Colors.white70,
-                      indicatorColor: Colors.white,
-                      tabs: const [
-                        Tab(text: 'Family'),
-                        Tab(text: 'Members'),
-                        Tab(text: 'Settings'),
+                      children: [
+                        _buildFamilyTab(),
+                        _buildMembersTab(),
+                        _buildSettingsTab(),
                       ],
                     ),
-                    // Tab content
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: [
-                          _buildFamilyTab(),
-                          _buildMembersTab(),
-                          _buildSettingsTab(),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             );
           },
@@ -782,7 +762,9 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   hintText: 'Search family members...',
-                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                  hintStyle: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                  ),
                   prefixIcon: const Icon(Icons.search, color: Colors.white),
                   suffixIcon:
                       _searchController.text.isNotEmpty
@@ -799,7 +781,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.2),
+                  fillColor: Colors.white.withValues(alpha: 0.2),
                 ),
               ),
 
@@ -813,7 +795,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: DropdownButtonHideUnderline(
@@ -899,7 +881,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         // Demographics Visibility
         Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface.withOpacity(0.1),
+            color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Padding(
@@ -989,7 +971,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         // Notification Preferences
         Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface.withOpacity(0.1),
+            color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Padding(
@@ -1055,9 +1037,11 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                   padding: const EdgeInsets.all(16.0),
                   margin: const EdgeInsets.symmetric(vertical: 8.0),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
+                    color: Colors.blue.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8.0),
-                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    border: Border.all(
+                      color: Colors.blue.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: const Row(
                     children: [
@@ -1188,7 +1172,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                           fontSize: 12,
                           color: Theme.of(
                             context,
-                          ).colorScheme.onSurface.withOpacity(0.7),
+                          ).colorScheme.onSurface.withValues(alpha: 0.7),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -1241,7 +1225,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                   style: TextStyle(
                     color: Theme.of(
                       context,
-                    ).colorScheme.onSurface.withOpacity(0.7),
+                    ).colorScheme.onSurface.withValues(alpha: 0.7),
                     fontSize: 14,
                   ),
                   textAlign: TextAlign.center,
@@ -1348,7 +1332,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(
                       color: Theme.of(
                         context,
-                      ).colorScheme.onSurface.withOpacity(0.7),
+                      ).colorScheme.onSurface.withValues(alpha: 0.7),
                       fontSize: 12,
                     ),
                   ),
@@ -1599,7 +1583,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                       style: TextStyle(
                         color: Theme.of(
                           context,
-                        ).colorScheme.onSurface.withOpacity(0.7),
+                        ).colorScheme.onSurface.withValues(alpha: 0.7),
                         fontSize: 14,
                       ),
                     ),
@@ -1804,7 +1788,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(
                       color: Theme.of(
                         context,
-                      ).colorScheme.onSurface.withOpacity(0.7),
+                      ).colorScheme.onSurface.withValues(alpha: 0.7),
                       fontSize: 14,
                     ),
                   ),
@@ -1889,7 +1873,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                       fontSize: 12,
                       color: Theme.of(
                         context,
-                      ).colorScheme.onSurface.withOpacity(0.7),
+                      ).colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                   ),
                   Text(
@@ -1898,7 +1882,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                       fontSize: 12,
                       color: Theme.of(
                         context,
-                      ).colorScheme.onSurface.withOpacity(0.7),
+                      ).colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                   ),
                 ],
@@ -1956,7 +1940,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         value,
         style: TextStyle(
           fontSize: 10,
-          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
         ),
       ),
     );
@@ -2124,7 +2108,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     } else if (cleaned.length == 7) {
       // Format as 123-4567
       result = '${cleaned.substring(0, 3)}-${cleaned.substring(3)}';
-    } else if (cleaned.length > 0) {
+    } else if (cleaned.isNotEmpty) {
       // For other lengths, try to apply some formatting
       if (cleaned.length <= 3) {
         result = cleaned;
@@ -2156,7 +2140,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                   .trim(),
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            content: Container(
+            content: SizedBox(
               width: double.maxFinite,
               child: SingleChildScrollView(
                 child: Column(
@@ -2717,7 +2701,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                       style: TextStyle(
                         color: Theme.of(
                           context,
-                        ).colorScheme.onSurface.withOpacity(0.7),
+                        ).colorScheme.onSurface.withValues(alpha: 0.7),
                         fontSize: 14,
                       ),
                     ),
@@ -2802,7 +2786,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Status: Pending'),
+                          const Text('Status: Pending'),
                           Text(
                             'Sent: ${createdAt?.substring(0, 10) ?? 'Unknown'}',
                           ),
@@ -2914,7 +2898,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         final familyName = data['familyName'] as String?;
 
         debugPrint(
-          '🎉 FAMILY_MGMT: ${responderName} accepted invitation to ${familyName}',
+          '🎉 FAMILY_MGMT: $responderName accepted invitation to $familyName',
         );
 
         // Refresh family data to show new member
@@ -2968,7 +2952,7 @@ class CompactLineChartPainter extends CustomPainter {
     // Draw horizontal grid lines (y-axis: 0, 20%, 40%, 60%, 80%, 100% of max)
     final gridPaint =
         Paint()
-          ..color = Colors.grey.withOpacity(0.3)
+          ..color = Colors.grey.withValues(alpha: 0.3)
           ..strokeWidth = 0.5;
 
     for (int i = 0; i <= 5; i++) {
