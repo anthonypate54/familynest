@@ -126,16 +126,6 @@ class MessageProvider extends ChangeNotifier {
     }
   }
 
-  void markMessageAsRead(String messageId) {
-    final idx = _messages.indexWhere((m) => m.id == messageId);
-    if (idx != -1) {
-      final msg = _messages[idx];
-      _messages[idx] = msg.copyWith(hasUnreadComments: false);
-
-      notifyListeners();
-    }
-  }
-
   void incrementLikeCount(String messageId) {
     final idx = _messages.indexWhere((m) => m.id == messageId);
     if (idx != -1) {

@@ -3701,46 +3701,6 @@ Network connection error. Please check:
 
   // Removed markDMMessageAsViewed (performance optimization)
 
-  // Simple mark message as read - just one API call, one database update
-  Future<Map<String, dynamic>> markMessageAsRead(int messageId) async {
-    debugPrint('Marking message $messageId as read');
-
-    try {
-      final currentUser = await getCurrentUser();
-      debugPrint('Current user data: $currentUser');
-      if (currentUser == null) {
-        throw Exception('User not authenticated');
-      }
-      final userId = currentUser['userId'] ?? currentUser['id'];
-      debugPrint('User ID: $userId, Message ID: $messageId');
-      if (userId == null) {
-        throw Exception('User ID is null');
-      }
-      final url = Uri.parse(
-        '$baseUrl/api/users/$userId/messages/$messageId/mark-read',
-      );
-      debugPrint('Making request to: $url');
-      final response = await _makeAuthenticatedRequest(
-        'POST',
-        url,
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      debugPrint(
-        'Mark message as read response: status=${response.statusCode}, body=${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        throw Exception('Failed to mark message as read: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('Error marking message as read: $e');
-      return {'error': e.toString()};
-    }
-  }
-
   // Get unread DM message count for user
   Future<Map<String, dynamic>> getUnreadDMMessageCount() async {
     debugPrint('Getting unread DM message count');

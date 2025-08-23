@@ -9,8 +9,7 @@ import '../widgets/external_video_message_card.dart';
 import '../screens/thread_screen.dart';
 import '../utils/page_transitions.dart';
 import '../services/share_service.dart';
-import 'package:provider/provider.dart';
-import '../providers/message_provider.dart';
+
 import '../widgets/photo_viewer.dart';
 // Removed view tracking imports
 
@@ -1050,30 +1049,6 @@ class _MessageCardState extends State<MessageCard> {
               // This is a root message - convert to map for ThreadScreen
               threadMessage = message.toJson();
               debugPrint('🔍 Navigating to root message thread ${message.id}');
-            }
-
-            // Mark message as read when user opens thread
-            final messageId = int.tryParse(threadMessage['id'].toString());
-            if (messageId != null) {
-              widget.apiService
-                  .markMessageAsRead(messageId)
-                  .then((result) {
-                    if (result.containsKey('error')) {
-                      debugPrint(
-                        'Error marking message as read: ${result['error']}',
-                      );
-                    } else {
-                      // Update the local MessageProvider to reflect the read status
-                      final messageProvider = Provider.of<MessageProvider>(
-                        context,
-                        listen: false,
-                      );
-                      messageProvider.markMessageAsRead(messageId.toString());
-                    }
-                  })
-                  .catchError((e) {
-                    debugPrint('Failed to mark message as read: $e');
-                  });
             }
 
             Navigator.push(

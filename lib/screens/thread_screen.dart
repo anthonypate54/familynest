@@ -1,29 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/services.dart';
+
 import '../providers/message_provider.dart';
 import '../providers/comment_provider.dart';
 import '../models/message.dart';
-import './compose_message_screen.dart';
-import '../config/ui_config.dart';
+
 import '../services/api_service.dart';
 import '../services/message_service.dart';
 import '../services/websocket_service.dart';
 import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'dart:async';
-import 'package:file_picker/file_picker.dart';
+
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import '../utils/video_thumbnail_util.dart';
 import '../widgets/gradient_background.dart';
 import '../theme/app_theme.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import '../config/app_config.dart';
-import '../dialogs/large_video_dialog.dart';
-import '../services/share_service.dart';
-import '../services/cloud_file_service.dart';
+
 // Removed comment notification tracker import (performance optimization)
 import '../widgets/emoji_message_input.dart';
 import '../services/ios_media_picker.dart';
@@ -52,7 +47,6 @@ class _ThreadScreenState extends State<ThreadScreen>
   // Video preview fields for composing
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
-  File? _selectedVideoThumbnail;
   String? _currentlyPlayingVideoId;
   bool _isLoading = true;
   String? _error;
@@ -133,11 +127,11 @@ class _ThreadScreenState extends State<ThreadScreen>
 
     // Subscribe to thread-specific comment topic (separated from main messages)
     _webSocketService!.subscribe(
-      '/user/${widget.userId}/comments/${_parentMessageId}',
+      '/user/${widget.userId}/comments/$_parentMessageId',
       _commentMessageHandler!,
     );
     debugPrint(
-      '🔌 ThreadScreen: Subscribed to /user/${widget.userId}/comments/${_parentMessageId} for thread comments',
+      '🔌 ThreadScreen: Subscribed to /user/${widget.userId}/comments/$_parentMessageId for thread comments',
     );
 
     // Subscribe to user-specific reactions
@@ -175,29 +169,11 @@ class _ThreadScreenState extends State<ThreadScreen>
 
       // Since we're subscribed to a thread-specific topic, we know this comment belongs to our thread
       debugPrint(
-        '✅ COMMENT: Adding comment ${message.id} to thread ${_parentMessageId}',
+        '✅ COMMENT: Adding comment ${message.id} to thread $_parentMessageId',
       );
 
       // Add comment to provider (provider will handle duplicates)
       _commentProvider?.addComment(message);
-
-      // Mark parent message as read since user is actively viewing the thread
-      if (_parentMessageId != null) {
-        final apiService = Provider.of<ApiService>(context, listen: false);
-        apiService
-            .markMessageAsRead(_parentMessageId!)
-            .then((result) {
-                          if (!result.containsKey('error')) {
-              
-              // Update local MessageProvider to reflect read status immediately
-              final messageProvider = Provider.of<MessageProvider>(context, listen: false);
-              messageProvider.markMessageAsRead(_parentMessageId!.toString());
-            }
-            })
-            .catchError((e) {
-              debugPrint('❌ THREAD: Failed to auto-mark message as read: $e');
-            });
-      }
 
       // Auto-scroll to show new comment
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -308,7 +284,7 @@ class _ThreadScreenState extends State<ThreadScreen>
         _webSocketService != null &&
         _parentMessageId != null) {
       _webSocketService!.unsubscribe(
-        '/user/${widget.userId}/comments/${_parentMessageId}',
+        '/user/${widget.userId}/comments/$_parentMessageId',
         _commentMessageHandler!,
       );
     }
@@ -435,13 +411,13 @@ class _ThreadScreenState extends State<ThreadScreen>
 
       if (pickedFile != null) {
         File file = File(pickedFile.path);
-        debugPrint('📸 Camera ${type} captured: ${file.path}');
+        debugPrint('📸 Camera $type captured: ${file.path}');
 
         // Process the captured file
         await _processLocalFile(file, type);
       }
     } catch (e) {
-      debugPrint('Error capturing ${type} with camera: $e');
+      debugPrint('Error capturing $type with camera: $e');
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -459,14 +435,12 @@ class _ThreadScreenState extends State<ThreadScreen>
     _chewieController?.dispose();
     _videoController = null;
     _chewieController = null;
-    _selectedVideoThumbnail = null;
 
     if (type == 'video') {
       // Generate thumbnail
       final File? thumbnailFile = await VideoThumbnailUtil.generateThumbnail(
         'file://${file.path}',
       );
-      _selectedVideoThumbnail = thumbnailFile;
 
       // Initialize video controller
       _videoController = VideoPlayerController.file(file);
@@ -496,7 +470,7 @@ class _ThreadScreenState extends State<ThreadScreen>
           playedColor: Colors.blue,
           handleColor: Colors.blueAccent,
           backgroundColor: Colors.grey.shade700,
-          bufferedColor: Colors.lightBlue.withOpacity(0.5),
+          bufferedColor: Colors.lightBlue.withValues(alpha: 0.5),
         ),
         errorBuilder: (context, errorMessage) {
           return Center(
@@ -520,217 +494,6 @@ class _ThreadScreenState extends State<ThreadScreen>
         _scrollToBottom();
       }
     });
-  }
-
-  Future<void> _processExternalVideo(File videoFile) async {
-    try {
-      // Generate thumbnail
-      final thumbnailFile = await VideoThumbnailUtil.generateThumbnail(
-        'file://${videoFile.path}',
-      );
-      if (thumbnailFile != null) {
-        // Show URL input dialog
-        final String? dialogResult = await ShareService.showVideoUrlDialog(
-          context,
-        );
-
-        if (dialogResult != null && dialogResult.trim().isNotEmpty) {
-          // Parse the result - format is "message|||url"
-          final parts = dialogResult.split('|||');
-          final userMessage = parts.length > 0 ? parts[0].trim() : '';
-          final userUrl = parts.length > 1 ? parts[1].trim() : '';
-
-          if (ShareService.isValidVideoUrl(userUrl)) {
-            debugPrint('🔍 Valid URL provided: $userUrl');
-            debugPrint('🔍 User message: $userMessage');
-
-            // Post the external video message
-            try {
-              if (!mounted) return;
-              final apiService = Provider.of<ApiService>(
-                context,
-                listen: false,
-              );
-              final commentProvider = Provider.of<CommentProvider>(
-                context,
-                listen: false,
-              );
-
-              Message newMessage = await apiService.postComment(
-                widget.userId,
-                int.parse(widget.message['id']),
-                userMessage.isNotEmpty ? userMessage : 'Shared external video',
-                mediaPath: thumbnailFile.path,
-                mediaType: 'image',
-                videoUrl: userUrl,
-                familyId: widget.message['familyId'] as int?,
-              );
-
-              // Add to Provider
-              commentProvider.addComment(newMessage, insertAtBeggining: true);
-
-              // Show success message
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('External video posted successfully!'),
-                  duration: Duration(seconds: 3),
-                  backgroundColor: Colors.green,
-                ),
-              );
-
-              // Scroll to bottom
-              _scrollToBottomIfNeeded();
-            } catch (e) {
-              debugPrint('Error posting external video message: $e');
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Error posting external video: $e'),
-                  duration: const Duration(seconds: 3),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          } else {
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Please enter a valid video URL (must start with https://)',
-                ),
-                duration: Duration(seconds: 3),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        } else {
-          debugPrint('🔍 User cancelled URL input');
-        }
-      } else {
-        debugPrint('🔍 Failed to generate thumbnail');
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not generate thumbnail for external video'),
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error processing external video: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error processing external video: $e'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  Future<void> _handleVeryLargeCloudFile(String type) async {
-    // VERY LARGE CLOUD FILE - no cached file available, need user URL
-    if (type == 'video') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Video too large to cache. You can still share it using a direct link.',
-          ),
-          duration: Duration(seconds: 3),
-        ),
-      );
-
-      // Show URL input dialog for very large cloud files
-      final String? dialogResult = await ShareService.showVideoUrlDialog(
-        context,
-      );
-
-      if (dialogResult != null && dialogResult.trim().isNotEmpty) {
-        // Parse the result - format is "message|||url"
-        final parts = dialogResult.split('|||');
-        final userMessage = parts.isNotEmpty ? parts[0].trim() : '';
-        final userUrl = parts.length > 1 ? parts[1].trim() : '';
-
-        if (ShareService.isValidVideoUrl(userUrl)) {
-          debugPrint('🔍 Very large file - Valid URL provided: $userUrl');
-          debugPrint('🔍 Very large file - User message: $userMessage');
-
-          // Post the external video message without thumbnail (very large file)
-          try {
-            if (!mounted) return;
-            final apiService = Provider.of<ApiService>(context, listen: false);
-            final commentProvider = Provider.of<CommentProvider>(
-              context,
-              listen: false,
-            );
-
-            Message newMessage = await apiService.postComment(
-              widget.userId,
-              int.parse(widget.message['id']),
-              userMessage.isNotEmpty ? userMessage : 'Shared external video',
-              videoUrl: userUrl,
-              familyId: widget.message['familyId'] as int?,
-            );
-
-            // Add to Provider
-            commentProvider.addComment(newMessage);
-
-            // Show success message
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('External video posted successfully!'),
-                duration: Duration(seconds: 3),
-                backgroundColor: Colors.green,
-              ),
-            );
-
-            // Scroll to bottom
-            _scrollToBottomIfNeeded();
-          } catch (e) {
-            debugPrint('Error posting very large external video: $e');
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error posting external video: $e'),
-                duration: const Duration(seconds: 3),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        } else {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Please enter a valid video URL (must start with https://)',
-              ),
-              duration: Duration(seconds: 3),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      } else {
-        debugPrint('🔍 User cancelled very large file URL input');
-      }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Photo too large to process.'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  void _scrollToBottomIfNeeded() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
   }
 
   void _scrollToBottom() {
@@ -864,15 +627,6 @@ class _ThreadScreenState extends State<ThreadScreen>
       if (newComment != null && mounted) {
         commentProvider.addComment(newComment);
         messageProvider.incrementCommentCount(widget.message['id'].toString());
-
-        // Mark message as read since user just participated by posting a comment
-        final messageId = int.tryParse(widget.message['id'].toString());
-        if (messageId != null) {
-          debugPrint(
-            '### 📖 Marking message $messageId as read after posting comment',
-          );
-          apiService.markMessageAsRead(messageId);
-        }
 
         _messageController.clear();
         setState(() {
@@ -1033,7 +787,9 @@ class _ThreadScreenState extends State<ThreadScreen>
                                       shape: BoxShape.circle,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.3),
+                                          color: Colors.black.withValues(
+                                            alpha: 0.3,
+                                          ),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         ),
@@ -1105,7 +861,9 @@ class _ThreadScreenState extends State<ThreadScreen>
                                       shape: BoxShape.circle,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.3),
+                                          color: Colors.black.withValues(
+                                            alpha: 0.3,
+                                          ),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         ),
