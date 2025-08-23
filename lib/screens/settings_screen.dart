@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
-import '../services/notification_service.dart';
+
 import '../theme/app_theme.dart';
 import '../theme/app_styles.dart';
 import '../providers/theme_provider.dart';
@@ -9,6 +12,7 @@ import '../providers/text_size_provider.dart';
 import 'login_screen.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/gradient_background.dart';
+import 'profile_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ApiService apiService;
@@ -89,7 +93,7 @@ class SettingsScreenState extends State<SettingsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Settings', style: AppStyles.appBarTitleStyle),
+        title: const Text('Settings', style: AppStyles.appBarTitleStyle),
         backgroundColor: AppTheme.getAppBarColor(context),
         elevation: 0,
       ),
@@ -115,206 +119,13 @@ class SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Future<void> _sendInvitation() async {
-    try {
-      // First check if user has a family
-      final userData = await widget.apiService.getUserById(widget.userId);
-      if (!mounted) return;
-
-      final familyId = userData['familyId'];
-
-      if (familyId == null) {
-        _showCreateFamilyFirstDialog();
-        return;
-      }
-
-      // User has a family, proceed with invitation
-      final TextEditingController emailController = TextEditingController();
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder:
-            (BuildContext dialogContext) => AlertDialog(
-              title: const Text('Send Invitation'),
-              content: TextField(
-                controller: emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress,
-                autofocus: true,
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    Navigator.pop(
-                      dialogContext,
-                    ); // Close the dialog immediately
-
-                    if (!mounted) return;
-                    // Show a loading indicator
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Sending invitation...'),
-                        duration: Duration(seconds: 1),
-                      ),
-                    );
-
-                    try {
-                      await widget.apiService.inviteUser(
-                        widget.userId,
-                        emailController.text,
-                      );
-                      if (!mounted) return;
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Invitation sent successfully!'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    } catch (e) {
-                      if (!mounted) return;
-                      debugPrint('Error sending invitation: $e');
-
-                      String errorMessage = e.toString();
-
-                      // Check if it's the database error we fixed
-                      if (errorMessage.contains('invitee_email') ||
-                          errorMessage.contains('constraint') ||
-                          errorMessage.contains('null value in column')) {
-                        // Show a specific message that's more helpful
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Error sending invitation: ${emailController.text}. Please try a different email.',
-                            ),
-                            backgroundColor: Colors.red,
-                            duration: const Duration(seconds: 5),
-                          ),
-                        );
-                      } else if (errorMessage.contains(
-                            'already in your family',
-                          ) ||
-                          errorMessage.contains(
-                            'already a member of this family',
-                          )) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'This person is already in your family!',
-                            ),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                      } else if (errorMessage.contains('already pending')) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'There is already a pending invitation for this email.',
-                            ),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                      } else if (errorMessage.contains('Server error') ||
-                          errorMessage.contains('500')) {
-                        // Only show the backend error dialog for server errors
-                        _showInvitationBackendError();
-                      } else {
-                        // For other errors, show a snackbar with the message
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Error: $errorMessage'),
-                            backgroundColor: Colors.red,
-                            duration: const Duration(seconds: 5),
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  child: const Text('Send'),
-                ),
-              ],
-            ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      debugPrint('Error checking user family status: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  // Add a method to handle the case when user doesn't have a family
-  void _showCreateFamilyFirstDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (BuildContext dialogContext) => AlertDialog(
-            title: const Text('Create a Family First'),
-            content: const Text(
-              'You need to create a family before you can invite others. Would you like to create a family now?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Not Now'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  // Navigate to family management screen
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Navigate to family management (not implemented)',
-                      ),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                ),
-                child: const Text('Create Family'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  // Show a message about the invitation backend issue
-  void _showInvitationBackendError() {
-    showDialog(
-      context: context,
-      builder:
-          (BuildContext dialogContext) => AlertDialog(
-            title: const Text('Invitation System Unavailable'),
-            content: const Text(
-              'We\'re sorry, but the invitation system is currently experiencing technical issues.\n\n'
-              'Our team has been notified and is working on a fix. In the meantime, you can still use '
-              'the app and enjoy your family connections.\n\n'
-              'Please try again later or contact support if the issue persists.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-    );
-  }
-
   Widget _buildSectionHeader(String title) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       color: Colors.grey[100],
       child: Text(
         title,
-        style: TextStyle(
+        style: const TextStyle(
           color: AppTheme.primaryColor,
           fontWeight: FontWeight.bold,
           fontSize: 16,
@@ -330,11 +141,7 @@ class SettingsScreenState extends State<SettingsScreen>
           leading: const Icon(Icons.person),
           title: const Text('Edit Profile'),
           subtitle: const Text('Update your profile information'),
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Edit Profile tapped')),
-            );
-          },
+          onTap: _showEditProfileDialog,
         ),
         ListTile(
           leading: const Icon(Icons.password),
@@ -344,53 +151,7 @@ class SettingsScreenState extends State<SettingsScreen>
             _showChangePasswordDialog();
           },
         ),
-        ListTile(
-          leading: const Icon(Icons.refresh, color: Colors.orange),
-          title: const Text(
-            'Refresh Notification Token',
-            style: TextStyle(color: Colors.orange),
-          ),
-          subtitle: const Text('Debug: Force refresh FCM token'),
-          onTap: () async {
-            try {
-              // Show loading
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Refreshing notification token...'),
-                  backgroundColor: Colors.orange,
-                  duration: Duration(seconds: 2),
-                ),
-              );
 
-              // Force refresh token
-              final success = await NotificationService.forceRefreshToken();
-
-              if (!mounted) return;
-
-              // Show result
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    success
-                        ? '✅ Notification token refreshed successfully!'
-                        : '❌ Failed to refresh notification token',
-                  ),
-                  backgroundColor: success ? Colors.green : Colors.red,
-                  duration: const Duration(seconds: 3),
-                ),
-              );
-            } catch (e) {
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Error refreshing token: $e'),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 3),
-                ),
-              );
-            }
-          },
-        ),
         ListTile(
           leading: const Icon(Icons.logout, color: Colors.red),
           title: const Text('Logout', style: TextStyle(color: Colors.red)),
@@ -580,10 +341,10 @@ class SettingsScreenState extends State<SettingsScreen>
       builder:
           (BuildContext dialogContext) => AlertDialog(
             title: const Text('About FamilyNest'),
-            content: Column(
+            content: const Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text('Version: 1.0.0'),
                 SizedBox(height: 8),
                 Text(
@@ -641,16 +402,20 @@ class SettingsScreenState extends State<SettingsScreen>
           };
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to update notification setting'),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to update notification setting'),
+            ),
+          );
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating notification setting: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating notification setting: $e')),
+        );
+      }
     }
   }
 
@@ -744,14 +509,13 @@ class SettingsScreenState extends State<SettingsScreen>
     bool obscureCurrentPassword = true;
     bool obscureNewPassword = true;
     bool obscureConfirmPassword = true;
+    bool isLoading = false;
 
     showDialog(
       context: context,
       builder:
           (context) => StatefulBuilder(
             builder: (context, setState) {
-              bool isLoading = false;
-
               return AlertDialog(
                 title: const Text('Change Password'),
                 content: Column(
@@ -831,14 +595,13 @@ class SettingsScreenState extends State<SettingsScreen>
                 ),
                 actions: [
                   TextButton(
-                    onPressed: isLoading ? null : () => Navigator.pop(context),
+                    onPressed: !isLoading ? () => Navigator.pop(context) : null,
                     child: const Text('Cancel'),
                   ),
                   ElevatedButton(
                     onPressed:
-                        isLoading
-                            ? null
-                            : () async {
+                        !isLoading
+                            ? () async {
                               setState(() {
                                 isLoading = true;
                               });
@@ -856,7 +619,8 @@ class SettingsScreenState extends State<SettingsScreen>
                                   isLoading = false;
                                 });
                               }
-                            },
+                            }
+                            : null,
                     child:
                         isLoading
                             ? const SizedBox(
@@ -935,32 +699,46 @@ class SettingsScreenState extends State<SettingsScreen>
 
       if (result != null && result.containsKey('error')) {
         // Show error message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['error']), backgroundColor: Colors.red),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['error']),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       } else if (result != null && result.containsKey('message')) {
         // Success
-        Navigator.pop(dialogContext); // Close dialog
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (mounted) {
+          // ignore: use_build_context_synchronously
+          Navigator.pop(dialogContext); // Close dialog
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message']),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       } else {
         // Unexpected response
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('An unexpected error occurred'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('An unexpected error occurred'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 }
