@@ -74,8 +74,11 @@ class UnifiedMediaPicker {
                         type == 'photo'
                             ? Icons.photo_library
                             : Icons.video_library,
-                    title: 'Photos',
-                    subtitle: 'From your photo library',
+                    title: type == 'photo' ? 'Photos' : 'Videos',
+                    subtitle:
+                        type == 'photo'
+                            ? 'From your photo library'
+                            : 'From your video library',
                     onTap: () => Navigator.pop(context, 'photos'),
                   ),
                   _buildOptionTile(
@@ -346,7 +349,7 @@ class UnifiedMediaPicker {
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: Theme.of(context).primaryColor.withOpacity(0.1),
+          color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(icon, color: Theme.of(context).primaryColor, size: 24),
