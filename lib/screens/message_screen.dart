@@ -14,16 +14,18 @@ import 'dart:async';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/ios_media_picker.dart';
-import 'package:video_player/video_player.dart';
-import 'package:chewie/chewie.dart';
+
 import '../theme/app_theme.dart';
-import '../utils/video_thumbnail_util.dart';
 import '../widgets/gradient_background.dart';
 
 import '../providers/message_provider.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/emoji_message_input.dart';
+import 'dart:developer' as developer;
+import '../services/video_composition_service.dart';
+import '../widgets/video_composition_preview.dart';
+import '../widgets/unified_send_button.dart';
 
 class MessageScreen extends StatefulWidget {
   final String userId;
@@ -41,12 +43,8 @@ class _MessageScreenState extends State<MessageScreen>
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _messageController = TextEditingController();
   final ValueNotifier<bool> _isSendButtonEnabled = ValueNotifier(false);
-  File? _selectedMediaFile;
-  String? _selectedMediaType;
-  // Video preview fields for composing
-  VideoPlayerController? _videoController;
-  ChewieController? _chewieController;
-  File? _selectedVideoThumbnail;
+  // Unified video composition service (replaces all individual video state)
+  late VideoCompositionService _compositionService;
 
   bool _isLoading = true;
   bool _isFirstTimeUser = true; // Track if user is truly new
@@ -92,6 +90,10 @@ class _MessageScreenState extends State<MessageScreen>
   @override
   void initState() {
     super.initState();
+
+    // Initialize unified composition service
+    _compositionService = VideoCompositionService();
+
     WidgetsBinding.instance.addObserver(this); // Add lifecycle observer
     _messageController.addListener(() {
       _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
@@ -211,13 +213,13 @@ class _MessageScreenState extends State<MessageScreen>
 
       // Find the index of the message
       final messageIndex = messages.indexWhere(
-        (message) => message.id == messageId,
+        (message) => message.id.toString() == messageId.toString(),
       );
 
       if (messageIndex != -1 && _scrollController.hasClients) {
         // Calculate the scroll position
         // Each message item has some height, so we need to estimate
-        final estimatedItemHeight = 100.0; // Approximate height per message
+        const estimatedItemHeight = 100.0; // Approximate height per message
         final scrollPosition =
             (messages.length - 1 - messageIndex) * estimatedItemHeight;
 
@@ -253,6 +255,7 @@ class _MessageScreenState extends State<MessageScreen>
       }
 
       // Check if user has any activity (DMs or messages)
+      if (!mounted) return;
       final apiService = Provider.of<ApiService>(context, listen: false);
 
       // Check for DMs and messages in parallel
@@ -260,6 +263,8 @@ class _MessageScreenState extends State<MessageScreen>
         apiService.getOrCreateConversation(int.parse(widget.userId)),
         apiService.getUserMessages(widget.userId),
       ]);
+
+      if (!mounted) return;
 
       final conversations = results[0] as List<dynamic>;
       final messages = results[1] as List<Message>;
@@ -300,9 +305,9 @@ class _MessageScreenState extends State<MessageScreen>
           _isFirstTimeUser = false;
         });
       }
-      print('🔍 User took action - marked hasSeenWelcome = true');
+      debugPrint('🔍 User took action - marked hasSeenWelcome = true');
     } catch (e) {
-      print('Error marking welcome as seen: $e');
+      debugPrint('Error marking welcome as seen: $e');
     }
   }
 
@@ -553,12 +558,31 @@ class _MessageScreenState extends State<MessageScreen>
       _webSocketService!.removeConnectionListener(_connectionListener!);
     }
 
+    debugPrint('🧹 Starting MessageScreen dispose...');
+    _printMemoryUsage('Screen dispose start');
+
     WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
+
+    // Cleanup all resources
     _scrollController.dispose();
+    debugPrint('🧹 ScrollController disposed');
+    _printMemoryUsage('After ScrollController dispose');
+
     _messageController.dispose();
+    debugPrint('🧹 MessageController disposed');
+    _printMemoryUsage('After MessageController dispose');
+
     _isSendButtonEnabled.dispose();
-    _videoController?.dispose();
-    _chewieController?.dispose();
+    debugPrint('🧹 SendButtonEnabled disposed');
+    _printMemoryUsage('After SendButtonEnabled dispose');
+
+    // Cleanup composition service
+    _compositionService.clearComposition();
+    _compositionService.dispose();
+
+    debugPrint('🧹 MessageScreen dispose completed');
+    _printMemoryUsage('Screen dispose complete');
+
     super.dispose();
   }
 
@@ -692,13 +716,13 @@ class _MessageScreenState extends State<MessageScreen>
 
       if (pickedFile != null) {
         File file = File(pickedFile.path);
-        debugPrint('📸 Camera ${type} captured: ${file.path}');
+        debugPrint('📸 Camera $type captured: ${file.path}');
 
         // Process the captured file
         await _processLocalFile(file, type);
       }
     } catch (e) {
-      debugPrint('Error capturing ${type} with camera: $e');
+      debugPrint('Error capturing $type with camera: $e');
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -711,180 +735,18 @@ class _MessageScreenState extends State<MessageScreen>
   }
 
   Future<void> _processLocalFile(File file, String type) async {
-    // Dispose previous controllers
-    _videoController?.dispose();
-    _chewieController?.dispose();
-    _videoController = null;
-    _chewieController = null;
-    _selectedVideoThumbnail = null;
+    // Use unified composition service
+    final success = await _compositionService.processLocalFile(file, type);
 
-    if (type == 'video') {
-      // Generate thumbnail
-      final File? thumbnailFile = await VideoThumbnailUtil.generateThumbnail(
-        'file://${file.path}',
-      );
-      _selectedVideoThumbnail = thumbnailFile;
-
-      // Initialize video controller
-      _videoController = VideoPlayerController.file(file);
-      await _videoController!.initialize();
-
-      // Initialize Chewie controller
-      _chewieController = ChewieController(
-        videoPlayerController: _videoController!,
-        aspectRatio: _videoController!.value.aspectRatio,
-        autoPlay: false,
-        looping: false,
-        autoInitialize: true,
-        showControls: true,
-        placeholder:
-            thumbnailFile != null
-                ? Image.file(
-                  thumbnailFile,
-                  fit: BoxFit.contain,
-                  width: double.infinity,
-                  height: double.infinity,
-                )
-                : Container(
-                  color: Colors.black,
-                  child: const Center(child: CircularProgressIndicator()),
-                ),
-        materialProgressColors: ChewieProgressColors(
-          playedColor: Colors.blue,
-          handleColor: Colors.blueAccent,
-          backgroundColor: Colors.grey.shade700,
-          bufferedColor: Colors.lightBlue.withOpacity(0.5),
-        ),
-        errorBuilder: (context, errorMessage) {
-          return Center(
-            child: Text(
-              'Error: $errorMessage',
-              style: const TextStyle(color: Colors.white),
-            ),
-          );
-        },
-      );
-    }
-
-    setState(() {
-      _selectedMediaFile = file;
-      _selectedMediaType = type;
-    });
-  }
-
-  /*
-  Future<void> _processExternalVideo(File file) async {
-    // LARGE CLOUD FILE (cached) - we have cached file + cloud URI
-    try {
-      // Generate thumbnail from cached file
-      final File? thumbnailFile = await VideoThumbnailUtil.generateThumbnail(
-        'file://${file.path!}',
-      );
-
-      if (thumbnailFile != null) {
-        debugPrint('🔍 Generated thumbnail for external video');
-
-        // Show URL input dialog
-        if (!mounted) return;
-        final String? dialogResult = await ShareService.showVideoUrlDialog(
-          context,
-        );
-
-        if (dialogResult != null && dialogResult.trim().isNotEmpty) {
-          // Parse the result - format is "message|||url"
-          final parts = dialogResult.split('|||');
-          final userMessage = parts.length > 0 ? parts[0].trim() : '';
-          final userUrl = parts.length > 1 ? parts[1].trim() : '';
-
-          if (ShareService.isValidVideoUrl(userUrl)) {
-            debugPrint('🔍 Valid URL provided: $userUrl');
-            debugPrint('🔍 User message: $userMessage');
-
-            // Post the external video message with thumbnail
-            try {
-              final apiService = Provider.of<ApiService>(
-                context,
-                listen: false,
-              );
-
-              Message newMessage = await apiService.postMessage(
-                int.tryParse(widget.userId) ?? 0,
-                userMessage.isNotEmpty
-                    ? userMessage
-                    : 'Shared external video', // Use user message or fallback
-                mediaPath: thumbnailFile.path, // Thumbnail file path
-                mediaType: 'image', // Thumbnail is an image
-                videoUrl: userUrl, // External video URL
-              );
-
-              // DO NOT manually add the message here - let WebSocket handle it
-              // This prevents duplication since WebSocket will broadcast to all clients
-              if (!mounted) return;
-              _scrollToBottom();
-
-              // Show success message
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('External video posted successfully!'),
-                  duration: Duration(seconds: 3),
-                  backgroundColor: Colors.green,
-                ),
-              );
-
-              // Scroll to bottom
-              _scrollToBottom();
-            } catch (e) {
-              debugPrint('Error posting external video message: $e');
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Error posting external video: $e'),
-                  duration: const Duration(seconds: 3),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          } else {
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Please enter a valid video URL (must start with https://)',
-                ),
-                duration: Duration(seconds: 3),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        } else {
-          debugPrint('🔍 User cancelled URL input');
-        }
-      } else {
-        debugPrint('🔍 Failed to generate thumbnail');
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not generate thumbnail for external video'),
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-      setState(() {
-        _isSending = false;
-      });
-    } catch (e) {
-      debugPrint('Error processing external video: $e');
-      if (!mounted) return;
+    if (!success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error processing external video: $e'),
-          duration: const Duration(seconds: 3),
+        const SnackBar(
+          content: Text('Error processing file'),
+          backgroundColor: Colors.red,
         ),
       );
     }
   }
-*/
 
   Future<void> _postMessage(ApiService apiService) async {
     // Prevent duplicate sends
@@ -906,18 +768,17 @@ class _MessageScreenState extends State<MessageScreen>
 
     Message? newMessage;
     try {
-      if (_selectedMediaFile != null) {
+      if (_compositionService.hasMedia) {
+        final mediaInfo = _compositionService.getSelectedMediaInfo()!;
         debugPrint('🚀 _postMessage: Posting message with media');
         newMessage = await apiService.postMessage(
           int.tryParse(widget.userId) ?? 0,
           text,
-          mediaPath: _selectedMediaFile!.path,
-          mediaType: _selectedMediaType ?? 'photo',
+          mediaPath: mediaInfo['file'].path,
+          mediaType: mediaInfo['type'],
         );
-        setState(() {
-          _selectedMediaFile = null;
-          _selectedMediaType = null;
-        });
+        // Clear composition after successful send
+        await _compositionService.clearComposition();
       } else if (text.isNotEmpty) {
         debugPrint('🚀 _postMessage: Posting text-only message');
         newMessage = await apiService.postMessage(
@@ -1052,248 +913,137 @@ class _MessageScreenState extends State<MessageScreen>
             });
           }
         },
-        child: GradientBackground(
-          child: Column(
-            children: [
-              Expanded(
-                child:
-                    _isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : RefreshIndicator(
-                          onRefresh: () async {
-                            await _loadMessages();
-                          },
-                          child: Consumer<MessageProvider>(
-                            builder: (context, messageProvider, child) {
-                              return MessageService.buildMessageListView(
-                                context,
-                                messageProvider.messages,
-                                apiService: apiService,
-                                scrollController: _scrollController,
-                                currentUserId: widget.userId.toString(),
-                                onTap: (message) {
-                                  if (message.mediaType == 'video') {
-                                    setState(() {
-                                      _currentlyPlayingVideoId = message.id;
-                                    });
-                                  }
+        child: Stack(
+          children: [
+            GradientBackground(
+              child: Column(
+                children: [
+                  Expanded(
+                    child:
+                        _isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : RefreshIndicator(
+                              onRefresh: () async {
+                                await _loadMessages();
+                              },
+                              child: Consumer<MessageProvider>(
+                                builder: (context, messageProvider, child) {
+                                  return MessageService.buildMessageListView(
+                                    context,
+                                    messageProvider.messages,
+                                    apiService: apiService,
+                                    scrollController: _scrollController,
+                                    currentUserId: widget.userId.toString(),
+                                    onTap: (message) {
+                                      if (message.mediaType == 'video') {
+                                        // Memory-safe: Only one video plays at a time
+                                        debugPrint(
+                                          '🎬 Playing video inline (memory-safe): ${message.id}',
+                                        );
+                                        setState(() {
+                                          _currentlyPlayingVideoId = message.id;
+                                        });
+                                      }
+                                    },
+                                    currentlyPlayingVideoId:
+                                        _currentlyPlayingVideoId,
+                                    isFirstTimeUser: _isFirstTimeUser,
+                                  );
                                 },
-                                currentlyPlayingVideoId:
-                                    _currentlyPlayingVideoId,
-                                isFirstTimeUser: _isFirstTimeUser,
-                              );
-                            },
-                          ),
-                        ),
-              ),
-              if (_selectedMediaFile != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child:
-                      _selectedMediaType == 'photo'
-                          ? ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: Stack(
-                              children: [
-                                SizedBox(
-                                  width:
-                                      MediaQuery.of(context).size.width * 0.7,
-                                  height: 200,
-                                  child: Image.file(
-                                    _selectedMediaFile!,
-                                    width:
-                                        MediaQuery.of(context).size.width * 0.7,
-                                    height: 200,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 8,
-                                  right: 8,
-                                  child: Container(
-                                    width: 28,
-                                    height: 28,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.grey,
-                                        width: 2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.08),
-                                          blurRadius: 2,
-                                        ),
-                                      ],
-                                    ),
-                                    child: IconButton(
-                                      icon: const Icon(
-                                        Icons.close,
-                                        color: Colors.black,
-                                        size: 18,
-                                      ),
-                                      padding: EdgeInsets.zero,
-                                      splashRadius: 18,
-                                      onPressed: () {
-                                        setState(() {
-                                          _selectedMediaFile = null;
-                                          _selectedMediaType = null;
-                                        });
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                          : _selectedMediaType == 'video'
-                          ? ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: Stack(
-                              children: [
-                                SizedBox(
-                                  width:
-                                      MediaQuery.of(context).size.width * 0.7,
-                                  height: 200,
-                                  child:
-                                      _chewieController != null
-                                          ? Chewie(
-                                            key: const ValueKey(
-                                              'message-composition-video',
-                                            ),
-                                            controller: _chewieController!,
-                                          )
-                                          : _selectedVideoThumbnail != null
-                                          ? Image.file(
-                                            _selectedVideoThumbnail!,
-                                            width:
-                                                MediaQuery.of(
-                                                  context,
-                                                ).size.width *
-                                                0.7,
-                                            height: 200,
-                                            fit: BoxFit.cover,
-                                          )
-                                          : Container(
-                                            color: Colors.black,
-                                            child: const Center(
-                                              child:
-                                                  CircularProgressIndicator(),
-                                            ),
-                                          ),
-                                ),
-                                Positioned(
-                                  top: 8,
-                                  right: 8,
-                                  child: Container(
-                                    width: 28,
-                                    height: 28,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.grey,
-                                        width: 2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.08),
-                                          blurRadius: 2,
-                                        ),
-                                      ],
-                                    ),
-                                    child: IconButton(
-                                      icon: const Icon(
-                                        Icons.close,
-                                        color: Colors.black,
-                                        size: 18,
-                                      ),
-                                      padding: EdgeInsets.zero,
-                                      splashRadius: 18,
-                                      onPressed: () {
-                                        setState(() {
-                                          _selectedMediaFile = null;
-                                          _selectedMediaType = null;
-                                          _videoController?.dispose();
-                                          _chewieController?.dispose();
-                                          _videoController = null;
-                                          _chewieController = null;
-                                          _selectedVideoThumbnail = null;
-                                        });
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                          : const SizedBox.shrink(),
-                ),
-              // Message input (using reusable component)
-              EmojiMessageInput(
-                controller: _messageController,
-                hintText: 'Type a message...',
-                onSend: () => _postMessage(apiService),
-                onMediaAttach: _showMediaPicker,
-                enabled: true,
-                isDarkMode: UIConfig.useDarkMode,
-                onEmojiPickerStateChanged: (state) {
-                  setState(() {
-                    _emojiPickerState = state;
-                  });
-                },
-                sendButton:
-                    _isSending
-                        ? Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade400,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
                               ),
                             ),
-                          ),
-                        )
-                        : ValueListenableBuilder<bool>(
-                          valueListenable: _isSendButtonEnabled,
-                          builder: (context, isEnabled, child) {
-                            return CircleAvatar(
-                              backgroundColor:
-                                  isEnabled
-                                      ? Theme.of(context).primaryColor
-                                      : Colors.grey.shade400,
-                              child: IconButton(
-                                icon: const Icon(
-                                  Icons.send,
-                                  color: Colors.white,
-                                ),
-                                onPressed:
-                                    isEnabled
-                                        ? () => _postMessage(apiService)
-                                        : null,
-                                tooltip: 'Send Message',
-                              ),
-                            );
-                          },
-                        ),
-              ),
+                  ),
+                  // Use unified video composition preview widget
+                  VideoCompositionPreview(
+                    compositionService: _compositionService,
+                    onClose: () async {
+                      await _compositionService.clearComposition();
+                    },
+                  ),
+                  // Message input (using reusable component)
+                  EmojiMessageInput(
+                    controller: _messageController,
+                    hintText: 'Type a message...',
+                    onSend: () => _postMessage(apiService),
+                    onMediaAttach: _showMediaPicker,
+                    enabled: true,
+                    isDarkMode: UIConfig.useDarkMode,
+                    onEmojiPickerStateChanged: (state) {
+                      setState(() {
+                        _emojiPickerState = state;
+                      });
+                    },
+                    sendButton: _buildCustomSendButton(apiService),
+                  ),
 
-              // Emoji picker (when visible)
-              if (_emojiPickerState.isVisible)
-                _emojiPickerState.emojiPickerWidget ?? const SizedBox.shrink(),
-            ],
-          ),
+                  // Emoji picker (when visible)
+                  if (_emojiPickerState.isVisible)
+                    _emojiPickerState.emojiPickerWidget ??
+                        const SizedBox.shrink(),
+                ],
+              ),
+            ),
+
+            // Loading overlay for media processing
+            AnimatedBuilder(
+              animation: _compositionService,
+              builder: (context, child) {
+                if (_compositionService.isProcessingMedia) {
+                  return Container(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    child: const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text(
+                            'Processing media...',
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  // Print current memory usage for debugging
+  void _printMemoryUsage(String context) {
+    try {
+      // Force garbage collection first
+      developer.Timeline.startSync('memory_check');
+      developer.Timeline.finishSync();
+
+      // Print timestamp for memory tracking
+      final timestamp = DateTime.now().toIso8601String();
+      debugPrint(
+        '📊 Memory [$context] at $timestamp: Checking memory usage...',
+      );
+
+      // Note: Detailed memory info requires running with --observatory-port
+      // For now, we'll track this via timeline and external profiling tools
+    } catch (e) {
+      debugPrint('📊 Memory [$context]: Error - $e');
+    }
+  }
+
+  // Note: Video cleanup is now handled by VideoCompositionService
+
+  // Build unified send button
+  Widget _buildCustomSendButton(ApiService apiService) {
+    return UnifiedSendButton(
+      compositionService: _compositionService,
+      messageController: _messageController,
+      isSending: _isSending,
+      onSend: () => _postMessage(apiService),
     );
   }
 }
