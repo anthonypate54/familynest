@@ -77,6 +77,7 @@ class AppConfig {
   }
 
   final String _localDevBaseUrl = 'http://localhost:8080'; // Desktop/iOS
+  final String _awsStagingBaseUrl = 'http://54.189.190.245:8080'; // AWS EC2
   final String _prodBaseUrl = 'https://familynest-api.example.com';
 
   // Custom URL (set via settings)
@@ -118,19 +119,22 @@ class AppConfig {
 
   /// Get the base URL for API requests based on platform and environment
   String get baseUrl {
+    print('🔍 AppConfig.baseUrl called - Current environment: $_environment');
+
     // If a custom URL was provided, use it
     if (_customBaseUrl != null) {
+      print('🔧 Using custom URL: $_customBaseUrl');
       return _customBaseUrl!;
     }
 
     // Otherwise, choose based on environment and platform
+    print('🎯 Switching on environment: $_environment');
     switch (_environment) {
       case Environment.production:
         return _prodBaseUrl;
 
       case Environment.staging:
-        return dotenv.env['API_URL'] ??
-            'http://staging-api.familynest.example.com';
+        return _awsStagingBaseUrl;
 
       case Environment.development:
       default:
@@ -147,8 +151,7 @@ class AppConfig {
             'https://media.familynest.example.com';
 
       case Environment.staging:
-        return dotenv.env['MEDIA_URL'] ??
-            'https://staging-media.familynest.example.com';
+        return _awsStagingBaseUrl;
 
       case Environment.development:
       default:

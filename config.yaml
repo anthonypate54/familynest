@@ -11,8 +11,13 @@ platforms:
   android_emulator:
     device_id: "emulator-5554"
     api_url: "http://10.0.2.2:8080"
-    description: "Android Emulator"
+    description: "Android Emulator (Local)"
     setup_command: "adb reverse tcp:8080 tcp:8080"
+    
+  android_emulator_aws:
+    device_id: "emulator-5554"
+    api_url: "http://54.189.190.245:8080"
+    description: "Android Emulator (AWS Staging)"
     
   android_physical:
     device_id: ""
@@ -23,12 +28,22 @@ platforms:
   ios_simulator:
     device_id: "32EE6B99-A19F-4328-9082-A32C6F6F08E5"
     api_url: "http://localhost:8080"
-    description: "iOS Simulator"
+    description: "iOS Simulator (Local)"
+    
+  ios_simulator_aws:
+    device_id: "32EE6B99-A19F-4328-9082-A32C6F6F08E5"
+    api_url: "http://54.189.190.245:8080"
+    description: "iOS Simulator (AWS Staging)"
     
   ios_physical:
     device_id: ""
     api_url: "http://10.0.0.9:8080"
-    description: "Physical iPhone"
+    description: "Physical iPhone (Local)"
+    
+  ios_physical_aws:
+    device_id: ""
+    api_url: "http://54.189.190.245:8080"
+    description: "Physical iPhone (AWS Staging)"
     
   web:
     device_id: "chrome"

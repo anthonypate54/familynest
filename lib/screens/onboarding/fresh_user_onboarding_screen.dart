@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
-import '../../main.dart';
 
 class FreshUserOnboardingScreen extends StatefulWidget {
   final int userId;
@@ -267,164 +266,168 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          const SizedBox(height: 60), // Controlled top spacing
-          // Icon and title based on invitation status
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color:
-                  _hasPendingInvitations
-                      ? Theme.of(context).colorScheme.secondary.withOpacity(0.1)
-                      : Colors.green.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(60),
-            ),
-            child: Icon(
-              _hasPendingInvitations ? Icons.mail : Icons.rocket_launch,
-              size: 64,
-              color:
-                  _hasPendingInvitations
-                      ? Theme.of(context).colorScheme.secondary
-                      : Colors.green,
-            ),
-          ),
-
-          const SizedBox(height: 32),
-
-          Text(
-            _hasPendingInvitations ? 'You\'re Invited!' : 'Ready to Begin?',
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-
-          const SizedBox(height: 16),
-
-          Text(
-            _hasPendingInvitations
-                ? 'Great news! You have pending family invitations waiting for you.'
-                : 'Since this is your first time and you have no pending invitations, you can skip for now and explore the app.\n\nYou\'ll be able to check for invitations or create a family anytime from the Family tab.',
-            style: const TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-              height: 1.5,
-            ),
-            textAlign: TextAlign.center,
-          ),
-
-          const SizedBox(height: 48),
-
-          // Action buttons - order based on invitation status
-          if (_hasPendingInvitations) ...[
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => _checkInvitations(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.secondary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'View Invitations',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+      padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 24.0),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20), // Reduced top spacing
+            // Icon and title based on invitation status
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color:
+                    _hasPendingInvitations
+                        ? Theme.of(
+                          context,
+                        ).colorScheme.secondary.withOpacity(0.1)
+                        : Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(60),
+              ),
+              child: Icon(
+                _hasPendingInvitations ? Icons.mail : Icons.rocket_launch,
+                size: 64,
+                color:
+                    _hasPendingInvitations
+                        ? Theme.of(context).colorScheme.secondary
+                        : Colors.green,
               ),
             ),
+
+            const SizedBox(height: 32),
+
+            Text(
+              _hasPendingInvitations ? 'You\'re Invited!' : 'Ready to Begin?',
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+
             const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () => _createFamily(),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+
+            Text(
+              _hasPendingInvitations
+                  ? 'Great news! You have pending family invitations waiting for you.'
+                  : 'Since this is your first time and you have no pending invitations, you can skip for now and explore the app.\n\nYou\'ll be able to check for invitations or create a family anytime from the Family tab.',
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+
+            const SizedBox(height: 48),
+
+            // Action buttons - order based on invitation status
+            if (_hasPendingInvitations) ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _checkInvitations(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.secondary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'View Invitations',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
-                child: const Text(
-                  'Create Your Own Family',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
               ),
-            ),
-          ] else ...[
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => _createFamily(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => _createFamily(),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Create Your Own Family',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
-                child: const Text(
-                  'Create Your Family',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ] else ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _createFamily(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Create Your Family',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => _checkInvitations(),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Check for Invitations',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+
             const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () => _checkInvitations(),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+
+            // Make "Skip for now" more prominent for users without invitations
+            if (!_hasPendingInvitations) ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _exploreApp(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Explore the App',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
-                child: const Text(
-                  'Check for Invitations',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            TextButton(
+              onPressed: () => _exploreApp(),
+              child: Text(
+                _hasPendingInvitations ? 'Skip for now' : 'Or skip for now',
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
               ),
             ),
           ],
-
-          const SizedBox(height: 16),
-
-          // Make "Skip for now" more prominent for users without invitations
-          if (!_hasPendingInvitations) ...[
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => _exploreApp(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'Explore the App',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-
-          TextButton(
-            onPressed: () => _exploreApp(),
-            child: Text(
-              _hasPendingInvitations ? 'Skip for now' : 'Or skip for now',
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

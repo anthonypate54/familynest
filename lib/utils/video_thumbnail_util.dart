@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+
 import 'package:video_compress/video_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
@@ -7,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
+import 'dart:developer' as developer;
 
 class VideoThumbnailUtil {
   // Cache for video thumbnails (videoUrl -> thumbnailPath) during the current session
@@ -45,27 +47,50 @@ class VideoThumbnailUtil {
       // Try using video_compress first
       try {
         debugPrint('Attempting to generate thumbnail using VideoCompress...');
-        final thumbnailFile = await VideoCompress.getFileThumbnail(
-          processedPath,
-          quality: 50, // medium quality is usually sufficient
-          position: -1, // -1 means at 40% of the video duration
+        final stopwatch = Stopwatch()..start();
+
+        // Generate thumbnail on main thread but async to prevent complete blocking
+        final thumbnailFile = await Future.microtask(() async {
+          return await VideoCompress.getFileThumbnail(
+            processedPath,
+            quality: 10,
+            position: 500,
+          );
+        }).timeout(Duration(seconds: 3)); // Shorter timeout
+
+        stopwatch.stop();
+        debugPrint(
+          '⏱️ VideoCompress.getFileThumbnail took: ${stopwatch.elapsedMilliseconds}ms',
         );
 
-        if (thumbnailFile != null) {
-          // Save to permanent storage
-          final File persistentThumbnail = await _saveThumbnailPermanently(
-            thumbnailFile,
-            videoPath,
-          );
-          _thumbnailCache[videoPath] = persistentThumbnail;
+        // Save to permanent storage
+        final saveStopwatch = Stopwatch()..start();
+        final File persistentThumbnail = await _saveThumbnailPermanently(
+          thumbnailFile,
+          videoPath,
+        );
+        saveStopwatch.stop();
+        debugPrint(
+          '⏱️ _saveThumbnailPermanently took: ${saveStopwatch.elapsedMilliseconds}ms',
+        );
+
+        // Much more aggressive cache management for memory safety
+        if (_thumbnailCache.length > 3) {
           debugPrint(
-            'Thumbnail generated successfully with VideoCompress at: ${persistentThumbnail.path}',
+            '🧹 Clearing thumbnail cache aggressively (${_thumbnailCache.length} items)',
           );
-          return persistentThumbnail;
+          _thumbnailCache.clear();
         }
+
+        _thumbnailCache[videoPath] = persistentThumbnail;
+        debugPrint(
+          'Thumbnail generated successfully with VideoCompress at: ${persistentThumbnail.path}',
+        );
+        return persistentThumbnail;
       } catch (e) {
         // If VideoCompress fails, we'll try a fallback approach
         debugPrint('Error from VideoCompress: $e');
+        debugPrint('VideoCompress failed for path: $processedPath');
       }
 
       // Fallback: Try using VideoPlayerController to grab a frame
@@ -103,14 +128,29 @@ class VideoThumbnailUtil {
         controller = VideoPlayerController.file(File(processedPath));
       }
 
-      // Initialize the controller
-      await controller.initialize();
+      // Initialize the controller with error handling
+      try {
+        await controller.initialize();
 
-      // Make sure the controller is initialized
-      if (!controller.value.isInitialized) {
-        debugPrint('VideoPlayerController failed to initialize');
+        // Make sure the controller is initialized
+        if (!controller.value.isInitialized) {
+          debugPrint('VideoPlayerController failed to initialize');
+          controller.dispose();
+          return null;
+        }
+      } catch (e) {
+        debugPrint(
+          'VideoPlayerController initialization failed (likely codec issue): $e',
+        );
         controller.dispose();
-        return null;
+        // Skip to creating a simple placeholder thumbnail
+        // Create a simple colored placeholder when video player fails
+        final placeholderBytes = await _createColoredPlaceholder();
+        final thumbnailFile = File(
+          '${(await getTemporaryDirectory()).path}/${_generateThumbnailFilename(originalPath)}',
+        );
+        await thumbnailFile.writeAsBytes(placeholderBytes);
+        return await _saveThumbnailPermanently(thumbnailFile, originalPath);
       }
 
       // Seek to a position to get a good thumbnail
@@ -263,7 +303,31 @@ class VideoThumbnailUtil {
 
   /// Clears all cached thumbnails from memory (not from storage)
   static void clearCache() {
+    final cacheSize = _thumbnailCache.length;
+    debugPrint('🧹 Clearing thumbnail cache (${cacheSize} items)');
+    _printMemoryUsage('Before cache clear');
+
     _thumbnailCache.clear();
+
+    debugPrint('🧹 Video thumbnail cache cleared');
+    _printMemoryUsage('After cache clear');
+  }
+
+  // Print current memory usage for debugging
+  static void _printMemoryUsage(String context) {
+    try {
+      // Force garbage collection and add timeline marker
+      developer.Timeline.startSync('thumbnail_memory_check');
+      developer.Timeline.finishSync();
+
+      final timestamp = DateTime.now().toIso8601String();
+      final cacheSize = _thumbnailCache.length;
+      debugPrint(
+        '📊 Thumbnail Memory [$context] at $timestamp: Cache size: $cacheSize items',
+      );
+    } catch (e) {
+      debugPrint('📊 Thumbnail Memory [$context]: Error - $e');
+    }
   }
 
   /// Clears cached thumbnail for a specific video from memory (not from storage)

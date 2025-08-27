@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../services/api_service.dart';
+import '../utils/video_controller_manager.dart';
 
 class VideoMessageCard extends StatefulWidget {
   final String videoUrl;
@@ -34,8 +36,31 @@ class VideoMessageCardState extends State<VideoMessageCard> {
   @override
   void initState() {
     super.initState();
-    // Pre-load the video controller for faster playback
-    _preloadVideo();
+    debugPrint('💾 VideoMessageCard: Viewport-based loading enabled');
+  }
+
+  // Called when video enters/exits viewport
+  void _onVisibilityChanged(VisibilityInfo info) {
+    if (!mounted) return;
+
+    final visiblePercentage = info.visibleFraction * 100;
+    debugPrint('🔍 Video visibility: ${visiblePercentage.toStringAsFixed(1)}%');
+
+    if (visiblePercentage > 80) {
+      // Video is more than 80% visible - preload if not already done
+      if (!_isPreloaded && !widget.isCurrentlyPlaying) {
+        debugPrint(
+          '👀 Video entered viewport - preloading for: ${widget.videoUrl}',
+        );
+        _preloadVideo();
+      }
+    } else if (visiblePercentage < 10) {
+      // Video is barely visible - dispose to save memory
+      if (_isPreloaded && !widget.isCurrentlyPlaying) {
+        debugPrint('👋 Video left viewport - disposing');
+        _disposeControllers();
+      }
+    }
   }
 
   @override
@@ -43,30 +68,51 @@ class VideoMessageCardState extends State<VideoMessageCard> {
     super.didUpdateWidget(oldWidget);
     if (widget.isCurrentlyPlaying != oldWidget.isCurrentlyPlaying) {
       if (widget.isCurrentlyPlaying) {
+        debugPrint('🎬 Initializing video player for: ${widget.videoUrl}');
         _initializePlayer();
       } else {
+        debugPrint('⏹️ Disposing video player (another video playing)');
         _pauseAndHidePlayer();
       }
     }
   }
 
   Future<void> _preloadVideo() async {
+    // CHECK: Can we safely create another controller?
+    if (!VideoControllerManager.canCreateController()) {
+      debugPrint(
+        '🚫 BLOCKED video creation: ${VideoControllerManager.activeControllerCount} controllers already active [${widget.videoUrl.split('/').last}]',
+      );
+      return;
+    }
+
     final String videoUrl =
         widget.videoUrl.startsWith('http')
             ? widget.videoUrl
             : widget.apiService.mediaBaseUrl + widget.videoUrl;
 
     try {
+      debugPrint('🎬 CREATING VideoPlayerController for: $videoUrl');
+
       _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+      VideoControllerManager.onControllerCreated(videoUrl);
+
       await _controller!.initialize();
 
       if (mounted) {
         setState(() {
           _isPreloaded = true;
         });
+        debugPrint(
+          '✅ VideoPlayerController CREATED and INITIALIZED for: $videoUrl',
+        );
       }
     } catch (e) {
-      debugPrint('Error preloading video: $e');
+      debugPrint('❌ Error preloading video: $e');
+      // If creation failed, don't count it
+      if (_controller != null) {
+        VideoControllerManager.onControllerDisposed(videoUrl);
+      }
     }
   }
 
@@ -81,6 +127,7 @@ class VideoMessageCardState extends State<VideoMessageCard> {
     }
 
     if (_controller != null && mounted) {
+      debugPrint('🎬 CREATING ChewieController');
       _chewieController = ChewieController(
         videoPlayerController: _controller!,
         autoPlay: true,
@@ -114,11 +161,32 @@ class VideoMessageCardState extends State<VideoMessageCard> {
   }
 
   void _disposeControllers() {
-    _controller?.dispose();
-    _chewieController?.dispose();
-    _controller = null;
-    _chewieController = null;
+    debugPrint('🗑️ DISPOSING controllers for: ${widget.videoUrl}');
+
+    // Dispose in correct order: Chewie first, then VideoPlayer
+    if (_chewieController != null) {
+      debugPrint('🗑️ Disposing ChewieController');
+      _chewieController!.dispose();
+      _chewieController = null;
+    }
+
+    if (_controller != null) {
+      debugPrint('🗑️ Disposing VideoPlayerController');
+      _controller!.dispose();
+      _controller = null;
+
+      // Track disposal in manager
+      final videoUrl =
+          widget.videoUrl.startsWith('http')
+              ? widget.videoUrl
+              : widget.apiService.mediaBaseUrl + widget.videoUrl;
+      VideoControllerManager.onControllerDisposed(videoUrl);
+    }
+
     _isInitialized = false;
+    _isPreloaded = false;
+
+    debugPrint('✅ DISPOSAL COMPLETE for: ${widget.videoUrl}');
   }
 
   @override
@@ -129,86 +197,85 @@ class VideoMessageCardState extends State<VideoMessageCard> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: Container(
-        width: double.infinity,
-        height: 200,
-        constraints: const BoxConstraints(
-          minWidth: 280, // Ensure minimum width for video controls
-        ),
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child:
-              _isInitialized && _chewieController != null
-                  ? Theme(
-                    data: ThemeData(
-                      platform:
-                          TargetPlatform.android, // Force Material controls
+    return VisibilityDetector(
+      key: Key('video_${widget.videoUrl}'),
+      onVisibilityChanged: _onVisibilityChanged,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          width: double.infinity,
+          height: 200,
+          constraints: const BoxConstraints(
+            minWidth: 280, // Ensure minimum width for video controls
+          ),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child:
+                _isInitialized && _chewieController != null
+                    ? Theme(
+                      data: ThemeData(
+                        platform:
+                            TargetPlatform.android, // Force Material controls
+                      ),
+                      child: Chewie(controller: _chewieController!),
+                    )
+                    : Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Show thumbnail if available
+                        if (widget.thumbnailUrl != null &&
+                            widget.thumbnailUrl!.isNotEmpty)
+                          CachedNetworkImage(
+                            imageUrl:
+                                widget.thumbnailUrl!.startsWith('http')
+                                    ? widget.thumbnailUrl!
+                                    : widget.apiService.mediaBaseUrl +
+                                        widget.thumbnailUrl!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            placeholder:
+                                (context, url) => Container(
+                                  color: Colors.black54,
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                ),
+                            errorWidget:
+                                (context, url, error) => Container(
+                                  color: Colors.black54,
+                                  child: const Icon(
+                                    Icons.play_circle_outline,
+                                    color: Colors.white,
+                                    size: 50,
+                                  ),
+                                ),
+                          )
+                        else
+                          Container(
+                            color: Colors.black54,
+                            child: const Icon(
+                              Icons.play_circle_outline,
+                              color: Colors.white,
+                              size: 50,
+                            ),
+                          ),
+                        // Play button overlay - only when not playing
+                        if (!_isInitialized)
+                          const Center(
+                            child: Icon(
+                              Icons.play_circle_outline,
+                              color: Colors.white,
+                              size: 60,
+                            ),
+                          ),
+                      ],
                     ),
-                    child: Chewie(controller: _chewieController!),
-                  )
-                  : Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Show thumbnail if available
-                      if (widget.thumbnailUrl != null &&
-                          widget.thumbnailUrl!.isNotEmpty)
-                        CachedNetworkImage(
-                          imageUrl:
-                              widget.thumbnailUrl!.startsWith('http')
-                                  ? widget.thumbnailUrl!
-                                  : widget.apiService.mediaBaseUrl +
-                                      widget.thumbnailUrl!,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          placeholder:
-                              (context, url) => Container(
-                                color: Colors.black54,
-                                child: const Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              ),
-                          errorWidget:
-                              (context, url, error) => Container(
-                                color: Colors.black54,
-                                child: const Icon(
-                                  Icons.play_circle_outline,
-                                  color: Colors.white,
-                                  size: 50,
-                                ),
-                              ),
-                        )
-                      else
-                        Container(
-                          color: Colors.black54,
-                          child: const Icon(
-                            Icons.play_circle_outline,
-                            color: Colors.white,
-                            size: 50,
-                          ),
-                        ),
-                      // Play button overlay
-                      if (!_isInitialized)
-                        Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.black38,
-                            shape: BoxShape.circle,
-                          ),
-                          padding: const EdgeInsets.all(12),
-                          child: const Icon(
-                            Icons.play_arrow,
-                            color: Colors.white,
-                            size: 40,
-                          ),
-                        ),
-                    ],
-                  ),
+          ),
         ),
       ),
     );

@@ -116,6 +116,13 @@ void main() async {
 
   // Initialize app configuration
   final config = AppConfig();
+
+  // 🚀 ENVIRONMENT AUTO-DETECTION - Let run.sh control via .env files
+  // Environment is automatically detected from API_URL in .env file:
+  // - android_emulator: http://10.0.2.2:8080 → Environment.development
+  // - android_emulator_aws: http://54.189.190.245:8080 → Environment.staging
+  // No manual setEnvironment() call needed - AppConfig detects automatically
+
   await config.initialize();
 
   debugPrint('🌐 API URL: ${config.baseUrl}');

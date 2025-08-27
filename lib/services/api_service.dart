@@ -1282,29 +1282,11 @@ Network connection error. Please check:
     Map<String, String>? videoData;
     String? effectiveMediaPath = mediaPath;
 
+    // Note: Video processing with backend thumbnail generation was causing issues
+    // For now, we'll use the local video file processing that was working before
     if (mediaPath != null && mediaType == 'video' && !kIsWeb) {
-      try {
-        debugPrint('Processing video before posting message');
-        final videoFile = File(mediaPath);
-
-        // Upload to backend for processing
-        videoData = await uploadVideoWithThumbnail(videoFile);
-
-        // If we got a successful remote URL, use that instead of the local file
-        if (videoData['videoUrl'] != null &&
-            videoData['videoUrl']!.isNotEmpty &&
-            videoData['videoUrl']!.startsWith('http')) {
-          // Use the remote URL instead of the local file
-          effectiveMediaPath = null; // Don't send local file
-          debugPrint('Using remote video URL: ${videoData['videoUrl']}');
-        } else {
-          // Fall back to original local file
-          debugPrint('Falling back to local video file');
-        }
-      } catch (e) {
-        debugPrint('Error processing video: $e');
-        // Continue with original file
-      }
+      debugPrint('Processing video locally (backend upload disabled for now)');
+      // Continue with the local file - the backend will handle thumbnail generation
     }
 
     // Proceed with posting the message

@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'package:video_player/video_player.dart';
-import 'package:chewie/chewie.dart';
 import 'dart:io';
 import '../services/api_service.dart';
 // Removed DM view tracker import
-import '../utils/video_thumbnail_util.dart';
 import '../widgets/gradient_background.dart';
 import '../widgets/video_message_card.dart';
 import '../widgets/external_video_message_card.dart';
@@ -22,6 +19,7 @@ import '../screens/messages_home_screen.dart';
 import '../widgets/emoji_message_input.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/ios_media_picker.dart';
+import '../services/video_composition_service.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
@@ -63,14 +61,9 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   // Remove local messages state since we'll use provider
   bool _isLoading = true;
   bool _isSending = false;
-  bool _isProcessingMedia = false;
 
-  // Media handling state variables (copied from message_screen.dart)
-  File? _selectedDMMediaFile;
-  String? _selectedDMMediaType;
-  VideoPlayerController? _dmVideoController;
-  ChewieController? _dmChewieController;
-  File? _selectedDMVideoThumbnail;
+  // Unified video composition service (replaces all individual media state)
+  VideoCompositionService? _compositionService;
 
   // Video playback tracking for DM messages
   int? _currentlyPlayingVideoId;
@@ -88,6 +81,9 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   @override
   void initState() {
     super.initState();
+
+    // Initialize unified composition service
+    _compositionService = VideoCompositionService();
 
     // Add lifecycle observer
     WidgetsBinding.instance.addObserver(this);
@@ -222,9 +218,10 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     _scrollController.dispose();
     _messageFocusNode.dispose();
 
-    // Clean up DM media controllers
-    _dmVideoController?.dispose();
-    _dmChewieController?.dispose();
+    // Cleanup composition service
+    _compositionService?.clearComposition();
+    _compositionService?.dispose();
+
     super.dispose();
   }
 
@@ -232,13 +229,13 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   Future<void> _sendMessage() async {
     debugPrint('🚀 DM: _sendMessage() called');
     final content = _messageController.text.trim();
-    if (content.isEmpty && _selectedDMMediaFile == null) {
+    if (content.isEmpty && _compositionService?.selectedMediaFile == null) {
       debugPrint('🚀 DM: No content or media, returning early');
       return;
     }
 
     debugPrint(
-      '🚀 DM: Starting to send message with content: "$content", hasMedia: ${_selectedDMMediaFile != null}',
+      '🚀 DM: Starting to send message with content: "$content", hasMedia: ${_compositionService?.selectedMediaFile != null}',
     );
     setState(() {
       _isSending = true;
@@ -249,16 +246,16 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
       Map<String, dynamic>? result;
 
-      if (_selectedDMMediaFile != null) {
+      if (_compositionService?.selectedMediaFile != null) {
         // Send message with media using DMController's new postMessage endpoint
         debugPrint(
-          '🚀 DM: Sending media message, type: $_selectedDMMediaType, path: ${_selectedDMMediaFile!.path}',
+          '🚀 DM: Sending media message, type: $_compositionService?.selectedMediaType, path: ${_compositionService?.selectedMediaFile!.path}',
         );
         result = await apiService.sendDMMessage(
           conversationId: widget.conversationId,
           content: content,
-          mediaPath: _selectedDMMediaFile!.path,
-          mediaType: _selectedDMMediaType!,
+          mediaPath: _compositionService?.selectedMediaFile!.path,
+          mediaType: _compositionService?.selectedMediaType!,
         );
         debugPrint('🚀 DM: Media message API call completed');
       } else {
@@ -276,17 +273,11 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         _messageController.clear();
 
         // Dispose controllers first to avoid memory leaks
-        _dmVideoController?.dispose();
-        _dmChewieController?.dispose();
+        // _dmVideoController?.dispose();
+        // _dmChewieController?.dispose();
 
         // Then update state in a single setState
-        setState(() {
-          _selectedDMMediaFile = null;
-          _selectedDMMediaType = null;
-          _dmVideoController = null;
-          _dmChewieController = null;
-          _selectedDMVideoThumbnail = null;
-        });
+        setState(() {});
 
         // Add the message to sender's provider immediately (optimistic update)
         // WebSocket will only broadcast to the recipient, not the sender
@@ -407,7 +398,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       if (!mounted) return;
 
       if (file != null) {
-        await _processDMLocalFile(file, type);
+        await _compositionService?.processLocalFile(file, type);
       }
     } catch (e) {
       if (!mounted) return;
@@ -445,7 +436,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         debugPrint('📸 DM Camera $type captured: ${file.path}');
 
         // Process the captured file
-        await _processDMLocalFile(file, type);
+        await _compositionService?.processLocalFile(file, type);
       }
     } catch (e) {
       debugPrint('Error picking DM media from camera: $e');
@@ -460,91 +451,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     }
   }
 
-  Future<void> _processDMLocalFile(File file, String type) async {
-    debugPrint('🔄 DM: Starting media processing for $type');
-    setState(() {
-      _isProcessingMedia = true;
-    });
-
-    try {
-      // Dispose previous controllers
-      _dmVideoController?.dispose();
-      _dmChewieController?.dispose();
-      _dmVideoController = null;
-      _dmChewieController = null;
-      _selectedDMVideoThumbnail = null;
-
-      if (type == 'video') {
-        // Generate thumbnail
-        final File? thumbnailFile = await VideoThumbnailUtil.generateThumbnail(
-          'file://${file.path}',
-        );
-        _selectedDMVideoThumbnail = thumbnailFile;
-
-        // Initialize video controller
-        _dmVideoController = VideoPlayerController.file(file);
-        await _dmVideoController!.initialize();
-
-        // Initialize Chewie controller
-        _dmChewieController = ChewieController(
-          videoPlayerController: _dmVideoController!,
-          aspectRatio: _dmVideoController!.value.aspectRatio,
-          autoPlay: false,
-          looping: false,
-          autoInitialize: true,
-          showControls: true,
-          placeholder:
-              thumbnailFile != null
-                  ? Image.file(
-                    thumbnailFile,
-                    fit: BoxFit.contain,
-                    width: double.infinity,
-                    height: double.infinity,
-                  )
-                  : Container(
-                    color: Colors.black,
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
-          materialProgressColors: ChewieProgressColors(
-            playedColor: Colors.blue,
-            handleColor: Colors.blueAccent,
-            backgroundColor: Colors.grey.shade700,
-            bufferedColor: Colors.lightBlue.withValues(alpha: 0.5),
-          ),
-          errorBuilder: (context, errorMessage) {
-            return Center(
-              child: Text(
-                'Error: $errorMessage',
-                style: const TextStyle(color: Colors.white),
-              ),
-            );
-          },
-        );
-      }
-
-      setState(() {
-        _selectedDMMediaFile = file;
-        _selectedDMMediaType = type;
-      });
-    } catch (e) {
-      debugPrint('❌ Error processing DM media file: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error processing file: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      debugPrint('🔄 DM: Media processing completed');
-      if (mounted) {
-        setState(() {
-          _isProcessingMedia = false;
-        });
-      }
-    }
-  }
+  // Note: Media processing now handled by VideoCompositionService
 
   void _scrollToBottomIfNeeded() {
     if (_scrollController.hasClients) {
@@ -1122,11 +1029,11 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                   ),
 
                   // Media preview (if any)
-                  if (_selectedDMMediaFile != null)
+                  if (_compositionService?.selectedMediaFile != null)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
                       child:
-                          _selectedDMMediaType == 'photo'
+                          _compositionService?.selectedMediaType == 'photo'
                               ? ClipRRect(
                                 borderRadius: BorderRadius.circular(6),
                                 child: Stack(
@@ -1137,7 +1044,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                                           0.7,
                                       height: 200,
                                       child: Image.file(
-                                        _selectedDMMediaFile!,
+                                        _compositionService!.selectedMediaFile!,
                                         width:
                                             MediaQuery.of(context).size.width *
                                             0.7,
@@ -1175,10 +1082,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                                               16,
                                             ),
                                             onTap: () {
-                                              setState(() {
-                                                _selectedDMMediaFile = null;
-                                                _selectedDMMediaType = null;
-                                              });
+                                              setState(() {});
                                             },
                                             child: const Icon(
                                               Icons.close,
@@ -1192,7 +1096,8 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                                   ],
                                 ),
                               )
-                              : _selectedDMMediaType == 'video'
+                              : _compositionService?.selectedMediaType ==
+                                  'video'
                               ? ClipRRect(
                                 borderRadius: BorderRadius.circular(6),
                                 child: Stack(
@@ -1203,18 +1108,12 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                                           0.7,
                                       height: 200,
                                       child:
-                                          _dmChewieController != null
-                                              ? Chewie(
-                                                key: const ValueKey(
-                                                  'dm-composition-video',
-                                                ),
-                                                controller:
-                                                    _dmChewieController!,
-                                              )
-                                              : _selectedDMVideoThumbnail !=
+                                          _compositionService
+                                                      ?.selectedVideoThumbnail !=
                                                   null
                                               ? Image.file(
-                                                _selectedDMVideoThumbnail!,
+                                                _compositionService!
+                                                    .selectedVideoThumbnail!,
                                                 width:
                                                     MediaQuery.of(
                                                       context,
@@ -1261,16 +1160,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                                               16,
                                             ),
                                             onTap: () {
-                                              setState(() {
-                                                _selectedDMMediaFile = null;
-                                                _selectedDMMediaType = null;
-                                                _dmVideoController?.dispose();
-                                                _dmChewieController?.dispose();
-                                                _dmVideoController = null;
-                                                _dmChewieController = null;
-                                                _selectedDMVideoThumbnail =
-                                                    null;
-                                              });
+                                              setState(() {});
                                             },
                                             child: const Icon(
                                               Icons.close,
@@ -1294,7 +1184,9 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                     hintText: 'Message ${widget.otherUserName}...',
                     onSend: _sendMessage,
                     onMediaAttach: _showDMMediaPicker,
-                    enabled: !_isSending && !_isProcessingMedia,
+                    enabled:
+                        !_isSending &&
+                        !(_compositionService?.isProcessingMedia ?? false),
                     isDarkMode: Theme.of(context).brightness == Brightness.dark,
                     sendButton: _buildCustomSendButton(),
                     onEmojiPickerStateChanged: (state) {
@@ -1312,7 +1204,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
               ),
 
               // Loading overlay for media processing
-              if (_isProcessingMedia)
+              if (_compositionService?.isProcessingMedia ?? false)
                 Container(
                   color: Colors.black.withValues(alpha: 0.5),
                   child: const Center(
@@ -1753,8 +1645,11 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   // Build custom send button with circular progress indicator
   Widget _buildCustomSendButton() {
     final hasText = _messageController.text.trim().isNotEmpty;
-    final isEnabled = !_isSending && !_isProcessingMedia && hasText;
-    final isProcessing = _isProcessingMedia;
+    final isEnabled =
+        !_isSending &&
+        !(_compositionService?.isProcessingMedia ?? false) &&
+        hasText;
+    final isProcessing = _compositionService?.isProcessingMedia ?? false;
 
     return CircleAvatar(
       backgroundColor:

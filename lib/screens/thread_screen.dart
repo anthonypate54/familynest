@@ -13,15 +13,13 @@ import 'dart:io';
 import 'dart:async';
 
 import 'package:image_picker/image_picker.dart';
-import 'package:video_player/video_player.dart';
-import 'package:chewie/chewie.dart';
-import '../utils/video_thumbnail_util.dart';
 import '../widgets/gradient_background.dart';
 import '../theme/app_theme.dart';
 
 // Removed comment notification tracker import (performance optimization)
 import '../widgets/emoji_message_input.dart';
 import '../services/ios_media_picker.dart';
+import '../services/video_composition_service.dart';
 
 class ThreadScreen extends StatefulWidget {
   final int userId;
@@ -42,11 +40,7 @@ class _ThreadScreenState extends State<ThreadScreen>
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _messageController = TextEditingController();
   final ValueNotifier<bool> _isSendButtonEnabled = ValueNotifier(false);
-  File? _selectedMediaFile;
-  String? _selectedMediaType;
-  // Video preview fields for composing
-  VideoPlayerController? _videoController;
-  ChewieController? _chewieController;
+  VideoCompositionService? _compositionService;
   String? _currentlyPlayingVideoId;
   bool _isLoading = true;
   String? _error;
@@ -77,6 +71,7 @@ class _ThreadScreenState extends State<ThreadScreen>
   void initState() {
     super.initState();
 
+    _compositionService = VideoCompositionService();
     // Add lifecycle observer
     WidgetsBinding.instance.addObserver(this);
 
@@ -305,8 +300,8 @@ class _ThreadScreenState extends State<ThreadScreen>
     _scrollController.dispose();
     _messageController.dispose();
     _isSendButtonEnabled.dispose();
-    _videoController?.dispose();
-    _chewieController?.dispose();
+    _compositionService?.clearComposition();
+    _compositionService?.dispose();
     super.dispose();
   }
 
@@ -376,7 +371,7 @@ class _ThreadScreenState extends State<ThreadScreen>
       if (!mounted) return;
 
       if (file != null) {
-        await _processLocalFile(file, type);
+        await _compositionService?.processLocalFile(file, type);
       }
     } catch (e) {
       if (!mounted) return;
@@ -414,7 +409,7 @@ class _ThreadScreenState extends State<ThreadScreen>
         debugPrint('📸 Camera $type captured: ${file.path}');
 
         // Process the captured file
-        await _processLocalFile(file, type);
+        await _compositionService?.processLocalFile(file, type);
       }
     } catch (e) {
       debugPrint('Error capturing $type with camera: $e');
@@ -427,73 +422,6 @@ class _ThreadScreenState extends State<ThreadScreen>
         ),
       );
     }
-  }
-
-  Future<void> _processLocalFile(File file, String type) async {
-    // Dispose previous controllers
-    _videoController?.dispose();
-    _chewieController?.dispose();
-    _videoController = null;
-    _chewieController = null;
-
-    if (type == 'video') {
-      // Generate thumbnail
-      final File? thumbnailFile = await VideoThumbnailUtil.generateThumbnail(
-        'file://${file.path}',
-      );
-
-      // Initialize video controller
-      _videoController = VideoPlayerController.file(file);
-      await _videoController!.initialize();
-
-      // Initialize Chewie controller (same as your existing code)
-      _chewieController = ChewieController(
-        videoPlayerController: _videoController!,
-        aspectRatio: _videoController!.value.aspectRatio,
-        autoPlay: false,
-        looping: false,
-        autoInitialize: true,
-        showControls: true,
-        placeholder:
-            thumbnailFile != null
-                ? Image.file(
-                  thumbnailFile,
-                  fit: BoxFit.contain,
-                  width: double.infinity,
-                  height: double.infinity,
-                )
-                : Container(
-                  color: Colors.black,
-                  child: const Center(child: CircularProgressIndicator()),
-                ),
-        materialProgressColors: ChewieProgressColors(
-          playedColor: Colors.blue,
-          handleColor: Colors.blueAccent,
-          backgroundColor: Colors.grey.shade700,
-          bufferedColor: Colors.lightBlue.withValues(alpha: 0.5),
-        ),
-        errorBuilder: (context, errorMessage) {
-          return Center(
-            child: Text(
-              'Error: $errorMessage',
-              style: const TextStyle(color: Colors.white),
-            ),
-          );
-        },
-      );
-    }
-
-    setState(() {
-      _selectedMediaFile = file;
-      _selectedMediaType = type;
-    });
-
-    // Auto-scroll to show the media preview
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        _scrollToBottom();
-      }
-    });
   }
 
   void _scrollToBottom() {
@@ -587,7 +515,9 @@ class _ThreadScreenState extends State<ThreadScreen>
     ); // Add this line
 
     final userMessage = _messageController.text.trim();
-    if (userMessage.isEmpty && _selectedMediaFile == null) return;
+    if (userMessage.isEmpty && _compositionService?.selectedMediaFile == null) {
+      return;
+    }
 
     setState(() {
       _isSending = true;
@@ -595,22 +525,22 @@ class _ThreadScreenState extends State<ThreadScreen>
 
     try {
       Message? newComment;
-      if (_selectedMediaFile != null) {
-        if (_selectedMediaType == 'photo') {
+      if (_compositionService?.selectedMediaFile != null) {
+        if (_compositionService?.selectedMediaType == 'photo') {
           newComment = await apiService.postComment(
             widget.userId,
             int.parse(widget.message['id'].toString()),
             userMessage.isNotEmpty ? userMessage : 'Shared a photo',
-            mediaPath: _selectedMediaFile!.path,
+            mediaPath: _compositionService?.selectedMediaFile!.path,
             mediaType: 'image',
             familyId: widget.message['familyId'] as int?,
           );
-        } else if (_selectedMediaType == 'video') {
+        } else if (_compositionService?.selectedMediaType == 'video') {
           newComment = await apiService.postComment(
             widget.userId,
             int.parse(widget.message['id'].toString()),
             userMessage.isNotEmpty ? userMessage : 'Shared a video',
-            mediaPath: _selectedMediaFile!.path,
+            mediaPath: _compositionService?.selectedMediaFile!.path,
             mediaType: 'video',
             familyId: widget.message['familyId'] as int?,
           );
@@ -630,12 +560,7 @@ class _ThreadScreenState extends State<ThreadScreen>
 
         _messageController.clear();
         setState(() {
-          _selectedMediaFile = null;
-          _selectedMediaType = null;
-          _videoController?.dispose();
-          _chewieController?.dispose();
-          _videoController = null;
-          _chewieController = null;
+          _compositionService?.clearComposition();
         });
         await Future.delayed(
           const Duration(milliseconds: 100),
@@ -759,17 +684,17 @@ class _ThreadScreenState extends State<ThreadScreen>
                         ),
               ),
               // Add back the media preview
-              if (_selectedMediaFile != null)
+              if (_compositionService?.selectedMediaFile != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   child:
-                      _selectedMediaType == 'photo'
+                      _compositionService?.selectedMediaType == 'photo'
                           ? ClipRRect(
                             borderRadius: BorderRadius.circular(6),
                             child: Stack(
                               children: [
                                 Image.file(
-                                  _selectedMediaFile!,
+                                  _compositionService!.selectedMediaFile!,
                                   width:
                                       MediaQuery.of(context).size.width * 0.7,
                                   height: 200,
@@ -805,8 +730,8 @@ class _ThreadScreenState extends State<ThreadScreen>
                                       splashRadius: 18,
                                       onPressed: () {
                                         setState(() {
-                                          _selectedMediaFile = null;
-                                          _selectedMediaType = null;
+                                          _compositionService
+                                              ?.clearComposition();
                                         });
                                       },
                                     ),
@@ -815,7 +740,7 @@ class _ThreadScreenState extends State<ThreadScreen>
                               ],
                             ),
                           )
-                          : _selectedMediaType == 'video'
+                          : _compositionService?.selectedMediaType == 'video'
                           ? ClipRRect(
                             borderRadius: BorderRadius.circular(6),
                             child: Stack(
@@ -835,12 +760,15 @@ class _ThreadScreenState extends State<ThreadScreen>
                                     ),
                                     child: ClipRect(
                                       child:
-                                          _chewieController != null
-                                              ? Chewie(
-                                                key: const ValueKey(
-                                                  'thread-composition-video',
-                                                ),
-                                                controller: _chewieController!,
+                                          _compositionService
+                                                      ?.selectedVideoThumbnail !=
+                                                  null
+                                              ? Image.file(
+                                                _compositionService!
+                                                    .selectedVideoThumbnail!,
+                                                fit: BoxFit.cover,
+                                                width: double.infinity,
+                                                height: double.infinity,
                                               )
                                               : const Center(
                                                 child:
@@ -879,13 +807,8 @@ class _ThreadScreenState extends State<ThreadScreen>
                                       splashRadius: 18,
                                       onPressed: () {
                                         setState(() {
-                                          _selectedMediaFile = null;
-                                          _selectedMediaType = null;
-                                          // Clean up video controllers
-                                          _videoController?.dispose();
-                                          _chewieController?.dispose();
-                                          _videoController = null;
-                                          _chewieController = null;
+                                          _compositionService
+                                              ?.clearComposition();
                                         });
                                       },
                                     ),
