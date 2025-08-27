@@ -8,7 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
-import 'dart:developer' as developer;
+
 
 class VideoThumbnailUtil {
   // Cache for video thumbnails (videoUrl -> thumbnailPath) during the current session
@@ -317,8 +317,7 @@ class VideoThumbnailUtil {
   static void _printMemoryUsage(String context) {
     try {
       // Force garbage collection and add timeline marker
-      developer.Timeline.startSync('thumbnail_memory_check');
-      developer.Timeline.finishSync();
+
 
       final timestamp = DateTime.now().toIso8601String();
       final cacheSize = _thumbnailCache.length;

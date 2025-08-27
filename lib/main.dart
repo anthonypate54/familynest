@@ -1,7 +1,6 @@
 import 'package:familynest/providers/comment_provider.dart';
 import 'package:familynest/providers/dm_message_provider.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'services/api_service.dart';
 import 'services/service_provider.dart';
 import 'screens/login_screen.dart';
@@ -13,7 +12,6 @@ import 'screens/messages_home_screen.dart';
 import 'theme/app_theme.dart';
 import 'utils/page_transitions.dart';
 import 'config/app_config.dart';
-import 'config/env_config.dart'; // Import the EnvConfig class
 import 'components/bottom_navigation.dart';
 import 'controllers/bottom_navigation_controller.dart';
 import 'dart:io' show Platform; // For platform detection
@@ -24,9 +22,9 @@ import 'package:provider/provider.dart';
 import 'providers/message_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/text_size_provider.dart';
-import 'models/message.dart';
+import 'utils/video_controller_manager.dart';
+
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'screens/websocket_test_screen.dart';
 import 'services/websocket_service.dart';
 // Firebase imports
 import 'package:firebase_core/firebase_core.dart';
@@ -44,7 +42,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // Get title and body from data (since we're using data-only messages now)
     final title = message.data['title'] ?? 'New Message';
     final body = message.data['body'] ?? 'You have a new message';
-    final senderId = message.data['senderId'];
 
     debugPrint('🌙 Background notification: $title - $body');
 
@@ -163,8 +160,9 @@ void main() async {
         ChangeNotifierProvider(create: (_) => WebSocketService()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => TextSizeProvider()),
+        ChangeNotifierProvider(create: (_) => VideoControllerManager()),
       ],
-      child: MyApp(initialRoute: '/'),
+      child: const MyApp(initialRoute: '/'),
     ),
   );
 }
@@ -193,6 +191,7 @@ class MyAppState extends State<MyApp> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return null;
       final apiService = Provider.of<ApiService>(context, listen: false);
 
       // Always initialize ServiceProvider
@@ -313,7 +312,6 @@ class MainAppContainerState extends State<MainAppContainer>
   // Note: _invitationCheckTimer removed - now using WebSocket for real-time updates
 
   // WebSocket handler for invitations
-  WebSocketMessageHandler? _invitationHandler;
   WebSocketService? _webSocketService;
 
   // Remove loading state flag since we don't need complex onboarding checking
@@ -564,7 +562,7 @@ class MainAppContainerState extends State<MainAppContainer>
 
       // Use Navigator.pushAndRemoveUntil to completely clear the navigation stack
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => LoginScreen()),
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
         (route) => false, // Remove all previous routes
       );
     });
@@ -729,7 +727,14 @@ class MainAppContainerState extends State<MainAppContainer>
               ),
               ElevatedButton(
                 onPressed: () async {
-                  Navigator.of(context).pop();
+                  final navigator = Navigator.of(context);
+                  final scaffoldMessenger = ScaffoldMessenger.of(context);
+                  final apiService = Provider.of<ApiService>(
+                    context,
+                    listen: false,
+                  );
+
+                  navigator.pop();
                   debugPrint('🔔 MAIN: User chose to enable notifications');
 
                   // Request iOS permissions first
@@ -739,33 +744,28 @@ class MainAppContainerState extends State<MainAppContainer>
 
                   // If permission was granted, update the backend database
                   if (granted) {
+                    if (!mounted) return;
                     debugPrint(
                       '🔔 MAIN: Updating backend notification preferences',
                     );
                     try {
-                      final apiService = Provider.of<ApiService>(
-                        context,
-                        listen: false,
-                      );
                       bool success = await apiService
                           .enableAllNotificationPreferences(widget.userId);
                       debugPrint('🔔 MAIN: Backend update result: $success');
 
-                      if (success) {
+                      if (success && mounted) {
                         debugPrint(
                           '✅ MAIN: Notification preferences enabled successfully',
                         );
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Notifications enabled successfully!',
-                              ),
-                              backgroundColor: Colors.green,
-                              duration: Duration(seconds: 2),
+                        scaffoldMessenger.showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Notifications enabled successfully!',
                             ),
-                          );
-                        }
+                            backgroundColor: Colors.green,
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
                       } else {
                         debugPrint(
                           '❌ MAIN: Failed to enable notification preferences',
@@ -857,21 +857,7 @@ class MainAppContainerState extends State<MainAppContainer>
           });
         },
       ),
-      floatingActionButton:
-          false
-              ? FloatingActionButton(
-                heroTag: 'ws_test_button',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const WebSocketTestScreen(),
-                    ),
-                  );
-                },
-                child: const Text('WS Test'),
-              )
-              : null,
+      floatingActionButton: null,
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       // Bottom navigation
       bottomNavigationBar: BottomNavigation(

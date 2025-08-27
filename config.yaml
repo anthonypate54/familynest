@@ -45,6 +45,19 @@ platforms:
     api_url: "http://54.189.190.245:8080"
     description: "Physical iPhone (AWS Staging)"
     
+  # Production platforms for release builds
+  android_production:
+    device_id: ""
+    api_url: "http://54.189.190.245:8080"
+    description: "Android Production (AWS)"
+    media_url: "https://familynest-staging-media.s3.amazonaws.com"
+    
+  ios_production:
+    device_id: ""
+    api_url: "http://54.189.190.245:8080"
+    description: "iOS Production (AWS)"
+    media_url: "https://familynest-staging-media.s3.amazonaws.com"
+    
   web:
     device_id: "chrome"
     api_url: "http://localhost:8080"

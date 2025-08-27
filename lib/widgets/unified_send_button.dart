@@ -3,12 +3,13 @@ import '../services/video_composition_service.dart';
 
 /// Unified send button that handles all loading states consistently across screens
 /// Replaces duplicated send button logic in message_screen, dm_thread_screen, and thread_screen
-class UnifiedSendButton extends StatelessWidget {
+class UnifiedSendButton extends StatefulWidget {
   final VideoCompositionService compositionService;
   final TextEditingController messageController;
   final bool isSending;
   final VoidCallback onSend;
-  final bool requiresMediaOrText; // Some screens require media, others just text
+  final bool
+  requiresMediaOrText; // Some screens require media, others just text
 
   const UnifiedSendButton({
     Key? key,
@@ -20,47 +21,74 @@ class UnifiedSendButton extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<UnifiedSendButton> createState() => _UnifiedSendButtonState();
+}
+
+class _UnifiedSendButtonState extends State<UnifiedSendButton> {
+  Color? _primaryColor;
+  bool? _isDarkMode;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Cache theme values safely to avoid unsafe lookups during state changes
+    final theme = Theme.of(context);
+    _primaryColor = theme.colorScheme.primary;
+    _isDarkMode = theme.brightness == Brightness.dark;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: compositionService,
+      animation: Listenable.merge([
+        widget.compositionService,
+        widget.messageController,
+      ]),
       builder: (context, child) {
-        final hasText = messageController.text.trim().isNotEmpty;
-        final hasMedia = compositionService.hasMedia;
-        final isProcessing = compositionService.isProcessingMedia;
-        
+        final hasText = widget.messageController.text.trim().isNotEmpty;
+        final hasMedia = widget.compositionService.hasMedia;
+        final isProcessing = widget.compositionService.isProcessingMedia;
+
         // Determine if send button should be enabled
-        final isEnabled = !isSending && 
-                         !isProcessing && 
-                         (requiresMediaOrText ? (hasText || hasMedia) : hasText);
+        final isEnabled =
+            !widget.isSending &&
+            !isProcessing &&
+            (widget.requiresMediaOrText ? (hasText || hasMedia) : hasText);
 
         return CircleAvatar(
-          backgroundColor: _getBackgroundColor(context, isEnabled, isProcessing, isSending),
+          backgroundColor: _getBackgroundColor(
+            isEnabled,
+            isProcessing,
+            widget.isSending,
+            _primaryColor!,
+            _isDarkMode!,
+          ),
           child: Stack(
             alignment: Alignment.center,
             children: [
               // Progress indicator for processing or sending
-              if (isProcessing || isSending)
+              if (isProcessing || widget.isSending)
                 SizedBox(
                   width: 28,
                   height: 28,
                   child: CircularProgressIndicator(
                     strokeWidth: 3,
                     value: null, // Indeterminate spinner
-                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Colors.white,
+                    ),
                     backgroundColor: Colors.white.withValues(alpha: 0.3),
                   ),
                 ),
 
               // Send icon with different states
-              IconButton(
-                icon: Icon(
-                  _getIcon(isProcessing, isSending),
+              GestureDetector(
+                onTap: isEnabled ? widget.onSend : null,
+                child: Icon(
+                  _getIcon(isProcessing, widget.isSending),
                   color: Colors.white,
                   size: 20,
                 ),
-                onPressed: isEnabled ? onSend : null,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
               ),
             ],
           ),
@@ -69,11 +97,23 @@ class UnifiedSendButton extends StatelessWidget {
     );
   }
 
-  Color _getBackgroundColor(BuildContext context, bool isEnabled, bool isProcessing, bool isSending) {
+  Color _getBackgroundColor(
+    bool isEnabled,
+    bool isProcessing,
+    bool isSending,
+    Color primaryColor,
+    bool isDarkMode,
+  ) {
     if (isEnabled || isProcessing || isSending) {
-      return Theme.of(context).colorScheme.primary;
+      return primaryColor;
     }
-    return Colors.grey.shade400;
+
+    // Theme-aware disabled color with better contrast
+    return isDarkMode
+        ? Colors
+            .grey
+            .shade700 // Darker grey for dark mode
+        : Colors.grey.shade400; // Lighter grey for light mode
   }
 
   IconData _getIcon(bool isProcessing, bool isSending) {

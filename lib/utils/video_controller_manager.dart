@@ -1,81 +1,29 @@
 import 'package:flutter/material.dart';
-import 'dart:developer' as developer;
+import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
 
-/// Global manager to track and limit video controller instances
-/// This prevents memory leaks from too many simultaneous ExoPlayer instances
-class VideoControllerManager {
-  static int _activeControllers = 0;
-  static const int _maxControllers =
-      2; // Maximum simultaneous video controllers
+/// Simple manager - just tracks which video should be playing
+class VideoControllerManager extends ChangeNotifier {
+  String? _currentPlayingVideoUrl;
 
-  /// Track when a video controller is created
-  static void onControllerCreated(String videoUrl) {
-    _activeControllers++;
-    debugPrint(
-      '🎬 VIDEO CONTROLLER CREATED: $_activeControllers active (max: $_maxControllers) [${videoUrl.split('/').last}]',
-    );
+  /// Check if a specific video URL should be playing
+  bool isVideoPlaying(String videoUrl) {
+    return _currentPlayingVideoUrl == videoUrl;
+  }
 
-    developer.Timeline.startSync(
-      'VideoController_Created',
-      arguments: {
-        'active_count': _activeControllers,
-        'max_allowed': _maxControllers,
-        'video': videoUrl.split('/').last,
-      },
-    );
-    developer.Timeline.finishSync();
-
-    if (_activeControllers > _maxControllers) {
-      debugPrint(
-        '⚠️ WARNING: Too many video controllers! This may cause OOM crash!',
-      );
+  /// Set which video should be playing (stops others)
+  void setPlayingVideo(String videoUrl) {
+    if (_currentPlayingVideoUrl != videoUrl) {
+      _currentPlayingVideoUrl = videoUrl;
+      debugPrint('▶️ Now playing video: $videoUrl');
+      notifyListeners(); // This will tell other video cards to stop
     }
   }
 
-  /// Track when a video controller is disposed
-  static void onControllerDisposed(String videoUrl) {
-    if (_activeControllers > 0) {
-      _activeControllers--;
-    }
-
-    debugPrint(
-      '🗑️ VIDEO CONTROLLER DISPOSED: $_activeControllers active [${videoUrl.split('/').last}]',
-    );
-
-    developer.Timeline.startSync(
-      'VideoController_Disposed',
-      arguments: {
-        'active_count': _activeControllers,
-        'video': videoUrl.split('/').last,
-      },
-    );
-    developer.Timeline.finishSync();
-  }
-
-  /// Check if we can safely create another controller
-  static bool canCreateController() {
-    final canCreate = _activeControllers < _maxControllers;
-
-    if (!canCreate) {
-      debugPrint(
-        '🚫 VIDEO CONTROLLER LIMIT REACHED: $_activeControllers/$_maxControllers active',
-      );
-      // Force garbage collection when limit reached
-      developer.Timeline.startSync('force_gc_controller_limit');
-      developer.Timeline.finishSync();
-    }
-
-    return canCreate;
-  }
-
-  /// Get current active controller count
-  static int get activeControllerCount => _activeControllers;
-
-  /// Force reset (for debugging)
-  static void reset() {
-    debugPrint(
-      '🔄 RESETTING video controller count from $_activeControllers to 0',
-    );
-    _activeControllers = 0;
+  /// Stop all videos
+  void stopAllVideos() {
+    _currentPlayingVideoUrl = null;
+    debugPrint('⏹️ All videos stopped');
+    notifyListeners();
   }
 }

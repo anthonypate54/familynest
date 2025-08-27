@@ -988,13 +988,15 @@ class _MessageCardState extends State<MessageCard> {
           ),
         );
       } else if (widget.message.mediaType == 'video') {
-        return VideoMessageCard(
-          videoUrl: widget.message.mediaUrl!,
-          thumbnailUrl: widget.message.thumbnailUrl,
-          apiService: apiService,
-          isCurrentlyPlaying:
-              widget.currentlyPlayingVideoId == widget.message.id,
+        return GestureDetector(
           onTap: () => widget.onTap?.call(widget.message),
+          child: VideoMessageCard(
+            videoUrl: widget.message.mediaUrl!,
+            thumbnailUrl: widget.message.thumbnailUrl,
+            apiService: apiService,
+            isCurrentlyPlaying:
+                widget.currentlyPlayingVideoId == widget.message.id,
+          ),
         );
       }
     }

@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'dart:developer' as developer;
+
 import '../utils/video_thumbnail_util.dart';
 
 /// Unified service for handling video composition across all screens
@@ -49,7 +49,6 @@ class VideoCompositionService extends ChangeNotifier {
         debugPrint(
           '🎯 VideoCompositionService: Generating thumbnail for video: ${file.path}',
         );
-        _printMemoryUsage('Before thumbnail generation');
 
         try {
           final File? thumbnailFile =
@@ -58,13 +57,11 @@ class VideoCompositionService extends ChangeNotifier {
           debugPrint(
             '✅ VideoCompositionService: Thumbnail generated successfully',
           );
-          _printMemoryUsage('After thumbnail generation');
         } catch (e) {
           debugPrint(
             '❌ VideoCompositionService: Thumbnail generation failed: $e',
           );
           _selectedVideoThumbnail = null;
-          _printMemoryUsage('After thumbnail generation error');
         }
 
         // MEMORY-SAFE: Skip video controller initialization to prevent OOM crashes
@@ -91,11 +88,6 @@ class VideoCompositionService extends ChangeNotifier {
       return false;
     } finally {
       debugPrint('🔄 VideoCompositionService: Media processing completed');
-
-      // Force garbage collection after media processing
-      developer.Timeline.startSync('force_gc');
-      developer.Timeline.finishSync();
-
       _isProcessingMedia = false;
       notifyListeners();
     }
@@ -103,20 +95,13 @@ class VideoCompositionService extends ChangeNotifier {
 
   /// Clear current composition and free resources
   Future<void> clearComposition() async {
-    debugPrint('🧹 VideoCompositionService: Starting resource cleanup...');
-    _printMemoryUsage('Before cleanup');
-
     // Clear thumbnail cache
     VideoThumbnailUtil.clearCache();
-    _printMemoryUsage('After cache clear');
 
     // Clear state
     _selectedMediaFile = null;
     _selectedMediaType = null;
     _selectedVideoThumbnail = null;
-
-    debugPrint('🧹 VideoCompositionService: Resource cleanup completed');
-    _printMemoryUsage('After cleanup');
 
     notifyListeners();
   }
@@ -168,26 +153,6 @@ class VideoCompositionService extends ChangeNotifier {
       '✅ VideoCompositionService: File validated - ${sizeInMB.toStringAsFixed(1)}MB',
     );
     return true;
-  }
-
-  /// Print current memory usage for debugging
-  void _printMemoryUsage(String context) {
-    try {
-      // Force garbage collection first
-      developer.Timeline.startSync('memory_check');
-      developer.Timeline.finishSync();
-
-      // Print timestamp for memory tracking
-      final timestamp = DateTime.now().toIso8601String();
-      debugPrint(
-        '📊 VideoCompositionService Memory [$context] at $timestamp: Checking memory usage...',
-      );
-
-      // Note: Detailed memory info requires running with --observatory-port
-      // For now, we'll track this via timeline and external profiling tools
-    } catch (e) {
-      debugPrint('📊 VideoCompositionService Memory [$context]: Error - $e');
-    }
   }
 
   @override

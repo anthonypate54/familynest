@@ -20,6 +20,8 @@ import '../theme/app_theme.dart';
 import '../widgets/emoji_message_input.dart';
 import '../services/ios_media_picker.dart';
 import '../services/video_composition_service.dart';
+import '../widgets/video_composition_preview.dart';
+import '../widgets/unified_send_button.dart';
 
 class ThreadScreen extends StatefulWidget {
   final int userId;
@@ -57,6 +59,8 @@ class _ThreadScreenState extends State<ThreadScreen>
 
   // Emoji picker state (managed by reusable component)
   EmojiPickerState _emojiPickerState = const EmojiPickerState(isVisible: false);
+
+  // Media picker protection
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -125,17 +129,11 @@ class _ThreadScreenState extends State<ThreadScreen>
       '/user/${widget.userId}/comments/$_parentMessageId',
       _commentMessageHandler!,
     );
-    debugPrint(
-      '🔌 ThreadScreen: Subscribed to /user/${widget.userId}/comments/$_parentMessageId for thread comments',
-    );
 
     // Subscribe to user-specific reactions
     _webSocketService!.subscribe(
       '/user/${widget.userId}/reactions',
       _reactionHandler!,
-    );
-    debugPrint(
-      '🔌 ThreadScreen: Subscribed to /user/${widget.userId}/reactions',
     );
 
     // Listen for connection status changes
@@ -148,8 +146,6 @@ class _ThreadScreenState extends State<ThreadScreen>
   // Handle incoming comment messages from WebSocket
   void _handleIncomingCommentMessage(Map<String, dynamic> data) {
     try {
-      debugPrint('📨 COMMENT: Received WebSocket message: $data');
-
       // Check if this is a comment type message
       final messageType = data['type'] as String?;
       if (messageType != 'COMMENT') {
@@ -158,14 +154,6 @@ class _ThreadScreenState extends State<ThreadScreen>
       }
 
       final message = Message.fromJson(data);
-      debugPrint(
-        '📨 COMMENT: Parsed comment: ${message.id} - "${message.content}"',
-      );
-
-      // Since we're subscribed to a thread-specific topic, we know this comment belongs to our thread
-      debugPrint(
-        '✅ COMMENT: Adding comment ${message.id} to thread $_parentMessageId',
-      );
 
       // Add comment to provider (provider will handle duplicates)
       _commentProvider?.addComment(message);
@@ -183,8 +171,6 @@ class _ThreadScreenState extends State<ThreadScreen>
   // Handle incoming reaction updates from WebSocket
   void _handleIncomingReaction(Map<String, dynamic> data) {
     try {
-      debugPrint('📨 REACTION: Received WebSocket reaction: $data');
-
       // Check if this is a reaction type
       final messageType = data['type'] as String?;
       if (messageType != 'REACTION') {
@@ -192,7 +178,6 @@ class _ThreadScreenState extends State<ThreadScreen>
         return;
       }
 
-      final targetType = data['target_type'] as String?;
       final messageId = data['id']?.toString();
       final likeCount = data['like_count'] as int?;
       final loveCount = data['love_count'] as int?;
@@ -203,10 +188,6 @@ class _ThreadScreenState extends State<ThreadScreen>
         debugPrint('⚠️ REACTION: Missing message ID');
         return;
       }
-
-      debugPrint(
-        '📨 REACTION: Updating $targetType $messageId - likes: $likeCount, loves: $loveCount, isLiked: $isLiked, isLoved: $isLoved',
-      );
 
       // Update comment provider with new reaction data
       if (_commentProvider != null) {
@@ -249,9 +230,7 @@ class _ThreadScreenState extends State<ThreadScreen>
           Message.fromJson(widget.message), // Add parent message at the start
           ...comments,
         ]);
-
         // Removed comment notification tracking (performance optimization)
-
         setState(() {
           _isLoading = false;
         });
@@ -302,6 +281,7 @@ class _ThreadScreenState extends State<ThreadScreen>
     _isSendButtonEnabled.dispose();
     _compositionService?.clearComposition();
     _compositionService?.dispose();
+
     super.dispose();
   }
 
@@ -314,6 +294,11 @@ class _ThreadScreenState extends State<ThreadScreen>
   }
 
   void _showMediaPicker() {
+    // Don't show picker if we already have media
+    if (_compositionService?.hasMedia ?? false) {
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       builder: (BuildContext context) {
@@ -356,7 +341,9 @@ class _ThreadScreenState extends State<ThreadScreen>
           ),
         );
       },
-    );
+    ).then((_) {
+      // Reset flag when modal closes
+    });
   }
 
   // Unified media picker that accesses Photos AND Files
@@ -406,7 +393,6 @@ class _ThreadScreenState extends State<ThreadScreen>
 
       if (pickedFile != null) {
         File file = File(pickedFile.path);
-        debugPrint('📸 Camera $type captured: ${file.path}');
 
         // Process the captured file
         await _compositionService?.processLocalFile(file, type);
@@ -442,60 +428,6 @@ class _ThreadScreenState extends State<ThreadScreen>
         _currentlyPlayingVideoId = messageId; // Start playing this video
       }
     });
-  }
-
-  // Build custom send button with circular progress indicator
-  Widget _buildCustomSendButton() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: _isSendButtonEnabled,
-      builder: (context, hasText, child) {
-        final isEnabled = !_isSending && hasText;
-        final isProcessing = _isSending;
-
-        return CircleAvatar(
-          backgroundColor:
-              isEnabled || isProcessing
-                  ? Theme.of(context).colorScheme.primary
-                  : Colors.grey.shade400,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Single progress indicator with background track
-              if (isProcessing)
-                SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    value: null, // Indeterminate for now
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Colors.white,
-                    ),
-                    backgroundColor: Colors.white.withValues(alpha: 0.3),
-                  ),
-                ),
-
-              // Send icon
-              IconButton(
-                icon: Icon(
-                  isProcessing ? Icons.upload : Icons.send,
-                  color: Colors.white,
-                  size: 20,
-                ),
-                onPressed:
-                    isEnabled
-                        ? () => _postComment(
-                          Provider.of<ApiService>(context, listen: false),
-                        )
-                        : null,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   Future<void> _postComment(ApiService apiService) async {
@@ -559,9 +491,9 @@ class _ThreadScreenState extends State<ThreadScreen>
         messageProvider.incrementCommentCount(widget.message['id'].toString());
 
         _messageController.clear();
-        setState(() {
-          _compositionService?.clearComposition();
-        });
+        await _compositionService?.clearComposition();
+
+        setState(() {});
         await Future.delayed(
           const Duration(milliseconds: 100),
         ); // Wait for UI to update
@@ -833,20 +765,41 @@ class _ThreadScreenState extends State<ThreadScreen>
 
   Widget _buildMessageComposer() {
     // Thread comment input using reusable component
-    return EmojiMessageInput(
-      controller: _messageController,
-      hintText: 'Add a comment...',
-      onSend:
-          () => _postComment(Provider.of<ApiService>(context, listen: false)),
-      onMediaAttach: _showMediaPicker,
-      enabled: true,
-      isDarkMode: Theme.of(context).brightness == Brightness.dark,
-      onEmojiPickerStateChanged: (state) {
-        setState(() {
-          _emojiPickerState = state;
-        });
-      },
-      sendButton: _buildCustomSendButton(),
+    return Column(
+      children: [
+        // Use unified video composition preview widget
+        VideoCompositionPreview(
+          compositionService: _compositionService!,
+          onClose: () async {
+            await _compositionService?.clearComposition();
+          },
+        ),
+        EmojiMessageInput(
+          controller: _messageController,
+          hintText: 'Add a comment...',
+          onSend:
+              () =>
+                  _postComment(Provider.of<ApiService>(context, listen: false)),
+          onMediaAttach: _showMediaPicker,
+          enabled: true,
+          mediaEnabled: !(_compositionService?.hasMedia ?? false),
+          isDarkMode: Theme.of(context).brightness == Brightness.dark,
+          onEmojiPickerStateChanged: (state) {
+            setState(() {
+              _emojiPickerState = state;
+            });
+          },
+          sendButton: UnifiedSendButton(
+            compositionService: _compositionService!,
+            messageController: _messageController,
+            isSending: _isSending,
+            onSend:
+                () => _postComment(
+                  Provider.of<ApiService>(context, listen: false),
+                ),
+          ),
+        ),
+      ],
     );
   }
 }

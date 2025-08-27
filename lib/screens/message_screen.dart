@@ -22,7 +22,7 @@ import '../providers/message_provider.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/emoji_message_input.dart';
-import 'dart:developer' as developer;
+
 import '../services/video_composition_service.dart';
 import '../widgets/video_composition_preview.dart';
 import '../widgets/unified_send_button.dart';
@@ -63,25 +63,36 @@ class _MessageScreenState extends State<MessageScreen>
   MessageProvider? _messageProvider;
   int? _currentUserId;
 
+  // Cache provider reference to avoid unsafe lookups in lifecycle methods
+  MessageProvider? _cachedMessageProvider;
+
   // Emoji picker state (managed by reusable component)
   EmojiPickerState _emojiPickerState = const EmojiPickerState(isVisible: false);
 
+  // Media picker protection
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Cache provider reference for safe access in lifecycle methods
+    _cachedMessageProvider = Provider.of<MessageProvider>(
+      context,
+      listen: false,
+    );
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && _cachedMessageProvider != null) {
       // Only reload if we don't have messages already
-      final messageProvider = Provider.of<MessageProvider>(
-        context,
-        listen: false,
-      );
-      if (messageProvider.messages.isEmpty) {
+      if (_cachedMessageProvider!.messages.isEmpty) {
         debugPrint(
           '🔄 MessageScreen: App resumed with no messages, reloading...',
         );
         _loadMessages(showLoading: false);
       } else {
         debugPrint(
-          '📱 MessageScreen: App resumed with ${messageProvider.messages.length} messages, skipping reload',
+          '📱 MessageScreen: App resumed with ${_cachedMessageProvider!.messages.length} messages, skipping reload',
         );
       }
     }
@@ -90,11 +101,10 @@ class _MessageScreenState extends State<MessageScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // Initialize unified composition service
     _compositionService = VideoCompositionService();
-
-    WidgetsBinding.instance.addObserver(this); // Add lifecycle observer
     _messageController.addListener(() {
       _isSendButtonEnabled.value = _messageController.text.trim().isNotEmpty;
     });
@@ -525,6 +535,8 @@ class _MessageScreenState extends State<MessageScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+
     // Clean up WebSocket subscriptions
     if (_familyMessageHandler != null &&
         _webSocketService != null &&
@@ -558,30 +570,14 @@ class _MessageScreenState extends State<MessageScreen>
       _webSocketService!.removeConnectionListener(_connectionListener!);
     }
 
-    debugPrint('🧹 Starting MessageScreen dispose...');
-    _printMemoryUsage('Screen dispose start');
-
-    WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
-
     // Cleanup all resources
     _scrollController.dispose();
-    debugPrint('🧹 ScrollController disposed');
-    _printMemoryUsage('After ScrollController dispose');
-
     _messageController.dispose();
-    debugPrint('🧹 MessageController disposed');
-    _printMemoryUsage('After MessageController dispose');
-
     _isSendButtonEnabled.dispose();
-    debugPrint('🧹 SendButtonEnabled disposed');
-    _printMemoryUsage('After SendButtonEnabled dispose');
 
     // Cleanup composition service
     _compositionService.clearComposition();
     _compositionService.dispose();
-
-    debugPrint('🧹 MessageScreen dispose completed');
-    _printMemoryUsage('Screen dispose complete');
 
     super.dispose();
   }
@@ -625,6 +621,11 @@ class _MessageScreenState extends State<MessageScreen>
   }
 
   void _showMediaPicker() {
+    // Don't show picker if we already have media
+    if (_compositionService?.hasMedia ?? false) {
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       builder: (BuildContext context) {
@@ -667,7 +668,9 @@ class _MessageScreenState extends State<MessageScreen>
           ),
         );
       },
-    );
+    ).then((_) {
+      // Reset flag when modal closes
+    });
   }
 
   Future<void> _pickMedia(String type) async {
@@ -883,20 +886,14 @@ class _MessageScreenState extends State<MessageScreen>
           _buildConnectionStatus(),
           const SizedBox(width: 8),
           IconButton(
-            icon: Icon(
-              Icons.refresh,
-              color: Theme.of(context).colorScheme.onPrimary,
-            ),
+            icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: () {
               _loadMessages(); // Manual refresh
             },
             tooltip: 'Refresh Messages',
           ),
           IconButton(
-            icon: Icon(
-              Icons.logout,
-              color: Theme.of(context).colorScheme.onPrimary,
-            ),
+            icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: _logout,
             tooltip: 'Logout',
           ),
@@ -966,7 +963,9 @@ class _MessageScreenState extends State<MessageScreen>
                     hintText: 'Type a message...',
                     onSend: () => _postMessage(apiService),
                     onMediaAttach: _showMediaPicker,
-                    enabled: true,
+                    enabled: !_isSending,
+                    mediaEnabled: !(_compositionService?.hasMedia ?? false),
+
                     isDarkMode: UIConfig.useDarkMode,
                     onEmojiPickerStateChanged: (state) {
                       setState(() {
@@ -990,16 +989,23 @@ class _MessageScreenState extends State<MessageScreen>
               builder: (context, child) {
                 if (_compositionService.isProcessingMedia) {
                   return Container(
-                    color: Colors.black.withValues(alpha: 0.5),
+                    color: Colors.black.withValues(alpha: 0.7),
                     child: const Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          CircularProgressIndicator(),
+                          CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 4,
+                          ),
                           SizedBox(height: 16),
                           Text(
-                            'Processing media...',
-                            style: TextStyle(color: Colors.white, fontSize: 16),
+                            'Processing video...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
                       ),
@@ -1013,26 +1019,6 @@ class _MessageScreenState extends State<MessageScreen>
         ),
       ),
     );
-  }
-
-  // Print current memory usage for debugging
-  void _printMemoryUsage(String context) {
-    try {
-      // Force garbage collection first
-      developer.Timeline.startSync('memory_check');
-      developer.Timeline.finishSync();
-
-      // Print timestamp for memory tracking
-      final timestamp = DateTime.now().toIso8601String();
-      debugPrint(
-        '📊 Memory [$context] at $timestamp: Checking memory usage...',
-      );
-
-      // Note: Detailed memory info requires running with --observatory-port
-      // For now, we'll track this via timeline and external profiling tools
-    } catch (e) {
-      debugPrint('📊 Memory [$context]: Error - $e');
-    }
   }
 
   // Note: Video cleanup is now handled by VideoCompositionService

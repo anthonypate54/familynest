@@ -23,10 +23,11 @@ if ! grep -q "  $PLATFORM:" config.yaml; then
 fi
 
 # Extract values from config.yaml
-API_URL=$(grep -A 3 "  $PLATFORM:" config.yaml | grep "api_url" | cut -d'"' -f2)
-DEVICE_ID=$(grep -A 3 "  $PLATFORM:" config.yaml | grep "device_id" | cut -d'"' -f2)
-DESCRIPTION=$(grep -A 3 "  $PLATFORM:" config.yaml | grep "description" | cut -d'"' -f2)
-SETUP_COMMAND=$(grep -A 4 "  $PLATFORM:" config.yaml | grep "setup_command" | cut -d'"' -f2)
+API_URL=$(grep -A 5 "  $PLATFORM:" config.yaml | grep "api_url" | cut -d'"' -f2)
+DEVICE_ID=$(grep -A 5 "  $PLATFORM:" config.yaml | grep "device_id" | cut -d'"' -f2)
+DESCRIPTION=$(grep -A 5 "  $PLATFORM:" config.yaml | grep "description" | cut -d'"' -f2)
+SETUP_COMMAND=$(grep -A 5 "  $PLATFORM:" config.yaml | grep "setup_command" | cut -d'"' -f2)
+MEDIA_URL_CONFIG=$(grep -A 5 "  $PLATFORM:" config.yaml | grep "media_url" | cut -d'"' -f2)
 
 # Check for empty device_id
 if [ -z "$DEVICE_ID" ] && [ "$PLATFORM" != "web" ]; then

@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import 'family_management_screen.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
+import '../test_video_screen.dart';
 import 'package:intl/intl.dart';
 
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
@@ -917,6 +918,17 @@ class ProfileScreenState extends State<ProfileScreen>
           backgroundColor: Colors.transparent,
           elevation: 0,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.play_circle),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const TestVideoScreen(),
+                  ),
+                );
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.settings),
               onPressed: () {

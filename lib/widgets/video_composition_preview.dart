@@ -23,12 +23,21 @@ class VideoCompositionPreview extends StatelessWidget {
     return AnimatedBuilder(
       animation: compositionService,
       builder: (context, child) {
-        if (!compositionService.hasMedia) {
+        // Show preview if we have media OR if we're currently processing
+        if (!compositionService.hasMedia &&
+            !compositionService.isProcessingMedia) {
           return const SizedBox.shrink();
         }
 
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Theme.of(context).dividerColor.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
           child: _buildMediaPreview(context),
         );
       },
@@ -36,19 +45,31 @@ class VideoCompositionPreview extends StatelessWidget {
   }
 
   Widget _buildMediaPreview(BuildContext context) {
+    // Handle loading state when processing but no media set yet
+    if (compositionService.isProcessingMedia && !compositionService.hasMedia) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: width ?? MediaQuery.of(context).size.width * 0.7,
+          height: height,
+          child: _buildVideoPreview(context), // Show loading spinner
+        ),
+      );
+    }
+
     final mediaType = compositionService.selectedMediaType!;
     final mediaFile = compositionService.selectedMediaFile!;
-    
+
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(12),
       child: Stack(
         children: [
           SizedBox(
             width: width ?? MediaQuery.of(context).size.width * 0.7,
             height: height,
-            child: _buildMediaContent(mediaType, mediaFile),
+            child: _buildMediaContent(context, mediaType, mediaFile),
           ),
-          
+
           // Close button
           Positioned(
             top: 8,
@@ -59,10 +80,7 @@ class VideoCompositionPreview extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.grey.shade400,
-                  width: 2,
-                ),
+                border: Border.all(color: Colors.grey.shade400, width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.3),
@@ -76,11 +94,7 @@ class VideoCompositionPreview extends StatelessWidget {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(14),
                   onTap: onClose,
-                  child: const Icon(
-                    Icons.close,
-                    color: Colors.black,
-                    size: 18,
-                  ),
+                  child: const Icon(Icons.close, color: Colors.black, size: 18),
                 ),
               ),
             ),
@@ -90,7 +104,11 @@ class VideoCompositionPreview extends StatelessWidget {
     );
   }
 
-  Widget _buildMediaContent(String mediaType, File mediaFile) {
+  Widget _buildMediaContent(
+    BuildContext context,
+    String mediaType,
+    File mediaFile,
+  ) {
     if (mediaType == 'photo') {
       return Image.file(
         mediaFile,
@@ -99,45 +117,41 @@ class VideoCompositionPreview extends StatelessWidget {
         fit: BoxFit.cover,
       );
     } else if (mediaType == 'video') {
-      return _buildVideoPreview();
+      return _buildVideoPreview(context);
     }
-    
+
     return Container(
       color: Colors.grey.shade300,
-      child: const Center(
-        child: Icon(Icons.error, color: Colors.red),
-      ),
+      child: const Center(child: Icon(Icons.error, color: Colors.red)),
     );
   }
 
-  Widget _buildVideoPreview() {
+  Widget _buildVideoPreview(BuildContext context) {
     final thumbnail = compositionService.selectedVideoThumbnail;
     final isProcessing = compositionService.isProcessingMedia;
 
     if (isProcessing) {
       return Container(
-        color: Colors.black87,
-        child: const Center(
+        color:
+            Theme.of(context).brightness == Brightness.dark
+                ? Theme.of(context).cardColor
+                : Colors.grey[100],
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               CircularProgressIndicator(
-                color: Colors.white,
+                color: Theme.of(context).primaryColor,
                 strokeWidth: 3,
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Icon(
                 Icons.video_library,
-                color: Colors.white,
+                color:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white70
+                        : Colors.white,
                 size: 48,
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Generating thumbnail...',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                ),
               ),
             ],
           ),
@@ -161,12 +175,7 @@ class VideoCompositionPreview extends StatelessWidget {
                 Icons.play_circle_fill,
                 color: Colors.white,
                 size: 64,
-                shadows: [
-                  Shadow(
-                    color: Colors.black54,
-                    blurRadius: 8,
-                  ),
-                ],
+                shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
               ),
             ),
           ),
@@ -181,18 +190,11 @@ class VideoCompositionPreview extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.video_library,
-              color: Colors.white,
-              size: 48,
-            ),
+            Icon(Icons.video_library, color: Colors.white, size: 48),
             SizedBox(height: 8),
             Text(
               'Video ready',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-              ),
+              style: TextStyle(color: Colors.white, fontSize: 16),
             ),
           ],
         ),

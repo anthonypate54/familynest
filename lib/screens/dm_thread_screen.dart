@@ -20,6 +20,8 @@ import '../widgets/emoji_message_input.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/ios_media_picker.dart';
 import '../services/video_composition_service.dart';
+import '../widgets/video_composition_preview.dart';
+import '../widgets/unified_send_button.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
@@ -88,12 +90,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     // Add lifecycle observer
     WidgetsBinding.instance.addObserver(this);
 
-    // Add text controller listener for send button state
-    _messageController.addListener(() {
-      setState(() {
-        // Re-trigger build for send button state changes
-      });
-    });
+    // Text controller listener removed - UnifiedSendButton handles its own state
 
     // Store WebSocket service reference early
     _webSocketService = Provider.of<WebSocketService>(context, listen: false);
@@ -269,12 +266,9 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       }
 
       if (result != null && mounted) {
-        // Clear input
+        // Clear input and media composition
         _messageController.clear();
-
-        // Dispose controllers first to avoid memory leaks
-        // _dmVideoController?.dispose();
-        // _dmChewieController?.dispose();
+        await _compositionService?.clearComposition();
 
         // Then update state in a single setState
         setState(() {});
@@ -341,7 +335,14 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   }
 
   // DM Media Picker Methods (copied and adapted from message_screen.dart)
+
   void _showDMMediaPicker() {
+    // Don't show picker if we already have media or are processing
+    if (_compositionService?.hasMedia == true ||
+        _compositionService?.isProcessingMedia == true) {
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       builder: (BuildContext context) {
@@ -858,6 +859,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: AppTheme.getAppBarColor(context),
         elevation: 0,
@@ -1177,6 +1179,13 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                               : const SizedBox.shrink(),
                     ),
 
+                  // Use unified video composition preview widget
+                  VideoCompositionPreview(
+                    compositionService: _compositionService!,
+                    onClose: () async {
+                      await _compositionService?.clearComposition();
+                    },
+                  ),
                   // Message input (using reusable component)
                   EmojiMessageInput(
                     controller: _messageController,
@@ -1184,11 +1193,15 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                     hintText: 'Message ${widget.otherUserName}...',
                     onSend: _sendMessage,
                     onMediaAttach: _showDMMediaPicker,
-                    enabled:
-                        !_isSending &&
-                        !(_compositionService?.isProcessingMedia ?? false),
+                    enabled: !_isSending,
+                    mediaEnabled: !(_compositionService?.hasMedia ?? false),
                     isDarkMode: Theme.of(context).brightness == Brightness.dark,
-                    sendButton: _buildCustomSendButton(),
+                    sendButton: UnifiedSendButton(
+                      compositionService: _compositionService!,
+                      messageController: _messageController,
+                      isSending: _isSending,
+                      onSend: () => _sendMessage(),
+                    ),
                     onEmojiPickerStateChanged: (state) {
                       setState(() {
                         _emojiPickerState = state;
@@ -1555,15 +1568,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                       if (content.isNotEmpty) const SizedBox(height: 8),
                     ] else if (mediaType == 'video' ||
                         mediaType == 'cloud_video') ...[
-                      // Debug prints for video URLs
-                      Builder(
-                        builder: (context) {
-                          debugPrint('🎥 DM Video URL: $fullMediaUrl');
-                          debugPrint('🖼️ DM Thumbnail URL: $fullThumbnailUrl');
-                          debugPrint('📊 DM Media Type: $mediaType');
-                          return const SizedBox.shrink();
-                        },
-                      ),
                       mediaType == 'cloud_video'
                           ? // External video - use ExternalVideoMessageCard
                           ExternalVideoMessageCard(
@@ -1640,52 +1644,5 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
     // Simplified: no view tracking, just return the message content
     return messageContent;
-  }
-
-  // Build custom send button with circular progress indicator
-  Widget _buildCustomSendButton() {
-    final hasText = _messageController.text.trim().isNotEmpty;
-    final isEnabled =
-        !_isSending &&
-        !(_compositionService?.isProcessingMedia ?? false) &&
-        hasText;
-    final isProcessing = _compositionService?.isProcessingMedia ?? false;
-
-    return CircleAvatar(
-      backgroundColor:
-          isEnabled || isProcessing
-              ? Theme.of(context).colorScheme.primary
-              : Colors.grey.shade400,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Single progress indicator with background track
-          if (isProcessing)
-            SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                value:
-                    null, // Indeterminate for now - we can make this determinate later
-                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                backgroundColor: Colors.white.withValues(alpha: 0.3),
-              ),
-            ),
-
-          // Send icon
-          IconButton(
-            icon: Icon(
-              isProcessing ? Icons.upload : Icons.send,
-              color: Colors.white,
-              size: 20,
-            ),
-            onPressed: isEnabled ? _sendMessage : null,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-        ],
-      ),
-    );
   }
 }

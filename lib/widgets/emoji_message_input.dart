@@ -19,6 +19,7 @@ class EmojiMessageInput extends StatefulWidget {
   final VoidCallback? onMediaAttach;
   final bool showMediaButton;
   final bool enabled;
+  final bool mediaEnabled;
   final bool isDarkMode;
   final Widget? sendButton;
   final EdgeInsets? padding;
@@ -33,6 +34,7 @@ class EmojiMessageInput extends StatefulWidget {
     this.onMediaAttach,
     this.showMediaButton = true,
     this.enabled = true,
+    this.mediaEnabled = true,
     this.isDarkMode = false,
     this.sendButton,
     this.padding,
@@ -48,6 +50,11 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
   bool _showEmojiPicker = false;
   bool _ownsFocusNode = false;
 
+  // Cache theme values to avoid unsafe lookups during state changes
+  bool? _isDarkMode;
+  Color? _primaryColor;
+  Color? _surfaceColor;
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +65,16 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
       _focusNode = FocusNode();
       _ownsFocusNode = true;
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Cache theme values safely to avoid unsafe lookups during state changes
+    final theme = Theme.of(context);
+    _isDarkMode = widget.isDarkMode || theme.brightness == Brightness.dark;
+    _primaryColor = theme.colorScheme.primary;
+    _surfaceColor = theme.colorScheme.surface;
   }
 
   @override
@@ -119,8 +136,7 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
 
   void _notifyEmojiPickerStateChanged() {
     if (widget.onEmojiPickerStateChanged != null) {
-      final isDark =
-          widget.isDarkMode || Theme.of(context).brightness == Brightness.dark;
+      final isDark = _isDarkMode ?? false;
 
       final emojiState = EmojiPickerState(
         isVisible: _showEmojiPicker,
@@ -186,13 +202,12 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark =
-        widget.isDarkMode || Theme.of(context).brightness == Brightness.dark;
+    final isDark = _isDarkMode ?? false;
 
     return Container(
       padding: widget.padding ?? const EdgeInsets.all(8.0),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: _surfaceColor ?? Colors.white,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.1),
@@ -208,7 +223,10 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
             if (widget.showMediaButton && widget.onMediaAttach != null)
               IconButton(
                 icon: const Icon(Icons.add_circle_outline, color: Colors.grey),
-                onPressed: widget.enabled ? widget.onMediaAttach : null,
+                onPressed:
+                    widget.enabled && widget.mediaEnabled
+                        ? widget.onMediaAttach
+                        : null,
                 tooltip: 'Attach Media',
               ),
 
@@ -263,14 +281,16 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
                       widget.enabled && widget.controller.text.trim().isNotEmpty
                           ? Theme.of(context).colorScheme.primary
                           : Colors.grey.shade400,
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed:
+                  child: GestureDetector(
+                    onTap:
                         widget.enabled &&
                                 widget.controller.text.trim().isNotEmpty
                             ? widget.onSend
                             : null,
-                    tooltip: 'Send Message',
+                    child: const Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: Icon(Icons.send, color: Colors.white),
+                    ),
                   ),
                 ),
           ],

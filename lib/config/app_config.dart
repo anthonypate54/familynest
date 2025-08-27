@@ -160,7 +160,7 @@ class AppConfig {
           if (dotenv.isInitialized) {
             final mediaUrl = dotenv.env['MEDIA_URL'];
             if (mediaUrl != null && mediaUrl.isNotEmpty) {
-              print('✅ Using MEDIA_URL from .env: $mediaUrl (ngrok mode)');
+              // print('✅ Using MEDIA_URL from .env: $mediaUrl (ngrok mode)'); // Temporarily disabled to check rebuilds
               return mediaUrl;
             }
           }
