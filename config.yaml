@@ -15,7 +15,7 @@ platforms:
     setup_command: "adb reverse tcp:8080 tcp:8080"
     
   android_emulator_aws:
-    device_id: "emulator-5554"
+    device_id: ""
     api_url: "http://54.189.190.245:8080"
     description: "Android Emulator (AWS Staging)"
     

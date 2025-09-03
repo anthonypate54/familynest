@@ -11,11 +11,12 @@ import '../models/dm_message.dart';
 import '../theme/app_theme.dart';
 
 import '../utils/page_transitions.dart';
+import '../utils/avatar_utils.dart';
 import 'message_search_screen.dart';
 import 'choose_dm_recipient_screen.dart';
 import 'dm_thread_screen.dart';
 import 'group_management_screen.dart';
-import '../utils/group_avatar_utils.dart'; // Import the shared utility
+
 import '../screens/profile_screen.dart';
 import '../screens/login_screen.dart';
 
@@ -414,11 +415,17 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                   final lastName = user['lastName'] as String? ?? '';
                   final photo = user['photo'] as String?;
                   final userRole = user['role'] as String? ?? 'USER';
-                  final initials = GroupAvatarUtils.getInitials(
-                    firstName,
-                    lastName,
-                    user['username'] as String?,
-                  );
+                  // Calculate initials using same logic as UserAvatar
+                  String initials = '';
+                  if (firstName.isNotEmpty)
+                    initials += firstName[0].toUpperCase();
+                  if (lastName.isNotEmpty)
+                    initials += lastName[0].toUpperCase();
+                  if (initials.isEmpty && user['username'] != null) {
+                    final username = user['username'] as String;
+                    if (username.isNotEmpty)
+                      initials = username[0].toUpperCase();
+                  }
 
                   return GestureDetector(
                     onTap: () {
@@ -585,41 +592,24 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     if (conversation.isGroup) {
       // Group chat display
       displayName = conversation.name ?? 'Group Chat';
-      leadingWidget = GroupAvatarUtils.buildGroupAvatar(
-        conversation.participants,
-        Provider.of<ApiService>(context, listen: false),
-        onTap: () {
-          debugPrint(
-            '🔧 Group avatar tapped for conversation ${conversation.id}',
-          );
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder:
-                  (context) => GroupManagementScreen(
-                    conversationId: conversation.id,
-                    groupName: conversation.name ?? 'Group Chat',
-                    currentUserId: widget.userId,
-                    participants: conversation.participants ?? [],
-                    onParticipantsChanged: () {
-                      // Refresh conversation list to update group avatars
-                      debugPrint(
-                        '🔄 Group participants changed, refreshing conversation list',
-                      );
-                      _loadConversations();
-                    },
-                  ),
-            ),
-          );
-        },
+      leadingWidget = AvatarUtils.buildGroupAvatar(
+        participants: conversation.participants,
+        hasUnread: hasUnread,
+        radius: 24,
+        fontSize: 18,
+        onTap: () => _navigateToGroupManagement(conversation),
       );
     } else {
       // 1:1 chat display (existing logic)
       final otherUserPhoto = conversation.otherUserPhoto;
       displayName = conversation.getOtherUserDisplayName();
-      debugPrint('🔍 conversation: $conversation');
-      final String initials = conversation.getOtherUserInitials();
-      leadingWidget = _buildAvatar(otherUserPhoto, initials, hasUnread);
+
+      leadingWidget = _buildAvatar(
+        otherUserPhoto,
+        conversation.otherUserFirstName,
+        conversation.otherUserLastName,
+        hasUnread,
+      );
     }
 
     final String timestamp = _formatTimestamp(lastMessageTime);
@@ -735,15 +725,19 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     );
   }
 
-  Widget _buildAvatar(String? photoUrl, String initials, bool hasUnread) {
-    return UserAvatar(
+  Widget _buildAvatar(
+    String? photoUrl,
+    String? firstName,
+    String? lastName,
+    bool hasUnread,
+  ) {
+    return AvatarUtils.buildUserAvatar(
       photoUrl: photoUrl,
-      displayName: initials, // Use initials as displayName for fallback
+      firstName: firstName,
+      lastName: lastName,
       radius: 24,
-      showBorder: true,
-      borderColor: hasUnread ? Colors.white : Colors.white.withOpacity(0.3),
-      borderWidth: hasUnread ? 2.0 : 1.0,
       fontSize: 18,
+      hasUnread: hasUnread,
     );
   }
 
@@ -948,5 +942,28 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         _loadConversations();
       }
     });
+  }
+
+  // Helper method to navigate to group management
+  void _navigateToGroupManagement(DMConversation conversation) {
+    debugPrint('🔧 Group avatar tapped for conversation ${conversation.id}');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (context) => GroupManagementScreen(
+              conversationId: conversation.id,
+              groupName: conversation.name ?? 'Group Chat',
+              currentUserId: widget.userId,
+              participants: conversation.participants ?? [],
+              onParticipantsChanged: () {
+                debugPrint(
+                  '🔄 Group participants changed, refreshing conversation list',
+                );
+                _loadConversations();
+              },
+            ),
+      ),
+    );
   }
 }

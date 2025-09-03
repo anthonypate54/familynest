@@ -7,6 +7,7 @@ import '../widgets/gradient_background.dart';
 import '../widgets/video_message_card.dart';
 import '../widgets/external_video_message_card.dart';
 import '../widgets/user_avatar.dart';
+import '../utils/avatar_utils.dart';
 import '../theme/app_theme.dart';
 import 'package:provider/provider.dart';
 import '../models/dm_message.dart';
@@ -632,246 +633,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     );
   }
 
-  // Helper method to build group avatar for AppBar
-  Widget _buildGroupAvatar() {
-    if (widget.participants == null || widget.participants!.isEmpty) {
-      // Fallback to simple group avatar
-      return CircleAvatar(
-        radius: 16,
-        backgroundColor: Colors.deepPurple.shade400,
-        child: const Icon(Icons.group, color: Colors.white, size: 16),
-      );
-    }
-
-    final participants = widget.participants!;
-    final apiService = Provider.of<ApiService>(context, listen: false);
-
-    // Special case for single participant - center it
-    if (participants.length == 1) {
-      return SizedBox(
-        width: 32,
-        height: 32,
-        child: Center(
-          child: Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1),
-            ),
-            child: ClipOval(
-              child: _buildParticipantAvatar(
-                participants[0],
-                apiService,
-                radius: 14,
-              ),
-            ),
-          ),
-        ),
-      );
-    } else {
-      // Google Messages style: max 4 avatars in corners for multiple participants
-      return SizedBox(
-        width: 32,
-        height: 32,
-        child: Stack(
-          children: [
-            // First participant (top-left)
-            if (participants.isNotEmpty)
-              Positioned(
-                left: 0,
-                top: 0,
-                child: Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 0.5),
-                  ),
-                  child: ClipOval(
-                    child: _buildParticipantAvatar(
-                      participants[0],
-                      apiService,
-                      radius: 8,
-                    ),
-                  ),
-                ),
-              ),
-            // Second participant (bottom-right)
-            if (participants.length > 1)
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 0.5),
-                  ),
-                  child: ClipOval(
-                    child: _buildParticipantAvatar(
-                      participants[1],
-                      apiService,
-                      radius: 8,
-                    ),
-                  ),
-                ),
-              ),
-            // Third participant (top-right)
-            if (participants.length > 2)
-              Positioned(
-                right: 0,
-                top: 0,
-                child: Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 0.5),
-                  ),
-                  child: ClipOval(
-                    child: _buildParticipantAvatar(
-                      participants[2],
-                      apiService,
-                      radius: 8,
-                    ),
-                  ),
-                ),
-              ),
-            // Fourth participant (bottom-left)
-            if (participants.length > 3)
-              Positioned(
-                left: 0,
-                bottom: 0,
-                child: Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 0.5),
-                  ),
-                  child: ClipOval(
-                    child: _buildParticipantAvatar(
-                      participants[3],
-                      apiService,
-                      radius: 8,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      );
-    }
-  }
-
-  // Helper method to build participant avatar
-  Widget _buildParticipantAvatar(
-    Map<String, dynamic> participant,
-    ApiService apiService, {
-    double radius = 12,
-  }) {
-    final String firstName = participant['firstName'] as String? ?? '';
-    final String lastName = participant['lastName'] as String? ?? '';
-    final String username = participant['username'] as String? ?? '';
-    final String? photoUrl = participant['photo'] as String?;
-
-    final String initials = _getInitials(firstName, lastName, username);
-
-    if (photoUrl != null && photoUrl.isNotEmpty) {
-      final String fullUrl =
-          photoUrl.startsWith('http')
-              ? photoUrl
-              : '${apiService.mediaBaseUrl}$photoUrl';
-
-      return CircleAvatar(
-        radius: radius,
-        backgroundColor: Color(initials.hashCode | 0xFF000000),
-        child: ClipOval(
-          child: CachedNetworkImage(
-            imageUrl: fullUrl,
-            fit: BoxFit.cover,
-            width: radius * 2,
-            height: radius * 2,
-            placeholder: (context, url) => const CircularProgressIndicator(),
-            errorWidget: (context, url, error) {
-              return Text(
-                initials.isNotEmpty ? initials[0].toUpperCase() : '?',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: radius * 0.7,
-                ),
-              );
-            },
-          ),
-        ),
-      );
-    } else {
-      final avatarColor = _getAvatarColor(initials);
-      return CircleAvatar(
-        radius: radius,
-        backgroundColor: avatarColor,
-        child: Text(
-          initials,
-          style: TextStyle(
-            color: _getTextColor(avatarColor),
-            fontWeight: FontWeight.bold,
-            fontSize: radius * 0.7,
-          ),
-        ),
-      );
-    }
-  }
-
-  // Helper method to get initials
-  String _getInitials(String firstName, String lastName, String username) {
-    if (firstName.isNotEmpty && lastName.isNotEmpty) {
-      return '${firstName[0]}${lastName[0]}'.toUpperCase();
-    } else if (firstName.isNotEmpty) {
-      return firstName[0].toUpperCase();
-    } else if (username.isNotEmpty) {
-      return username[0].toUpperCase();
-    }
-    return '?';
-  }
-
-  // Google Messages-style avatar colors
-  static const List<Color> _avatarColors = [
-    Color(0xFFFDD835), // Yellow
-    Color(0xFF8E24AA), // Purple
-    Color(0xFF42A5F5), // Light blue
-    Color(0xFF66BB6A), // Green
-    Color(0xFFFF7043), // Orange
-    Color(0xFFEC407A), // Pink
-    Color(0xFF26A69A), // Teal
-    Color(0xFF5C6BC0), // Indigo
-  ];
-
-  // Get avatar color based on name (consistent per user)
-  Color _getAvatarColor(String name) {
-    // Get first letter and map to color index (A=0, B=1, etc.)
-    if (name.isEmpty) return _avatarColors[0];
-
-    final firstLetter = name[0].toUpperCase();
-    final letterIndex = firstLetter.codeUnitAt(0) - 'A'.codeUnitAt(0);
-
-    // Map letters A-Z to our 8 colors (repeating pattern)
-    final colorIndex = letterIndex % _avatarColors.length;
-    return _avatarColors[colorIndex];
-  }
-
-  // Get text color based on background color
-  Color _getTextColor(Color backgroundColor) {
-    // Use black text for yellow, white for others
-    if (backgroundColor == const Color(0xFFFDD835)) {
-      // Yellow
-      return Colors.black;
-    }
-    return Colors.white;
-  }
-
   // Navigate to group management screen
   void _navigateToGroupManagement() {
     if (!widget.isGroup) return;
@@ -918,13 +679,27 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                         width: 1.5,
                       ),
                     ),
-                    child: _buildGroupAvatar(),
+                    child: AvatarUtils.buildGroupAvatar(
+                      participants: widget.participants,
+                      hasUnread: false, // App bar doesn't show unread state
+                      radius: 16,
+                      fontSize: 16,
+                      onTap: () {
+                        // Handle group management navigation
+                        // You might want to add navigation logic here
+                      },
+                    ),
                   ),
                 )
-                : UserAvatar(
+                : AvatarUtils.buildUserAvatar(
                   photoUrl: widget.otherUserPhoto,
-                  displayName: widget.otherUserName,
+                  firstName: widget.otherUserName.split(' ').first,
+                  lastName:
+                      widget.otherUserName.split(' ').length > 1
+                          ? widget.otherUserName.split(' ').last
+                          : null,
                   radius: 16,
+                  fontSize: 14,
                 ),
             const SizedBox(width: 12),
             Expanded(
@@ -1145,42 +920,11 @@ class _DMThreadScreenState extends State<DMThreadScreen>
           ),
         ],
       ),
-      child: CircleAvatar(
+      child: UserAvatar(
+        photoUrl: senderPhoto,
+        displayName: displayName,
         radius: 16,
-        backgroundColor: _getAvatarColor(displayName),
-        child:
-            senderPhoto != null && senderPhoto.isNotEmpty
-                ? ClipOval(
-                  child: CachedNetworkImage(
-                    imageUrl: senderPhoto,
-                    fit: BoxFit.cover,
-                    width: 32,
-                    height: 32,
-                    placeholder:
-                        (context, url) => const CircularProgressIndicator(),
-                    errorWidget: (context, url, error) {
-                      final avatarColor = _getAvatarColor(displayName);
-                      return Text(
-                        displayName.isNotEmpty
-                            ? displayName[0].toUpperCase()
-                            : '?',
-                        style: TextStyle(
-                          color: _getTextColor(avatarColor),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      );
-                    },
-                  ),
-                )
-                : Text(
-                  displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                  style: TextStyle(
-                    color: _getTextColor(_getAvatarColor(displayName)),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
+        fontSize: 12,
       ),
     );
   }
@@ -1231,64 +975,22 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     final String username = message.senderUsername ?? '';
     final String? photoUrl = message.senderPhoto;
 
-    final String initials = _getInitials(firstName, lastName, username);
-
-    if (photoUrl != null && photoUrl.isNotEmpty) {
-      final String fullUrl =
-          photoUrl.startsWith('http')
-              ? photoUrl
-              : '${apiService.mediaBaseUrl}$photoUrl';
-
-      return Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 1),
-        ),
-        child: ClipOval(
-          child: CachedNetworkImage(
-            imageUrl: fullUrl,
-            fit: BoxFit.cover,
-            width: 32,
-            height: 32,
-            placeholder:
-                (context, url) => Container(
-                  color: Colors.grey.shade300,
-                  child: const Icon(Icons.person, size: 16, color: Colors.grey),
-                ),
-            errorWidget: (context, url, error) {
-              return CircleAvatar(
-                radius: 16,
-                backgroundColor: Color(initials.hashCode | 0xFF000000),
-                child: Text(
-                  initials.isNotEmpty ? initials[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      );
-    } else {
-      final avatarColor = _getAvatarColor(initials);
-      return CircleAvatar(
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 1),
+      ),
+      child: UserAvatar(
+        photoUrl: photoUrl,
+        firstName: firstName,
+        lastName: lastName,
+        displayName: username,
         radius: 16,
-        backgroundColor: avatarColor,
-        child: Text(
-          initials.isNotEmpty ? initials[0].toUpperCase() : '?',
-          style: TextStyle(
-            color: _getTextColor(avatarColor),
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-          ),
-        ),
-      );
-    }
+        fontSize: 12,
+      ),
+    );
   }
 
   Widget _buildMessageBubble(DMMessage message) {

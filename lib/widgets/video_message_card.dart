@@ -107,6 +107,13 @@ class VideoMessageCardState extends State<VideoMessageCard> {
 
   @override
   Widget build(BuildContext context) {
+    // DEBUG: Log what thumbnail URL we're getting
+    debugPrint('🎬 VideoMessageCard Debug:');
+    debugPrint('  videoUrl: ${widget.videoUrl}');
+    debugPrint('  thumbnailUrl: ${widget.thumbnailUrl}');
+    debugPrint('  thumbnailUrl isEmpty: ${widget.thumbnailUrl?.isEmpty}');
+    debugPrint('  thumbnailUrl isNotEmpty: ${widget.thumbnailUrl?.isNotEmpty}');
+
     if (_errorMessage != null) {
       return Container(
         width: double.infinity,

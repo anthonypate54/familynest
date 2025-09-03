@@ -104,8 +104,8 @@ class DMConversation {
               : null,
       otherUserName: json['other_user_name'] as String?,
       otherUserPhoto: json['other_user_photo'] as String?,
-      otherUserFirstName: json['other_user_first_name'] as String?,
-      otherUserLastName: json['other_user_last_name'] as String?,
+      otherUserFirstName: json['other_first_name'] as String?,
+      otherUserLastName: json['other_last_name'] as String?,
       lastMessageContent: json['last_message_content'] as String?,
       lastMessageTime:
           json['last_message_time'] != null
