@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
-import '../models/dm_conversation.dart';
-import '../models/dm_message.dart';
-import '../providers/dm_conversation_provider.dart';
-import '../providers/dm_message_provider.dart';
+
 import '../widgets/gradient_background.dart';
+import '../widgets/user_avatar.dart';
 import '../utils/page_transitions.dart';
 import 'dm_thread_screen.dart';
 import 'group_name_screen.dart';
 import '../theme/app_theme.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 class ChooseDMRecipientScreen extends StatefulWidget {
   final int userId;
@@ -39,7 +36,6 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
   // Search state
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _filteredMembers = [];
-  bool _loadingMembers = false;
 
   // Group chat state
   bool _isGroupMode = false;
@@ -211,26 +207,6 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
     });
     // Reload the family members to restore the list
     _loadFamilyMembers();
-  }
-
-  String _formatTimestamp(int? timestamp) {
-    if (timestamp == null) return '';
-
-    final messageTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    final now = DateTime.now();
-    final difference = now.difference(messageTime);
-
-    if (difference.inMinutes < 1) {
-      return 'now';
-    } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes}m ago';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
-    } else {
-      return '${(difference.inDays / 7).floor()}w ago';
-    }
   }
 
   String _getInitials(String? firstName, String? lastName, String? username) {
@@ -459,18 +435,12 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
               ),
             ),
             // User avatar
-            CircleAvatar(
+            UserAvatar(
+              displayName: 'U',
               radius: 18,
               backgroundColor: Theme.of(
                 context,
               ).colorScheme.primary.withOpacity(0.2),
-              child: Text(
-                'U',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
             ),
             const SizedBox(width: 8),
           ],
@@ -690,57 +660,19 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
 
   // Helper method to build leading widget for normal mode (avatar only)
   Widget _buildNormalModeLeading(String initials, Map<String, dynamic> member) {
+    final firstName = member['firstName'] as String? ?? '';
+    final lastName = member['lastName'] as String? ?? '';
     final photo = member['photo'] as String?;
-    final apiService = Provider.of<ApiService>(context, listen: false);
 
-    // Construct full URL for photo
-    final String? fullPhotoUrl =
-        photo != null && photo.isNotEmpty
-            ? (photo.startsWith('http')
-                ? photo
-                : '${apiService.mediaBaseUrl}$photo')
-            : null;
-
-    return CircleAvatar(
+    return UserAvatar(
+      photoUrl: photo,
+      firstName: firstName,
+      lastName: lastName,
+      displayName: initials,
       radius: 24,
       backgroundColor: Colors.white,
-      child:
-          fullPhotoUrl != null
-              ? ClipOval(
-                child: CachedNetworkImage(
-                  imageUrl: fullPhotoUrl,
-                  fit: BoxFit.cover,
-                  width: 48,
-                  height: 48,
-                  placeholder:
-                      (context, url) => Container(
-                        color: Colors.grey.shade300,
-                        child: const Icon(
-                          Icons.person,
-                          size: 24,
-                          color: Colors.grey,
-                        ),
-                      ),
-                  errorWidget: (context, url, error) {
-                    return Text(
-                      initials,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    );
-                  },
-                ),
-              )
-              : Text(
-                initials,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
+      fontSize: 18,
+      useFirstInitialOnly: true,
     );
   }
 
@@ -755,15 +687,6 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
     final username = member['username'] as String? ?? '';
     final photo = member['photo'] as String?;
     final String initials = _getInitials(firstName, lastName, username);
-    final apiService = Provider.of<ApiService>(context, listen: false);
-
-    // Construct full URL for photo
-    final String? fullPhotoUrl =
-        photo != null && photo.isNotEmpty
-            ? (photo.startsWith('http')
-                ? photo
-                : '${apiService.mediaBaseUrl}$photo')
-            : null;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -793,46 +716,15 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
         ),
         const SizedBox(width: 12),
         // Avatar with photo support
-        CircleAvatar(
+        UserAvatar(
+          photoUrl: photo,
+          firstName: firstName,
+          lastName: lastName,
+          displayName: initials,
           radius: 20,
           backgroundColor: Colors.white,
-          child:
-              fullPhotoUrl != null
-                  ? ClipOval(
-                    child: CachedNetworkImage(
-                      imageUrl: fullPhotoUrl,
-                      fit: BoxFit.cover,
-                      width: 40,
-                      height: 40,
-                      placeholder:
-                          (context, url) => Container(
-                            color: Colors.grey.shade300,
-                            child: const Icon(
-                              Icons.person,
-                              size: 20,
-                              color: Colors.grey,
-                            ),
-                          ),
-                      errorWidget: (context, url, error) {
-                        return Text(
-                          initials,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        );
-                      },
-                    ),
-                  )
-                  : Text(
-                    initials,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
+          fontSize: 16,
+          useFirstInitialOnly: true,
         ),
       ],
     );

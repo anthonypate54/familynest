@@ -127,6 +127,38 @@ class AppConfig {
       return _customBaseUrl!;
     }
 
+    // Auto-detect environment based on .env API_URL if available
+    String apiUrl = _devBaseUrl;
+    try {
+      if (dotenv.isInitialized) {
+        final envUrl = dotenv.env['API_URL'];
+        if (envUrl != null && envUrl.isNotEmpty) {
+          apiUrl = envUrl;
+
+          // Auto-detect environment based on the URL
+          if (apiUrl.contains('54.189.190.245')) {
+            if (_environment != Environment.staging) {
+              print(
+                '🔄 Auto-detected staging environment from API_URL: $apiUrl',
+              );
+              _environment = Environment.staging;
+            }
+          } else if (apiUrl.contains('localhost') ||
+              apiUrl.contains('127.0.0.1') ||
+              apiUrl.contains('10.0.2.2')) {
+            if (_environment != Environment.development) {
+              print(
+                '🔄 Auto-detected development environment from API_URL: $apiUrl',
+              );
+              _environment = Environment.development;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error during environment auto-detection: $e');
+    }
+
     // Otherwise, choose based on environment and platform
     print('🎯 Switching on environment: $_environment');
     switch (_environment) {
@@ -151,7 +183,8 @@ class AppConfig {
             'https://media.familynest.example.com';
 
       case Environment.staging:
-        return _awsStagingBaseUrl;
+        // For staging, media is served from S3, not the backend server
+        return 'https://familynest-staging-media.s3.us-west-2.amazonaws.com';
 
       case Environment.development:
       default:
@@ -160,7 +193,7 @@ class AppConfig {
           if (dotenv.isInitialized) {
             final mediaUrl = dotenv.env['MEDIA_URL'];
             if (mediaUrl != null && mediaUrl.isNotEmpty) {
-              // print('✅ Using MEDIA_URL from .env: $mediaUrl (ngrok mode)'); // Temporarily disabled to check rebuilds
+              print('✅ Using MEDIA_URL from .env: $mediaUrl (ngrok mode)');
               return mediaUrl;
             }
           }

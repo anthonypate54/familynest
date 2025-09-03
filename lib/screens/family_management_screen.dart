@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../services/family_service.dart';
 import '../models/family.dart';
 import '../widgets/gradient_background.dart';
+import '../widgets/user_avatar.dart';
 import 'package:intl/intl.dart';
 import '../controllers/bottom_navigation_controller.dart';
 import '../theme/app_theme.dart';
@@ -32,8 +33,8 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
   List<Family> _families = [];
   Family? _selectedFamily;
   // Family? _ownedFamily; // Will be used for family ownership features
-  List<Map<String, dynamic>> _allMembers = [];
-  List<Map<String, dynamic>> _filteredMembers = [];
+  List<({FamilyMember member, Family family})> _allMembers = [];
+  List<({FamilyMember member, Family family})> _filteredMembers = [];
   List<Map<String, dynamic>> _pendingInvitations = [];
   List<Map<String, dynamic>> _sentInvitations = [];
   Map<int, int> _familyPendingInviteCounts = {};
@@ -46,6 +47,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
   String _selectedPeriod = 'Wk'; // 'Wk', 'Mo', 'Yr'
   Map<String, dynamic>? _currentActivity;
   bool _loadingActivity = false;
+  bool _isInviting = false;
 
   // Notification preferences state
   Map<String, dynamic>? _notificationPreferences;
@@ -519,22 +521,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
 
       final families = await familyService.loadUserFamilies(widget.userId);
 
-      // Use members that are already loaded in the Family objects
-      List<Map<String, dynamic>> allMembers = [];
+      // Use members that are already loaded in the Family objects, keeping family context
+      List<({FamilyMember member, Family family})> allMembers = [];
       for (var family in families) {
-        // Use the members that are already loaded in the Family object
+        // Create records that preserve both member and family context
         for (var member in family.members) {
-          allMembers.add({
-            'familyId': family.id,
-            'familyName': family.name,
-            'userId': member.id,
-            'firstName': member.firstName,
-            'lastName': member.lastName,
-            'username': member.username,
-            'isOwner': member.isOwner,
-            'joinedAt': member.joinedAt,
-            'isMuted': member.isMuted,
-          });
+          allMembers.add((member: member, family: family));
         }
       }
 
@@ -1951,21 +1943,20 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
 
     setState(() {
       _filteredMembers =
-          _allMembers.where((member) {
+          _allMembers.where((memberWithFamily) {
+            final member = memberWithFamily.member;
+            final family = memberWithFamily.family;
+
             // Filter by selected family if one is chosen
-            if (_selectedFamily != null &&
-                member['familyId'] != _selectedFamily!.id) {
+            if (_selectedFamily != null && family.id != _selectedFamily!.id) {
               return false;
             }
 
             // Filter by search query
             if (query.isNotEmpty) {
-              final firstName =
-                  member['firstName']?.toString().toLowerCase() ?? '';
-              final lastName =
-                  member['lastName']?.toString().toLowerCase() ?? '';
-              final username =
-                  member['username']?.toString().toLowerCase() ?? '';
+              final firstName = member.firstName.toLowerCase();
+              final lastName = member.lastName.toLowerCase();
+              final username = member.username.toLowerCase();
 
               final fullName = '$firstName $lastName';
               return fullName.contains(query) || username.contains(query);
@@ -2424,8 +2415,15 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: () => _inviteMember(),
-                child: const Text('Invite'),
+                onPressed: _isInviting ? null : () => _inviteMember(),
+                child:
+                    _isInviting
+                        ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Text('Invite'),
               ),
             ],
           ),
@@ -2484,6 +2482,13 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       );
       return;
     }
+
+    // Prevent multiple invitations
+    if (_isInviting) return;
+
+    setState(() {
+      _isInviting = true;
+    });
 
     try {
       final selectedFamily = _selectedFamily;
@@ -2545,6 +2550,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
             ),
           );
         }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isInviting = false;
+        });
       }
     }
   }
@@ -2643,38 +2654,39 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
     }
   }
 
-  Widget _buildMemberCard(Map<String, dynamic> member) {
-    final isNew = () {
-      if (member['joinedAt'] == null) return false;
-      final joinedAt = member['joinedAt'] as DateTime;
-      final daysSinceJoined = DateTime.now().difference(joinedAt).inDays;
-      return daysSinceJoined <= 7;
-    }();
+  Widget _buildMemberCard(
+    ({FamilyMember member, Family family}) memberWithFamily,
+  ) {
+    final member = memberWithFamily.member;
+    final family = memberWithFamily.family;
+    final daysSinceJoined = DateTime.now().difference(member.joinedAt).inDays;
+    final isNew = daysSinceJoined <= 7;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
       child: InkWell(
-        onTap: () => _viewMemberDemographics(member),
+        onTap:
+            () => _viewMemberDemographics({
+              'userId': member.id,
+              'familyId': family.id,
+              'firstName': member.firstName,
+              'lastName': member.lastName,
+              'username': member.username,
+            }),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
               // Member avatar
-              CircleAvatar(
+              UserAvatar(
+                photoUrl: member.photo,
+                firstName: member.firstName,
+                lastName: member.lastName,
                 radius: 20,
-                backgroundColor:
-                    isNew
-                        ? Colors.green
-                        : Color(member['firstName'].hashCode | 0xFF000000),
-                child: Text(
-                  member['firstName'][0].toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                backgroundColor: isNew ? Colors.green : null,
+                useFirstInitialOnly: true,
               ),
               const SizedBox(width: 12),
 
@@ -2687,7 +2699,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                       children: [
                         Expanded(
                           child: Text(
-                            '${member['firstName']} ${member['lastName']}',
+                            member.displayName,
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
@@ -2697,7 +2709,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                       ],
                     ),
                     Text(
-                      '@${member['username']}',
+                      '@${member.username}',
                       style: TextStyle(
                         color: Theme.of(
                           context,
@@ -2710,7 +2722,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
               ),
 
               // Mute checkbox - right column (only show for other users)
-              if (member['userId'] != widget.userId)
+              if (member.id != widget.userId)
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -2720,9 +2732,13 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     ),
                     const SizedBox(height: 4),
                     Checkbox(
-                      value: member['isMuted'] ?? false,
+                      value: member.isMuted,
                       onChanged: (value) {
-                        _toggleMemberMute(member, value ?? false);
+                        _toggleMemberMute({
+                          'userId': member.id,
+                          'familyId': family.id,
+                          'isMuted': member.isMuted,
+                        }, value ?? false);
                       },
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),

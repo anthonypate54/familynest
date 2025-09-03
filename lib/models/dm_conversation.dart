@@ -231,15 +231,22 @@ class DMConversation {
   // Helper method to get initials from other user name
   String getOtherUserInitials() {
     if (otherUserFirstName != null && otherUserLastName != null) {
-      return '${otherUserFirstName![0]}${otherUserLastName![0]}'.toUpperCase();
+      if (otherUserFirstName!.isNotEmpty && otherUserLastName!.isNotEmpty) {
+        return '${otherUserFirstName![0]}${otherUserLastName![0]}'
+            .toUpperCase();
+      }
     }
     if (otherUserName != null && otherUserName!.isNotEmpty) {
-      final words = otherUserName!.split(' ');
-      if (words.length == 1) {
+      final words =
+          otherUserName!.split(' ').where((word) => word.isNotEmpty).toList();
+      if (words.length == 1 && words[0].isNotEmpty) {
         return words[0][0].toUpperCase();
       }
-      if (words.length > 1) {
+      if (words.length > 1 && words[0].isNotEmpty && words[1].isNotEmpty) {
         return '${words[0][0]}${words[1][0]}'.toUpperCase();
+      }
+      if (words.isNotEmpty && words[0].isNotEmpty) {
+        return words[0][0].toUpperCase();
       }
     }
     return '?';

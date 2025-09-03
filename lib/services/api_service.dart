@@ -1282,11 +1282,29 @@ Network connection error. Please check:
     Map<String, String>? videoData;
     String? effectiveMediaPath = mediaPath;
 
-    // Note: Video processing with backend thumbnail generation was causing issues
-    // For now, we'll use the local video file processing that was working before
     if (mediaPath != null && mediaType == 'video' && !kIsWeb) {
-      debugPrint('Processing video locally (backend upload disabled for now)');
-      // Continue with the local file - the backend will handle thumbnail generation
+      try {
+        debugPrint('Processing video before posting message');
+        final videoFile = File(mediaPath);
+
+        // Upload to backend for processing
+        videoData = await uploadVideoWithThumbnail(videoFile);
+
+        // If we got a successful remote URL, use that instead of the local file
+        if (videoData['videoUrl'] != null &&
+            videoData['videoUrl']!.isNotEmpty &&
+            videoData['videoUrl']!.startsWith('http')) {
+          // Use the remote URL instead of the local file
+          effectiveMediaPath = null; // Don't send local file
+          debugPrint('Using remote video URL: ${videoData['videoUrl']}');
+        } else {
+          // Fall back to original local file
+          debugPrint('Falling back to local video file');
+        }
+      } catch (e) {
+        debugPrint('Error processing video: $e');
+        // Continue with original file
+      }
     }
 
     // Proceed with posting the message
@@ -2232,13 +2250,11 @@ Network connection error. Please check:
   // Message-related methods
   Future<List<Message>> getUserMessages(String userId) async {
     try {
-      // Revert to original approach to fix navigation - bypass _makeAuthenticatedRequest
-      final response = await client.get(
+      // Use proper authenticated request with automatic token refresh
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/users/$userId/messages'),
-        headers: {
-          'Accept': 'application/json',
-          if (_token != null) 'Authorization': 'Bearer $_token',
-        },
+        headers: {'Accept': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -2246,8 +2262,6 @@ Network connection error. Please check:
         final messages =
             jsonList.map((json) => Message.fromJson(json)).toList();
         return messages;
-
-        //       return jsonList.map((json) => Message.fromJson(json)).toList();
       } else {
         throw Exception('Failed to load messages: ${response.statusCode}');
       }
@@ -3682,6 +3696,46 @@ Network connection error. Please check:
   // Removed DM view tracking methods (performance optimization)
 
   // Removed markDMMessageAsViewed (performance optimization)
+
+  // Simple mark message as read - just one API call, one database update
+  Future<Map<String, dynamic>> markMessageAsRead(int messageId) async {
+    debugPrint('Marking message $messageId as read');
+
+    try {
+      final currentUser = await getCurrentUser();
+      debugPrint('Current user data: $currentUser');
+      if (currentUser == null) {
+        throw Exception('User not authenticated');
+      }
+      final userId = currentUser['userId'] ?? currentUser['id'];
+      debugPrint('User ID: $userId, Message ID: $messageId');
+      if (userId == null) {
+        throw Exception('User ID is null');
+      }
+      final url = Uri.parse(
+        '$baseUrl/api/users/$userId/messages/$messageId/mark-read',
+      );
+      debugPrint('Making request to: $url');
+      final response = await _makeAuthenticatedRequest(
+        'POST',
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      debugPrint(
+        'Mark message as read response: status=${response.statusCode}, body=${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to mark message as read: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error marking message as read: $e');
+      return {'error': e.toString()};
+    }
+  }
 
   // Get unread DM message count for user
   Future<Map<String, dynamic>> getUnreadDMMessageCount() async {

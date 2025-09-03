@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../widgets/gradient_background.dart';
 import '../widgets/video_message_card.dart';
 import '../widgets/external_video_message_card.dart';
+import '../widgets/user_avatar.dart';
 import '../theme/app_theme.dart';
 import 'package:provider/provider.dart';
 import '../models/dm_message.dart';
@@ -58,7 +59,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final FocusNode _messageFocusNode = FocusNode();
+  // final FocusNode _messageFocusNode = FocusNode(); // Removed - let EmojiMessageInput manage its own focus
 
   // Remove local messages state since we'll use provider
   bool _isLoading = true;
@@ -110,7 +111,26 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed && mounted) {
-      debugPrint('🔄 DMThreadScreen: App resumed, reloading messages...');
+      debugPrint(
+        '🔄 DMThreadScreen: App resumed, checking WebSocket and reloading messages...',
+      );
+
+      // Ensure WebSocket is connected and subscriptions are active
+      if (_webSocketService != null) {
+        if (!_webSocketService!.isConnected) {
+          debugPrint(
+            '🔄 DMThreadScreen: WebSocket not connected, reconnecting...',
+          );
+          _webSocketService!.initialize().then((_) {
+            // Re-establish subscription after connection
+            _ensureWebSocketSubscription();
+          });
+        } else {
+          // WebSocket is connected, ensure our subscription is active
+          _ensureWebSocketSubscription();
+        }
+      }
+
       _loadMessages(showLoading: false);
     }
   }
@@ -213,7 +233,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
     _messageController.dispose();
     _scrollController.dispose();
-    _messageFocusNode.dispose();
+    // _messageFocusNode.dispose(); // Removed - focus node no longer used
 
     // Cleanup composition service
     _compositionService?.clearComposition();
@@ -247,6 +267,12 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         // Send message with media using DMController's new postMessage endpoint
         debugPrint(
           '🚀 DM: Sending media message, type: $_compositionService?.selectedMediaType, path: ${_compositionService?.selectedMediaFile!.path}',
+        );
+        debugPrint(
+          '🎬 DM SEND DEBUG - Thumbnail path: ${_compositionService?.selectedVideoThumbnail?.path}',
+        );
+        debugPrint(
+          '🎬 DM SEND DEBUG - Has thumbnail: ${_compositionService?.selectedVideoThumbnail != null}',
         );
         result = await apiService.sendDMMessage(
           conversationId: widget.conversationId,
@@ -498,16 +524,28 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     };
 
     // Subscribe to DM messages for this user
-    _webSocketService!.subscribe(
-      '/topic/dm-thread/${widget.currentUserId}',
-      _dmMessageHandler!,
-    );
+    _ensureWebSocketSubscription();
 
     // Listen for connection status changes
     _webSocketService!.addConnectionListener(_connectionListener!);
 
     // Initialize WebSocket connection if not already connected
     _webSocketService!.initialize();
+  }
+
+  // Ensure WebSocket subscription is active (can be called multiple times safely)
+  void _ensureWebSocketSubscription() {
+    if (_webSocketService == null || _dmMessageHandler == null) return;
+
+    debugPrint(
+      '🔄 DMThreadScreen: Ensuring WebSocket subscription for user ${widget.currentUserId}',
+    );
+
+    // Subscribe to DM messages for this user (WebSocketService handles duplicates)
+    _webSocketService!.subscribe(
+      '/topic/dm-thread/${widget.currentUserId}',
+      _dmMessageHandler!,
+    );
   }
 
   // Handle incoming DM messages from WebSocket
@@ -883,9 +921,10 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                     child: _buildGroupAvatar(),
                   ),
                 )
-                : _buildHeaderAvatar(
-                  widget.otherUserPhoto,
-                  widget.otherUserName,
+                : UserAvatar(
+                  photoUrl: widget.otherUserPhoto,
+                  displayName: widget.otherUserName,
+                  radius: 16,
                 ),
             const SizedBox(width: 12),
             Expanded(
@@ -1030,155 +1069,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                             ),
                   ),
 
-                  // Media preview (if any)
-                  if (_compositionService?.selectedMediaFile != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child:
-                          _compositionService?.selectedMediaType == 'photo'
-                              ? ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: Stack(
-                                  children: [
-                                    SizedBox(
-                                      width:
-                                          MediaQuery.of(context).size.width *
-                                          0.7,
-                                      height: 200,
-                                      child: Image.file(
-                                        _compositionService!.selectedMediaFile!,
-                                        width:
-                                            MediaQuery.of(context).size.width *
-                                            0.7,
-                                        height: 200,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                    Positioned(
-                                      top: 8,
-                                      right: 8,
-                                      child: Container(
-                                        width: 32,
-                                        height: 32,
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: Colors.grey.shade400,
-                                            width: 2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withValues(
-                                                alpha: 0.3,
-                                              ),
-                                              blurRadius: 4,
-                                              spreadRadius: 1,
-                                            ),
-                                          ],
-                                        ),
-                                        child: Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            borderRadius: BorderRadius.circular(
-                                              16,
-                                            ),
-                                            onTap: () {
-                                              setState(() {});
-                                            },
-                                            child: const Icon(
-                                              Icons.close,
-                                              color: Colors.red,
-                                              size: 20,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                              : _compositionService?.selectedMediaType ==
-                                  'video'
-                              ? ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: Stack(
-                                  children: [
-                                    SizedBox(
-                                      width:
-                                          MediaQuery.of(context).size.width *
-                                          0.7,
-                                      height: 200,
-                                      child:
-                                          _compositionService
-                                                      ?.selectedVideoThumbnail !=
-                                                  null
-                                              ? Image.file(
-                                                _compositionService!
-                                                    .selectedVideoThumbnail!,
-                                                width:
-                                                    MediaQuery.of(
-                                                      context,
-                                                    ).size.width *
-                                                    0.7,
-                                                height: 200,
-                                                fit: BoxFit.cover,
-                                              )
-                                              : Container(
-                                                color: Colors.black,
-                                                child: const Center(
-                                                  child:
-                                                      CircularProgressIndicator(),
-                                                ),
-                                              ),
-                                    ),
-                                    Positioned(
-                                      top: 8,
-                                      right: 8,
-                                      child: Container(
-                                        width: 32,
-                                        height: 32,
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: Colors.grey.shade400,
-                                            width: 2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withValues(
-                                                alpha: 0.3,
-                                              ),
-                                              blurRadius: 4,
-                                              spreadRadius: 1,
-                                            ),
-                                          ],
-                                        ),
-                                        child: Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            borderRadius: BorderRadius.circular(
-                                              16,
-                                            ),
-                                            onTap: () {
-                                              setState(() {});
-                                            },
-                                            child: const Icon(
-                                              Icons.close,
-                                              color: Colors.red,
-                                              size: 20,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                              : const SizedBox.shrink(),
-                    ),
-
                   // Use unified video composition preview widget
                   VideoCompositionPreview(
                     compositionService: _compositionService!,
@@ -1189,7 +1079,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                   // Message input (using reusable component)
                   EmojiMessageInput(
                     controller: _messageController,
-                    focusNode: _messageFocusNode,
+                    // focusNode: _messageFocusNode, // Removed - let EmojiMessageInput manage its own focus
                     hintText: 'Message ${widget.otherUserName}...',
                     onSend: _sendMessage,
                     onMediaAttach: _showDMMediaPicker,
@@ -1238,51 +1128,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
           ),
         ),
       ),
-    );
-  }
-
-  // Clean header avatar for app bar (no margins or shadows)
-  Widget _buildHeaderAvatar(String? senderPhoto, String displayName) {
-    final apiService = Provider.of<ApiService>(context, listen: false);
-
-    return CircleAvatar(
-      radius: 16,
-      backgroundColor: _getAvatarColor(displayName),
-      child:
-          senderPhoto != null && senderPhoto.isNotEmpty
-              ? ClipOval(
-                child: CachedNetworkImage(
-                  imageUrl:
-                      senderPhoto.startsWith('http')
-                          ? senderPhoto
-                          : '${apiService.mediaBaseUrl}$senderPhoto',
-                  fit: BoxFit.cover,
-                  width: 32,
-                  height: 32,
-                  placeholder:
-                      (context, url) => const CircularProgressIndicator(),
-                  errorWidget: (context, url, error) {
-                    return Text(
-                      displayName.isNotEmpty
-                          ? displayName[0].toUpperCase()
-                          : '?',
-                      style: TextStyle(
-                        color: _getTextColor(_getAvatarColor(displayName)),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    );
-                  },
-                ),
-              )
-              : Text(
-                displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                style: TextStyle(
-                  color: _getTextColor(_getAvatarColor(displayName)),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
     );
   }
 
@@ -1454,6 +1299,14 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     final String? mediaUrl = message.mediaUrl;
     final String? mediaType = message.mediaType;
     final String? thumbnailUrl = message.mediaThumbnail;
+
+    // DEBUG: Log what thumbnail data we're getting
+    if (mediaType == 'video') {
+      debugPrint('🎬 DM Video Message Debug:');
+      debugPrint('  mediaUrl: $mediaUrl');
+      debugPrint('  thumbnailUrl: $thumbnailUrl');
+      debugPrint('  mediaThumbnail: ${message.mediaThumbnail}');
+    }
 
     // Construct full URLs for media
     final String? fullMediaUrl =

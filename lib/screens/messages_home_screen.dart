@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart';
-import 'package:visibility_detector/visibility_detector.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import '../services/api_service.dart';
-import '../providers/dm_message_provider.dart';
+import '../widgets/user_avatar.dart';
+
 import '../services/websocket_service.dart';
 import '../models/dm_conversation.dart';
 import '../models/dm_message.dart';
 import '../theme/app_theme.dart';
-import '../widgets/gradient_background.dart';
+
 import '../utils/page_transitions.dart';
 import 'message_search_screen.dart';
 import 'choose_dm_recipient_screen.dart';
@@ -48,7 +47,6 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
   WebSocketService? _webSocketService;
   Function(Map<String, dynamic>)? _dmMessageHandler;
   Function(bool)? _connectionListener;
-  bool _isWebSocketConnected = false;
 
   @override
   void initState() {
@@ -116,13 +114,29 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       debugPrint(
-        '🔄 App resumed, refreshing conversations on MessagesHomeScreen...',
+        '🔄 App resumed, checking WebSocket and refreshing conversations on MessagesHomeScreen...',
       );
+
+      // Ensure WebSocket is connected and subscriptions are active
+      if (_webSocketService != null) {
+        if (!_webSocketService!.isConnected) {
+          debugPrint(
+            '🔄 MessagesHomeScreen: WebSocket not connected, reconnecting...',
+          );
+          _webSocketService!.initialize().then((_) {
+            // Re-establish subscription after connection
+            _ensureWebSocketSubscription();
+          });
+        } else {
+          // WebSocket is connected, ensure our subscription is active
+          _ensureWebSocketSubscription();
+        }
+      }
+
       _loadConversations();
     }
   }
 
-  @override
   Future<void> _loadConversations() async {
     try {
       setState(() {
@@ -266,19 +280,6 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         _filteredConversations = filtered;
       });
     }
-  }
-
-  String _getInitials(String? firstName, String? lastName, String? username) {
-    if (firstName != null && firstName.isNotEmpty) {
-      if (lastName != null && lastName.isNotEmpty) {
-        return '${firstName[0]}${lastName[0]}'.toUpperCase();
-      }
-      return firstName[0].toUpperCase();
-    }
-    if (username != null && username.isNotEmpty) {
-      return username[0].toUpperCase();
-    }
-    return '?';
   }
 
   String _formatTimestamp(DateTime? timestamp) {
@@ -433,75 +434,20 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                         ),
                       );
                     },
-                    child: CircleAvatar(
+                    child: UserAvatar(
+                      photoUrl: photo,
+                      displayName: initials,
                       radius: 18,
-                      backgroundColor: GroupAvatarUtils.getAvatarColor(
-                        initials,
-                      ),
-                      child:
-                          photo != null && photo.isNotEmpty
-                              ? ClipOval(
-                                child: CachedNetworkImage(
-                                  imageUrl:
-                                      photo.startsWith('http')
-                                          ? photo
-                                          : '${Provider.of<ApiService>(context, listen: false).mediaBaseUrl}$photo',
-                                  fit: BoxFit.cover,
-                                  width: 36,
-                                  height: 36,
-                                  placeholder:
-                                      (context, url) => Text(
-                                        initials,
-                                        style: TextStyle(
-                                          color: GroupAvatarUtils.getTextColor(
-                                            GroupAvatarUtils.getAvatarColor(
-                                              initials,
-                                            ),
-                                          ),
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                  errorWidget:
-                                      (context, url, error) => Text(
-                                        initials,
-                                        style: TextStyle(
-                                          color: GroupAvatarUtils.getTextColor(
-                                            GroupAvatarUtils.getAvatarColor(
-                                              initials,
-                                            ),
-                                          ),
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                ),
-                              )
-                              : Text(
-                                initials,
-                                style: TextStyle(
-                                  color: GroupAvatarUtils.getTextColor(
-                                    GroupAvatarUtils.getAvatarColor(initials),
-                                  ),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
+                      fontSize: 14,
                     ),
                   );
                 }
 
                 // Fallback while loading - not tappable during loading
-                return CircleAvatar(
+                return UserAvatar(
+                  displayName: 'U',
                   radius: 18,
                   backgroundColor: Colors.lightGreen.shade100,
-                  child: Text(
-                    'U',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
                 );
               },
             ),
@@ -671,6 +617,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       // 1:1 chat display (existing logic)
       final otherUserPhoto = conversation.otherUserPhoto;
       displayName = conversation.getOtherUserDisplayName();
+      debugPrint('🔍 conversation: $conversation');
       final String initials = conversation.getOtherUserInitials();
       leadingWidget = _buildAvatar(otherUserPhoto, initials, hasUnread);
     }
@@ -788,318 +735,15 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     );
   }
 
-  // Google Messages-style avatar colors
-  static const List<Color> _avatarColors = [
-    Color(0xFFFDD835), // Yellow
-    Color(0xFF8E24AA), // Purple
-    Color(0xFF42A5F5), // Light blue
-    Color(0xFF66BB6A), // Green
-    Color(0xFFFF7043), // Orange
-    Color(0xFFEC407A), // Pink
-    Color(0xFF26A69A), // Teal
-    Color(0xFF5C6BC0), // Indigo
-  ];
-
-  // Get avatar color based on name (consistent per user)
-  Color _getAvatarColor(String name) {
-    // Get first letter and map to color index (A=0, B=1, etc.)
-    if (name.isEmpty) return _avatarColors[0];
-
-    final firstLetter = name[0].toUpperCase();
-    final letterIndex = firstLetter.codeUnitAt(0) - 'A'.codeUnitAt(0);
-
-    // Map letters A-Z to our 8 colors (repeating pattern)
-    final colorIndex = letterIndex % _avatarColors.length;
-    return _avatarColors[colorIndex];
-  }
-
-  // Get text color based on background color
-  Color _getTextColor(Color backgroundColor) {
-    // Use black text for yellow, white for others
-    if (backgroundColor == const Color(0xFFFDD835)) {
-      // Yellow
-      return Colors.black;
-    }
-    return Colors.white;
-  }
-
   Widget _buildAvatar(String? photoUrl, String initials, bool hasUnread) {
-    final apiService = Provider.of<ApiService>(context, listen: false);
-
-    return Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: hasUnread ? Colors.white : Colors.white.withOpacity(0.3),
-          width: hasUnread ? 2.0 : 1.0,
-        ),
-      ),
-      child: CircleAvatar(
-        radius: 24,
-        backgroundColor: _getAvatarColor(initials),
-        child:
-            photoUrl != null && photoUrl.isNotEmpty
-                ? ClipOval(
-                  child: CachedNetworkImage(
-                    imageUrl:
-                        photoUrl.startsWith('http')
-                            ? photoUrl
-                            : '${apiService.mediaBaseUrl}$photoUrl',
-                    fit: BoxFit.cover,
-                    width: 48,
-                    height: 48,
-                    placeholder:
-                        (context, url) => const CircularProgressIndicator(),
-                    errorWidget: (context, url, error) {
-                      final avatarColor = _getAvatarColor(initials);
-                      return Text(
-                        initials.isNotEmpty ? initials[0].toUpperCase() : '?',
-                        style: TextStyle(
-                          color: _getTextColor(avatarColor),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      );
-                    },
-                  ),
-                )
-                : Text(
-                  initials.isNotEmpty ? initials[0].toUpperCase() : '?',
-                  style: TextStyle(
-                    color: _getTextColor(_getAvatarColor(initials)),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-      ),
-    );
-  }
-
-  Widget _buildGroupAvatar(DMConversation conversation, ApiService apiService) {
-    final participants = conversation.participants;
-
-    Widget avatarWidget;
-
-    if (participants != null && participants.isNotEmpty) {
-      // Special case for single participant - center it
-      if (participants.length == 1) {
-        avatarWidget = SizedBox(
-          width: 48,
-          height: 48,
-          child: Center(
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 1),
-              ),
-              child: ClipOval(
-                child: _buildParticipantAvatar(
-                  participants[0],
-                  apiService,
-                  isSmall: false, // Use full size for single avatar
-                ),
-              ),
-            ),
-          ),
-        );
-      } else {
-        // Google Messages style: max 4 avatars in corners for multiple participants
-        avatarWidget = SizedBox(
-          width: 48,
-          height: 48,
-          child: Stack(
-            children: [
-              // First participant (top-left)
-              if (participants.isNotEmpty)
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1),
-                    ),
-                    child: ClipOval(
-                      child: _buildParticipantAvatar(
-                        participants[0],
-                        apiService,
-                        isSmall: true,
-                      ),
-                    ),
-                  ),
-                ),
-              // Second participant (bottom-right)
-              if (participants.length > 1)
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1),
-                    ),
-                    child: ClipOval(
-                      child: _buildParticipantAvatar(
-                        participants[1],
-                        apiService,
-                        isSmall: true,
-                      ),
-                    ),
-                  ),
-                ),
-              // Third participant (top-right)
-              if (participants.length > 2)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1),
-                    ),
-                    child: ClipOval(
-                      child: _buildParticipantAvatar(
-                        participants[2],
-                        apiService,
-                        isSmall: true,
-                      ),
-                    ),
-                  ),
-                ),
-              // Fourth participant (bottom-left)
-              if (participants.length > 3)
-                Positioned(
-                  left: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1),
-                    ),
-                    child: ClipOval(
-                      child: _buildParticipantAvatar(
-                        participants[3],
-                        apiService,
-                        isSmall: true,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      }
-    } else {
-      // Fallback to simple group avatar
-      avatarWidget = CircleAvatar(
-        radius: 24,
-        backgroundColor: Colors.deepPurple.shade400,
-        child: const Icon(Icons.group, color: Colors.white, size: 24),
-      );
-    }
-
-    // Wrap with GestureDetector for group management navigation
-    return GestureDetector(
-      onTap: () {
-        debugPrint(
-          '🔧 Group avatar tapped for conversation ${conversation.id}',
-        );
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder:
-                (context) => GroupManagementScreen(
-                  conversationId: conversation.id,
-                  groupName: conversation.name ?? 'Group Chat',
-                  currentUserId: widget.userId,
-                  participants: conversation.participants ?? [],
-                  onParticipantsChanged: () {
-                    // Refresh conversation list to update group avatars
-                    debugPrint(
-                      '🔄 Group participants changed, refreshing conversation list',
-                    );
-                    _loadConversations();
-                  },
-                ),
-          ),
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.5),
-        ),
-        child: avatarWidget,
-      ),
-    );
-  }
-
-  Widget _buildParticipantAvatar(
-    Map<String, dynamic> participant,
-    ApiService apiService, {
-    bool isSmall = false,
-  }) {
-    final photoUrl = participant['photo'] as String?;
-    final firstName = participant['first_name'] as String? ?? '';
-    final lastName = participant['last_name'] as String? ?? '';
-    final username = participant['username'] as String? ?? '';
-
-    final initials = _getInitials(firstName, lastName, username);
-    final size = isSmall ? 12.0 : 16.0;
-
-    if (photoUrl != null && photoUrl.isNotEmpty) {
-      final fullUrl =
-          photoUrl.startsWith('http')
-              ? photoUrl
-              : '${apiService.mediaBaseUrl}$photoUrl';
-
-      return CachedNetworkImage(
-        imageUrl: fullUrl,
-        fit: BoxFit.cover,
-        placeholder:
-            (context, url) => Container(
-              color: Colors.grey.shade300,
-              child: Icon(Icons.person, size: size, color: Colors.grey),
-            ),
-        errorWidget: (context, url, error) {
-          final avatarColor = _getAvatarColor(initials);
-          return CircleAvatar(
-            backgroundColor: avatarColor,
-            child: Text(
-              initials,
-              style: TextStyle(
-                color: _getTextColor(avatarColor),
-                fontWeight: FontWeight.bold,
-                fontSize: isSmall ? 8 : 12,
-              ),
-            ),
-          );
-        },
-      );
-    }
-
-    // No photo, show initials
-    final avatarColor = _getAvatarColor(initials);
-    return CircleAvatar(
-      backgroundColor: avatarColor,
-      child: Text(
-        initials,
-        style: TextStyle(
-          color: _getTextColor(avatarColor),
-          fontWeight: FontWeight.bold,
-          fontSize: isSmall ? 8 : 12,
-        ),
-      ),
+    return UserAvatar(
+      photoUrl: photoUrl,
+      displayName: initials, // Use initials as displayName for fallback
+      radius: 24,
+      showBorder: true,
+      borderColor: hasUnread ? Colors.white : Colors.white.withOpacity(0.3),
+      borderWidth: hasUnread ? 2.0 : 1.0,
+      fontSize: 18,
     );
   }
 
@@ -1119,7 +763,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             setState(() {
-              _isWebSocketConnected = isConnected;
+              // Update UI if needed based on connection status
             });
           }
         });
@@ -1127,16 +771,28 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     };
 
     // Subscribe to DM messages for this user
-    _webSocketService!.subscribe(
-      '/topic/dm-list/${widget.userId}',
-      _dmMessageHandler!,
-    );
+    _ensureWebSocketSubscription();
 
     // Listen for connection status changes
     _webSocketService!.addConnectionListener(_connectionListener!);
 
     // Initialize WebSocket connection if not already connected
     _webSocketService!.initialize();
+  }
+
+  // Ensure WebSocket subscription is active (can be called multiple times safely)
+  void _ensureWebSocketSubscription() {
+    if (_webSocketService == null || _dmMessageHandler == null) return;
+
+    debugPrint(
+      '🔄 MessagesHomeScreen: Ensuring WebSocket subscription for user ${widget.userId}',
+    );
+
+    // Subscribe to DM messages for this user (WebSocketService handles duplicates)
+    _webSocketService!.subscribe(
+      '/topic/dm-list/${widget.userId}',
+      _dmMessageHandler!,
+    );
   }
 
   // Handle incoming DM messages from WebSocket
