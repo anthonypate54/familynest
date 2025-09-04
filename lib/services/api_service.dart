@@ -1186,6 +1186,8 @@ Network connection error. Please check:
 
       var request = http.MultipartRequest('POST', Uri.parse(url));
 
+      // Load fresh token from storage
+      await _loadToken();
       if (_token != null) {
         debugPrint('Adding authorization token to request');
         request.headers['Authorization'] = 'Bearer $_token';
@@ -1250,11 +1252,57 @@ Network connection error. Please check:
       }
 
       debugPrint('Sending request...');
-      final response = await request.send();
-      final responseString = await response.stream.bytesToString();
+      var response = await request.send();
+      var responseString = await response.stream.bytesToString();
       debugPrint(
         'Response: status=${response.statusCode}, body=$responseString',
       );
+
+      // If token expired (401/403), try to refresh and retry once
+      if ((response.statusCode == 401 || response.statusCode == 403) &&
+          _refreshToken != null &&
+          _refreshToken!.isNotEmpty) {
+        debugPrint(
+          '🔄 Token expired, attempting refresh for comment posting...',
+        );
+
+        final refreshSuccess = await _refreshAccessToken();
+        if (refreshSuccess) {
+          debugPrint('🔄 Retrying comment post with refreshed token...');
+
+          // Create a new request with the refreshed token
+          var retryRequest = http.MultipartRequest('POST', Uri.parse(url));
+          retryRequest.headers['Authorization'] = 'Bearer $_token';
+
+          // Re-add all the fields and files
+          if (content.isNotEmpty) {
+            retryRequest.fields['content'] = content;
+          }
+          if (familyId != null) {
+            retryRequest.fields['familyId'] = familyId.toString();
+          }
+
+          // Re-add media if present
+          if (mediaPath != null && mediaType != null && !kIsWeb) {
+            retryRequest.files.add(
+              await http.MultipartFile.fromPath('media', mediaPath),
+            );
+            retryRequest.fields['mediaType'] = mediaType;
+          }
+
+          // Re-add video URL if present
+          if (videoUrl != null && videoUrl.startsWith('http')) {
+            retryRequest.fields['videoUrl'] = videoUrl;
+            if (thumbnailUrl != null) {
+              retryRequest.fields['thumbnailUrl'] = thumbnailUrl;
+            }
+          }
+
+          response = await retryRequest.send();
+          responseString = await response.stream.bytesToString();
+          debugPrint('🔄 Retry response: status=${response.statusCode}');
+        }
+      }
 
       if (response.statusCode == 201) {
         debugPrint('✅ Comment posted successfully');
@@ -2259,6 +2307,15 @@ Network connection error. Please check:
 
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(response.body);
+
+        // 🐛 DEBUG: Log the raw JSON to see has_unread_comments values
+        for (int i = 0; i < jsonList.length && i < 3; i++) {
+          final json = jsonList[i];
+          debugPrint(
+            '🐛 Message ${json['id']}: has_unread_comments = ${json['has_unread_comments']} (type: ${json['has_unread_comments'].runtimeType})',
+          );
+        }
+
         final messages =
             jsonList.map((json) => Message.fromJson(json)).toList();
         return messages;
@@ -2282,6 +2339,16 @@ Network connection error. Please check:
 
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(response.body);
+
+        // DEBUG: Log the raw JSON response to see if sender_first_name is present
+        debugPrint('🧵 getComments API Response (first 2 items):');
+        for (int i = 0; i < jsonList.length && i < 2; i++) {
+          final item = jsonList[i];
+          debugPrint(
+            '  Comment ${item['id']}: senderId=${item['senderId']}, sender_first_name=${item['sender_first_name']}, sender_last_name=${item['sender_last_name']}',
+          );
+        }
+
         return jsonList.map((json) => Message.fromJson(json)).toList();
       } else {
         throw Exception('Failed to load messages: ${response.statusCode}');
@@ -3891,6 +3958,30 @@ Network connection error. Please check:
     } else {
       final error = jsonDecode(response.body);
       throw Exception(error['error'] ?? 'Failed to get group chat config');
+    }
+  }
+
+  /// Mark comments as read for a specific message
+  Future<void> markCommentsAsRead(int messageId) async {
+    // Get current user ID for the existing endpoint
+    final prefs = await SharedPreferences.getInstance();
+    final userIdString = prefs.getString('user_id');
+    if (userIdString == null) {
+      throw Exception('User ID not found');
+    }
+    final userId = int.parse(userIdString);
+
+    final response = await _makeAuthenticatedRequest(
+      'POST',
+      Uri.parse('$baseUrl/api/users/$userId/messages/$messageId/mark-read'),
+    );
+
+    if (response.statusCode == 200) {
+      debugPrint('✅ Marked comments as read for message $messageId');
+    } else {
+      final error = jsonDecode(response.body);
+      debugPrint('❌ Failed to mark comments as read: ${error['error']}');
+      throw Exception(error['error'] ?? 'Failed to mark comments as read');
     }
   }
 }

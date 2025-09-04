@@ -93,7 +93,22 @@ class _ThreadScreenState extends State<ThreadScreen>
     // Initialize WebSocket after the first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initWebSocket();
+      _markCommentsAsRead(); // Mark comments as read when thread is viewed
     });
+  }
+
+  // Mark comments as read for this message
+  Future<void> _markCommentsAsRead() async {
+    if (_parentMessageId == null) return;
+
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      await apiService.markCommentsAsRead(_parentMessageId!);
+      debugPrint('✅ Marked comments as read for message $_parentMessageId');
+    } catch (e) {
+      debugPrint('❌ Failed to mark comments as read: $e');
+      // Don't show user error - this is a background operation
+    }
   }
 
   // Initialize WebSocket for comment updates

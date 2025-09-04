@@ -1,5 +1,3 @@
-// Removed unused import
-
 /*                     messageMap.put("id", message.get("id"));
                 messageMap.put("content", message.get("content"));
                 messageMap.put("senderUsername", message.get("sender_username"));
@@ -31,6 +29,8 @@ class Message {
   final DateTime? createdAt;
   final String? senderId;
   final String? senderUserName;
+  final String? senderFirstName;
+  final String? senderLastName;
   final String? thumbnailUrl;
   final String? senderPhoto;
   final int? likeCount;
@@ -53,6 +53,8 @@ class Message {
     this.createdAt,
     this.senderId,
     this.senderUserName,
+    this.senderFirstName,
+    this.senderLastName,
     this.thumbnailUrl,
     this.senderPhoto,
     this.likeCount,
@@ -95,6 +97,12 @@ class Message {
               ??
           json['senderUsername'] as String? ??
           json['sender_username'] as String?,
+      senderFirstName:
+          json['senderFirstName'] as String? ??
+          json['sender_first_name'] as String?,
+      senderLastName:
+          json['senderLastName'] as String? ??
+          json['sender_last_name'] as String?,
       userName:
           json['senderUsername'] as String? ??
           json['sender_username'] as String?,
@@ -119,6 +127,7 @@ class Message {
                   ? DateTime.tryParse(json['read_flag'].toString())
                   : null),
       hasUnreadComments: json['has_unread_comments'] as bool?,
+
       parentMessageId:
           json['parentMessageId'] as int? ?? json['parent_message_id'] as int?,
       isLiked: json['isLiked'] as bool? ?? json['is_liked'] as bool? ?? false,
@@ -163,6 +172,8 @@ class Message {
     DateTime? createdAt,
     String? senderId,
     String? senderUserName,
+    String? senderFirstName,
+    String? senderLastName,
     Map<String, dynamic>? metrics,
     String? thumbnailUrl,
     String? senderPhoto,
@@ -187,6 +198,8 @@ class Message {
       createdAt: createdAt ?? this.createdAt,
       senderId: senderId ?? this.senderId,
       senderUserName: senderUserName ?? this.senderUserName,
+      senderFirstName: senderFirstName ?? this.senderFirstName,
+      senderLastName: senderLastName ?? this.senderLastName,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       senderPhoto: senderPhoto ?? this.senderPhoto,
       likeCount: likeCount ?? this.likeCount,

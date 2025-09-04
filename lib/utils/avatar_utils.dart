@@ -61,11 +61,11 @@ class AvatarUtils {
             // First participant (top-left)
             if (participants.isNotEmpty)
               Positioned(
-                left: 2,
-                top: 2,
+                left: radius * 0.1,
+                top: radius * 0.1,
                 child: Container(
-                  width: radius * 1.1,
-                  height: radius * 1.1,
+                  width: radius * 0.9,
+                  height: radius * 0.9,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 1),
@@ -75,7 +75,7 @@ class AvatarUtils {
                       photoUrl: participants[0]['photo'] as String?,
                       firstName: participants[0]['first_name'] as String?,
                       lastName: participants[0]['last_name'] as String?,
-                      radius: radius * 0.55,
+                      radius: radius * 0.45,
                       fontSize: fontSize * 0.6,
                       useFirstInitialOnly: true,
                     ),
@@ -85,11 +85,11 @@ class AvatarUtils {
             // Second participant (bottom-right)
             if (participants.length > 1)
               Positioned(
-                right: 2,
-                bottom: 2,
+                right: radius * 0.1,
+                bottom: radius * 0.1,
                 child: Container(
-                  width: radius * 1.1,
-                  height: radius * 1.1,
+                  width: radius * 0.9,
+                  height: radius * 0.9,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 1),
@@ -99,7 +99,7 @@ class AvatarUtils {
                       photoUrl: participants[1]['photo'] as String?,
                       firstName: participants[1]['first_name'] as String?,
                       lastName: participants[1]['last_name'] as String?,
-                      radius: radius * 0.55,
+                      radius: radius * 0.45,
                       fontSize: fontSize * 0.6,
                       useFirstInitialOnly: true,
                     ),
@@ -109,22 +109,22 @@ class AvatarUtils {
             // Third participant (top-right)
             if (participants.length > 2)
               Positioned(
-                right: 4,
-                top: 4,
+                right: radius * 0.1,
+                top: radius * 0.1,
                 child: Container(
-                  width: radius * 0.8,
-                  height: radius * 0.8,
+                  width: radius * 0.9,
+                  height: radius * 0.9,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 0.5),
+                    border: Border.all(color: Colors.white, width: 1),
                   ),
                   child: ClipOval(
                     child: UserAvatar(
                       photoUrl: participants[2]['photo'] as String?,
                       firstName: participants[2]['first_name'] as String?,
                       lastName: participants[2]['last_name'] as String?,
-                      radius: radius * 0.4,
-                      fontSize: fontSize * 0.4,
+                      radius: radius * 0.45,
+                      fontSize: fontSize * 0.6,
                       useFirstInitialOnly: true,
                     ),
                   ),
@@ -133,22 +133,22 @@ class AvatarUtils {
             // Fourth participant (bottom-left)
             if (participants.length > 3)
               Positioned(
-                left: 4,
-                bottom: 4,
+                left: radius * 0.1,
+                bottom: radius * 0.1,
                 child: Container(
-                  width: radius * 0.8,
-                  height: radius * 0.8,
+                  width: radius * 0.9,
+                  height: radius * 0.9,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 0.5),
+                    border: Border.all(color: Colors.white, width: 1),
                   ),
                   child: ClipOval(
                     child: UserAvatar(
                       photoUrl: participants[3]['photo'] as String?,
                       firstName: participants[3]['first_name'] as String?,
                       lastName: participants[3]['last_name'] as String?,
-                      radius: radius * 0.4,
-                      fontSize: fontSize * 0.4,
+                      radius: radius * 0.45,
+                      fontSize: fontSize * 0.6,
                       useFirstInitialOnly: true,
                     ),
                   ),

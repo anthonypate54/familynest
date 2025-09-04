@@ -731,6 +731,11 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     String? lastName,
     bool hasUnread,
   ) {
+    // 🐛 DEBUG: Log what name Messages screen uses for color hashing
+    debugPrint(
+      '🎨 MessagesScreen avatar - firstName: "$firstName", lastName: "$lastName"',
+    );
+
     return AvatarUtils.buildUserAvatar(
       photoUrl: photoUrl,
       firstName: firstName,

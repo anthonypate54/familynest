@@ -975,6 +975,10 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     final String username = message.senderUsername ?? '';
     final String? photoUrl = message.senderPhoto;
 
+    debugPrint(
+      '📨 DM Avatar: firstName="$firstName", lastName="$lastName", username="$username"',
+    );
+
     return Container(
       width: 32,
       height: 32,

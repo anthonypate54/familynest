@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/message.dart';
 import '../services/api_service.dart';
+import '../providers/message_provider.dart';
+import '../widgets/user_avatar.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/app_theme.dart';
@@ -607,6 +610,11 @@ class MessageCard extends StatefulWidget {
 }
 
 class _MessageCardState extends State<MessageCard> {
+  String _capitalizeFirst(String text) {
+    if (text.isEmpty) return text;
+    return text[0].toUpperCase() + text.substring(1).toLowerCase();
+  }
+
   bool isLiked = false;
   bool isLoved = false;
 
@@ -859,7 +867,6 @@ class _MessageCardState extends State<MessageCard> {
       margin: const EdgeInsets.only(right: 8),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.2),
@@ -868,44 +875,30 @@ class _MessageCardState extends State<MessageCard> {
           ),
         ],
       ),
-      child: CircleAvatar(
-        radius: 20,
-        backgroundColor: Color(displayName.hashCode | 0xFF000000),
-        child:
-            senderPhoto != null && senderPhoto.isNotEmpty
-                ? ClipOval(
-                  child: CachedNetworkImage(
-                    imageUrl:
-                        senderPhoto.startsWith('http')
-                            ? senderPhoto
-                            : widget.apiService.mediaBaseUrl + senderPhoto,
-                    fit: BoxFit.cover,
-                    width: 40,
-                    height: 40,
-                    placeholder:
-                        (context, url) => const CircularProgressIndicator(),
-                    errorWidget: (context, url, error) {
-                      return Text(
-                        displayName.isNotEmpty
-                            ? displayName[0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      );
-                    },
-                  ),
-                )
-                : Text(
-                  displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
+      child: Builder(
+        builder: (context) {
+          // Use proper firstName/lastName fields ONLY - no username fallback
+          final firstName = widget.message.senderFirstName ?? '';
+          final lastName = widget.message.senderLastName ?? '';
+          final senderUserName = widget.message.senderUserName ?? '';
+
+          debugPrint(
+            '🧵 THREAD Avatar: firstName="$firstName", lastName="$lastName" (NO username fallback)',
+          );
+
+          return UserAvatar(
+            photoUrl: senderPhoto,
+            firstName: firstName,
+            lastName: lastName,
+            displayName: senderUserName,
+            radius: 20,
+            fontSize: 16,
+            useFirstInitialOnly: true,
+            showBorder: true,
+            borderColor: Colors.white,
+            borderWidth: 2,
+          );
+        },
       ),
     );
   }
@@ -931,12 +924,12 @@ class _MessageCardState extends State<MessageCard> {
             PhotoViewer.show(
               context: context,
               imageUrl: displayUrl,
-              heroTag: 'message_image_${widget.message.id}',
+              heroTag: 'family_message_image_${widget.message.id}',
               title: 'Photo from ${widget.message.senderUserName ?? 'Unknown'}',
             );
           },
           child: Hero(
-            tag: 'message_image_${widget.message.id}',
+            tag: 'family_message_image_${widget.message.id}',
             child: ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: CachedNetworkImage(
@@ -1061,7 +1054,24 @@ class _MessageCardState extends State<MessageCard> {
                   message: threadMessage,
                 ),
               ),
-            );
+            ).then((_) {
+              // Update the specific message's unread status when returning from thread
+              debugPrint(
+                '🔄 Returned from ThreadScreen, marking message as read',
+              );
+              if (context.mounted) {
+                final messageId =
+                    message.parentMessageId?.toString() ?? message.id;
+                Provider.of<MessageProvider>(
+                  context,
+                  listen: false,
+                ).updateMessageCommentCount(
+                  messageId,
+                  message.commentCount ?? 0,
+                  hasUnreadComments: false, // Mark as read
+                );
+              }
+            });
           },
           child: Padding(
             padding: const EdgeInsets.all(8.0), // Increase tap target size
