@@ -925,6 +925,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         displayName: displayName,
         radius: 16,
         fontSize: 12,
+        useFirstInitialOnly: true,
       ),
     );
   }
@@ -993,6 +994,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         displayName: username,
         radius: 16,
         fontSize: 12,
+        useFirstInitialOnly: true,
       ),
     );
   }

@@ -67,15 +67,54 @@ class UserAvatar extends StatelessWidget {
     return '?';
   }
 
-  Color _getAvatarColor() {
+  Color _getAvatarColor(BuildContext context) {
     if (backgroundColor != null) return backgroundColor!;
 
     // Generate color based on initials/name for consistency
     final name = firstName ?? displayName ?? '';
-    if (name.isNotEmpty) {
-      return Color(name.hashCode | 0xFF000000);
+    if (name.isEmpty) {
+      return Colors.grey;
     }
-    return Colors.grey;
+
+    // Get the base color from hash (consistent for same name)
+    final baseColor = Color(name.hashCode | 0xFF000000);
+
+    // Adjust color based on theme for better visibility
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    if (isDarkMode) {
+      // In dark mode: lighten very dark colors, darken very light colors
+      final hsl = HSLColor.fromColor(baseColor);
+
+      // Ensure minimum lightness for visibility in dark mode
+      final adjustedLightness =
+          hsl.lightness < 0.3
+              ? 0.6 // Lighten very dark colors
+              : hsl.lightness > 0.8
+              ? 0.7 // Slightly darken very light colors
+              : hsl.lightness;
+
+      // Reduce saturation slightly for softer appearance in dark mode
+      final adjustedSaturation = (hsl.saturation * 0.8).clamp(0.0, 1.0);
+
+      return hsl
+          .withLightness(adjustedLightness)
+          .withSaturation(adjustedSaturation)
+          .toColor();
+    } else {
+      // In light mode: ensure colors aren't too light
+      final hsl = HSLColor.fromColor(baseColor);
+
+      // Ensure maximum lightness for visibility in light mode
+      final adjustedLightness =
+          hsl.lightness > 0.8
+              ? 0.6 // Darken very light colors
+              : hsl.lightness < 0.2
+              ? 0.4 // Lighten very dark colors
+              : hsl.lightness;
+
+      return hsl.withLightness(adjustedLightness).toColor();
+    }
   }
 
   Color _getTextColor(Color backgroundColor) {
@@ -88,7 +127,7 @@ class UserAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final apiService = Provider.of<ApiService>(context, listen: false);
     final initials = _getInitials();
-    final avatarColor = _getAvatarColor();
+    final avatarColor = _getAvatarColor(context);
     final textColor = _getTextColor(avatarColor);
 
     // Construct full URL for photo since backend returns relative paths

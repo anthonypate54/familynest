@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../widgets/gradient_background.dart';
+import '../widgets/user_avatar.dart';
 import 'dm_thread_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -27,18 +28,6 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
   void dispose() {
     _groupNameController.dispose();
     super.dispose();
-  }
-
-  String _getInitials(String firstName, String lastName, String username) {
-    if (firstName.isNotEmpty && lastName.isNotEmpty) {
-      return '${firstName[0]}${lastName[0]}'.toUpperCase();
-    } else if (firstName.isNotEmpty) {
-      return firstName[0].toUpperCase();
-    } else if (username.isNotEmpty) {
-      return username[0].toUpperCase();
-    } else {
-      return 'U';
-    }
   }
 
   Future<void> _createGroup() async {
@@ -139,7 +128,6 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
               final firstName = member['firstName'] as String? ?? '';
               final lastName = member['lastName'] as String? ?? '';
               final username = member['username'] as String? ?? '';
-              final initials = _getInitials(firstName, lastName, username);
 
               return Positioned(
                 left: index * overlap,
@@ -150,34 +138,19 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 2),
                   ),
-                  child: CircleAvatar(
+                  child: UserAvatar(
+                    firstName: firstName,
+                    lastName: lastName,
+                    displayName: username,
                     radius: (avatarSize - 4) / 2,
-                    backgroundColor: _getAvatarColor(index),
-                    child: Text(
-                      initials,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    fontSize: 12,
+                    useFirstInitialOnly: true,
                   ),
                 ),
               );
             }).toList(),
       ),
     );
-  }
-
-  Color _getAvatarColor(int index) {
-    final colors = [
-      Colors.purple,
-      Colors.green,
-      Colors.orange,
-      Colors.blue,
-      Colors.pink,
-    ];
-    return colors[index % colors.length];
   }
 
   @override

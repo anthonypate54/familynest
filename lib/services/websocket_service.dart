@@ -56,14 +56,24 @@ class WebSocketService extends ChangeNotifier {
   int _messagesSent = 0;
   int _messagesReceived = 0;
   DateTime? _lastMessageTime;
-  Duration _averageLatency = Duration.zero;
 
-  // Enhanced monitoring
+  // Enhanced monitoring with industry-standard intervals
   DateTime? _lastSuccessfulPing;
   int _pingFailures = 0;
-  static const Duration _maxIdleTime = Duration(
-    minutes: 35,
-  ); // Warn at 35 minutes
+
+  // Progressive ping intervals based on idle time
+  static const Duration _initialIdleThreshold = Duration(
+    minutes: 15,
+  ); // Start pinging after 15min idle
+  static const Duration _shortPingInterval = Duration(
+    minutes: 5,
+  ); // Ping every 5min for first phase
+  static const Duration _longIdleThreshold = Duration(
+    minutes: 30,
+  ); // Switch to longer interval after 30min
+  static const Duration _longPingInterval = Duration(
+    minutes: 10,
+  ); // Ping every 10min for extended idle
 
   // Getters
   bool get isConnected => _isConnected;
@@ -116,14 +126,21 @@ class WebSocketService extends ChangeNotifier {
 
   /// Enhanced connection success handler
   void _onConnect(StompFrame frame) {
-    debugPrint('✅ WebSocket: Connected successfully');
+    final now = DateTime.now();
+    debugPrint(
+      '✅ WebSocket: Connected successfully at ${now.toIso8601String()}',
+    );
     _isConnected = true;
     _isConnecting = false;
     _retryCount = 0;
     _consecutiveFailures = 0;
+    _pingFailures = 0; // Reset ping failure count on successful connection
 
     // Reset message tracking to prevent immediate idle detection
-    _lastMessageTime = DateTime.now();
+    _lastMessageTime = now;
+    debugPrint(
+      '🏓 WebSocket: Reset idle timer - will start pinging after 15 minutes if no activity',
+    );
 
     _safeNotifyListeners();
     _notifyConnectionListeners(true);
@@ -258,16 +275,17 @@ class WebSocketService extends ChangeNotifier {
     });
   }
 
-  /// Start health monitoring with periodic checks
+  /// Start health monitoring with industry-standard intervals
   void _startHealthMonitoring() {
     _stopHealthMonitoring(); // Clear any existing timer
 
-    _healthCheckTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    // Use 60-second intervals for health checks (industry standard)
+    _healthCheckTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
       _performHealthCheck();
     });
 
     _lastHealthCheck = DateTime.now();
-    debugPrint('💓 WebSocket: Health monitoring started');
+    debugPrint('💓 WebSocket: Health monitoring started (60s intervals)');
   }
 
   /// Stop health monitoring
@@ -277,7 +295,7 @@ class WebSocketService extends ChangeNotifier {
     debugPrint('💓 WebSocket: Health monitoring stopped');
   }
 
-  /// Perform health check
+  /// Perform health check with progressive ping intervals
   void _performHealthCheck() {
     if (!_isConnected || _stompClient == null) return;
 
@@ -290,20 +308,51 @@ class WebSocketService extends ChangeNotifier {
             ? now.difference(_lastMessageTime!)
             : Duration(hours: 1);
 
-    // Note: Removed aggressive idle detection as it was causing reconnection loops
+    // Progressive ping logic based on industry standards
+    bool shouldPing = false;
+    String reason = '';
 
-    if (timeSinceLastMessage.inMinutes > 5) {
+    if (timeSinceLastMessage >= _longIdleThreshold) {
+      // Extended idle (30+ minutes): ping every 10 minutes
+      final timeSinceLastPing =
+          _lastSuccessfulPing != null
+              ? now.difference(_lastSuccessfulPing!)
+              : _longPingInterval;
+
+      if (timeSinceLastPing >= _longPingInterval) {
+        shouldPing = true;
+        reason =
+            'Extended idle (${timeSinceLastMessage.inMinutes}min) - ping every 10min';
+      }
+    } else if (timeSinceLastMessage >= _initialIdleThreshold) {
+      // Initial idle (15+ minutes): ping every 5 minutes
+      final timeSinceLastPing =
+          _lastSuccessfulPing != null
+              ? now.difference(_lastSuccessfulPing!)
+              : _shortPingInterval;
+
+      if (timeSinceLastPing >= _shortPingInterval) {
+        shouldPing = true;
+        reason =
+            'Initial idle (${timeSinceLastMessage.inMinutes}min) - ping every 5min';
+      }
+    }
+
+    if (shouldPing) {
+      debugPrint('🏓 WebSocket: $reason');
       debugPrint(
-        '⚠️ WebSocket: No messages received in ${timeSinceLastMessage.inMinutes} minutes',
+        '🏓 WebSocket: Connection stable for ${now.difference(_lastMessageTime!).inMinutes} minutes',
       );
-
-      // Try sending a ping message
       _sendPing();
     }
 
-    debugPrint(
-      '💓 WebSocket: Health check - Connected: $_isConnected, Messages sent: $_messagesSent, received: $_messagesReceived',
-    );
+    // Only log detailed status every 5 minutes to reduce log spam
+    if (_lastHealthCheck == null ||
+        now.difference(_lastHealthCheck!).inMinutes >= 5) {
+      debugPrint(
+        '💓 WebSocket: Health check - Connected: $_isConnected, Idle: ${timeSinceLastMessage.inMinutes}min, Messages sent: $_messagesSent, received: $_messagesReceived, Ping failures: $_pingFailures',
+      );
+    }
   }
 
   /// Send ping message for health check
@@ -321,9 +370,11 @@ class WebSocketService extends ChangeNotifier {
         body: jsonEncode(pingMessage),
       );
 
+      _lastSuccessfulPing = DateTime.now();
       debugPrint('🏓 WebSocket: Sent ping message');
     } catch (e) {
       debugPrint('❌ WebSocket: Error sending ping: $e');
+      _pingFailures++;
     }
   }
 

@@ -415,16 +415,20 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                   final lastName = user['lastName'] as String? ?? '';
                   final photo = user['photo'] as String?;
                   final userRole = user['role'] as String? ?? 'USER';
+
                   // Calculate initials using same logic as UserAvatar
                   String initials = '';
-                  if (firstName.isNotEmpty)
+                  if (firstName.isNotEmpty) {
                     initials += firstName[0].toUpperCase();
-                  if (lastName.isNotEmpty)
+                  }
+                  if (lastName.isNotEmpty) {
                     initials += lastName[0].toUpperCase();
+                  }
                   if (initials.isEmpty && user['username'] != null) {
                     final username = user['username'] as String;
-                    if (username.isNotEmpty)
+                    if (username.isNotEmpty) {
                       initials = username[0].toUpperCase();
+                    }
                   }
 
                   return GestureDetector(
@@ -443,19 +447,18 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                     },
                     child: UserAvatar(
                       photoUrl: photo,
+                      firstName: firstName,
+                      lastName: lastName,
                       displayName: initials,
                       radius: 18,
                       fontSize: 14,
+                      useFirstInitialOnly: true,
                     ),
                   );
                 }
 
                 // Fallback while loading - not tappable during loading
-                return UserAvatar(
-                  displayName: 'U',
-                  radius: 18,
-                  backgroundColor: Colors.lightGreen.shade100,
-                );
+                return UserAvatar(displayName: 'U', radius: 18);
               },
             ),
             const SizedBox(width: 8), // Add some padding at the end
@@ -592,6 +595,21 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     if (conversation.isGroup) {
       // Group chat display
       displayName = conversation.name ?? 'Group Chat';
+
+      // 🐛 DEBUG: Check participant data for group avatars
+      debugPrint('🎨 GROUP AVATAR DEBUG for "${displayName}":');
+      debugPrint(
+        '  - Participants count: ${conversation.participants?.length ?? 0}',
+      );
+      if (conversation.participants != null) {
+        for (int i = 0; i < conversation.participants!.length; i++) {
+          final p = conversation.participants![i];
+          debugPrint(
+            '  - Participant $i: first_name="${p['first_name']}", last_name="${p['last_name']}", photo="${p['photo']}"',
+          );
+        }
+      }
+
       leadingWidget = AvatarUtils.buildGroupAvatar(
         participants: conversation.participants,
         hasUnread: hasUnread,

@@ -670,8 +670,8 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
       lastName: lastName,
       displayName: initials,
       radius: 24,
-      backgroundColor: Colors.white,
       fontSize: 18,
+      useFirstInitialOnly: true,
     );
   }
 
@@ -721,8 +721,8 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
           lastName: lastName,
           displayName: initials,
           radius: 20,
-          backgroundColor: Colors.white,
           fontSize: 16,
+          useFirstInitialOnly: true,
         ),
       ],
     );

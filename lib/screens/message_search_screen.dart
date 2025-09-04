@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../utils/page_transitions.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import '../widgets/gradient_background.dart';
-import '../main.dart'; // Import to access MainAppContainer
+import '../widgets/user_avatar.dart';
 import 'dm_thread_screen.dart'; // Import DMThreadScreen
 import '../models/dm_conversation.dart'; // Import DMConversation model
 import '../theme/app_theme.dart';
@@ -240,58 +239,20 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
     String? lastName,
     String? username,
   ) {
-    final apiService = Provider.of<ApiService>(context, listen: false);
     final initials = GroupAvatarUtils.getInitials(
       firstName,
       lastName,
       username,
     );
 
-    return CircleAvatar(
+    return UserAvatar(
+      photoUrl: senderPhoto,
+      firstName: firstName,
+      lastName: lastName,
+      displayName: initials,
       radius: 20,
-      backgroundColor: GroupAvatarUtils.getAvatarColor(initials),
-      child:
-          senderPhoto != null && senderPhoto.isNotEmpty
-              ? ClipOval(
-                child: CachedNetworkImage(
-                  imageUrl:
-                      senderPhoto.startsWith('http')
-                          ? senderPhoto
-                          : apiService.mediaBaseUrl + senderPhoto,
-                  fit: BoxFit.cover,
-                  width: 40,
-                  height: 40,
-                  placeholder:
-                      (context, url) => Text(
-                        initials,
-                        style: TextStyle(
-                          color: GroupAvatarUtils.getTextColor(
-                            GroupAvatarUtils.getAvatarColor(initials),
-                          ),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                  errorWidget:
-                      (context, url, error) => Text(
-                        initials,
-                        style: TextStyle(
-                          color: GroupAvatarUtils.getTextColor(
-                            GroupAvatarUtils.getAvatarColor(initials),
-                          ),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                ),
-              )
-              : Text(
-                initials,
-                style: TextStyle(
-                  color: GroupAvatarUtils.getTextColor(
-                    GroupAvatarUtils.getAvatarColor(initials),
-                  ),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+      fontSize: 16,
+      useFirstInitialOnly: true,
     );
   }
 

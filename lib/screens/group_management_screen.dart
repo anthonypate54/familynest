@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/gradient_background.dart';
+import '../widgets/user_avatar.dart';
 import '../utils/page_transitions.dart';
 import 'choose_dm_recipient_screen.dart';
 
@@ -308,49 +308,14 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
     }
 
     return ListTile(
-      leading: CircleAvatar(
+      leading: UserAvatar(
+        photoUrl: fullPhotoUrl,
+        firstName: firstName,
+        lastName: lastName,
+        displayName: displayName,
         radius: 20,
-        backgroundColor: Colors.deepPurple.shade400,
-        child:
-            fullPhotoUrl != null
-                ? ClipOval(
-                  child: CachedNetworkImage(
-                    imageUrl: fullPhotoUrl,
-                    fit: BoxFit.cover,
-                    width: 40,
-                    height: 40,
-                    placeholder:
-                        (context, url) => Container(
-                          color: Colors.grey.shade300,
-                          child: const Icon(
-                            Icons.person,
-                            size: 20,
-                            color: Colors.grey,
-                          ),
-                        ),
-                    errorWidget: (context, url, error) {
-                      debugPrint(
-                        '❌ GroupManagement: Failed to load avatar for $displayName: $error',
-                      );
-                      return Text(
-                        displayName.isNotEmpty
-                            ? displayName[0].toUpperCase()
-                            : 'U',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      );
-                    },
-                  ),
-                )
-                : Text(
-                  displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+        fontSize: 16,
+        useFirstInitialOnly: true,
       ),
       title: Text(
         displayName,
@@ -426,40 +391,46 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
         ],
       ),
       body: GradientBackground(
-        child: Column(
-          children: [
-            // Members list
-            Expanded(
-              child: ListView.builder(
-                itemCount: _participants.length,
-                itemBuilder: (context, index) {
-                  return _buildParticipantTile(_participants[index]);
-                },
-              ),
-            ),
+        child:
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Column(
+                  children: [
+                    // Members list
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: _participants.length,
+                        itemBuilder: (context, index) {
+                          return _buildParticipantTile(_participants[index]);
+                        },
+                      ),
+                    ),
 
-            // Leave group button
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              child: ElevatedButton.icon(
-                onPressed: _leaveGroup,
-                icon: const Icon(Icons.exit_to_app, color: Colors.white),
-                label: const Text(
-                  'Leave Group',
-                  style: TextStyle(color: Colors.white, fontSize: 16),
+                    // Leave group button
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      child: ElevatedButton.icon(
+                        onPressed: _leaveGroup,
+                        icon: const Icon(
+                          Icons.exit_to_app,
+                          color: Colors.white,
+                        ),
+                        label: const Text(
+                          'Leave Group',
+                          style: TextStyle(color: Colors.white, fontSize: 16),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.shade600,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade600,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

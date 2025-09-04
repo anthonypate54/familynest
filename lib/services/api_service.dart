@@ -756,13 +756,11 @@ Network connection error. Please check:
       // We have a token, try to validate it with the server
       final currentUserPath = _getApiEndpoint('/api/users/current');
 
-      // Use direct client call for validation to avoid exceptions (like original)
-      final response = await client.get(
+      // Use centralized authenticated request for validation
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl$currentUserPath'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
+        headers: {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -1066,13 +1064,16 @@ Network connection error. Please check:
 
       var request = http.MultipartRequest('POST', Uri.parse(url));
 
-      if (_token != null) {
-        debugPrint('Adding authorization token to request');
-        request.headers['Authorization'] = 'Bearer $_token';
-      } else {
+      // Load fresh token from storage (like _makeAuthenticatedRequest does)
+      await _loadToken();
+
+      if (_token == null || _token!.isEmpty) {
         debugPrint('Warning: No token available for message posting');
         throw Exception('No authentication token available');
       }
+
+      debugPrint('Adding authorization token to request');
+      request.headers['Authorization'] = 'Bearer $_token';
 
       if (content.isNotEmpty) {
         debugPrint('Adding content field: $content');
@@ -1130,11 +1131,53 @@ Network connection error. Please check:
       }
 
       debugPrint('Sending request...');
-      final response = await request.send();
-      final responseString = await response.stream.bytesToString();
+      var response = await request.send();
+      var responseString = await response.stream.bytesToString();
       debugPrint(
         'Response: status=${response.statusCode}, body=$responseString',
       );
+
+      // If token expired (401/403), try to refresh and retry once
+      if ((response.statusCode == 401 || response.statusCode == 403) &&
+          _refreshToken != null &&
+          _refreshToken!.isNotEmpty) {
+        debugPrint(
+          '🔄 Token expired, attempting refresh for message posting...',
+        );
+
+        final refreshSuccess = await _refreshAccessToken();
+        if (refreshSuccess) {
+          debugPrint('🔄 Retrying message post with refreshed token...');
+
+          // Create a new request with the refreshed token
+          var retryRequest = http.MultipartRequest('POST', Uri.parse(url));
+          retryRequest.headers['Authorization'] = 'Bearer $_token';
+
+          // Re-add all the fields and files
+          if (content.isNotEmpty) {
+            retryRequest.fields['content'] = content;
+          }
+          if (familyId != null) {
+            retryRequest.fields['familyId'] = familyId.toString();
+          }
+          if (mediaPath != null && mediaType != null && !kIsWeb) {
+            retryRequest.files.add(
+              await http.MultipartFile.fromPath('media', mediaPath),
+            );
+            retryRequest.fields['mediaType'] = mediaType;
+          }
+          if (videoUrl != null && videoUrl.startsWith('http')) {
+            retryRequest.fields['videoUrl'] = videoUrl;
+            if (thumbnailUrl != null) {
+              retryRequest.fields['thumbnailUrl'] = thumbnailUrl;
+            }
+          }
+
+          response = await retryRequest.send();
+          responseString = await response.stream.bytesToString();
+          debugPrint('🔄 Retry response: status=${response.statusCode}');
+        }
+      }
 
       if (response.statusCode == 201) {
         debugPrint('✅ Message posted successfully');
@@ -1372,19 +1415,47 @@ Network connection error. Please check:
 
   // Update user photo
   Future<void> updatePhoto(int userId, String photoPath) async {
-    var request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$baseUrl/api/users/$userId/update-photo'),
-    );
-    if (_token != null) {
-      request.headers['Authorization'] = 'Bearer $_token';
+    final url = '$baseUrl/api/users/$userId/update-photo';
+    var request = http.MultipartRequest('POST', Uri.parse(url));
+
+    // Load fresh token from storage
+    await _loadToken();
+
+    if (_token == null || _token!.isEmpty) {
+      throw Exception('No authentication token available');
     }
+
+    request.headers['Authorization'] = 'Bearer $_token';
     request.headers['Content-Type'] = 'multipart/form-data';
 
     final file = File(photoPath);
     request.files.add(await http.MultipartFile.fromPath('photo', file.path));
 
     var response = await request.send();
+
+    // If token expired (401/403), try to refresh and retry once
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        _refreshToken != null &&
+        _refreshToken!.isNotEmpty) {
+      debugPrint('🔄 Token expired, attempting refresh for photo update...');
+
+      final refreshSuccess = await _refreshAccessToken();
+      if (refreshSuccess) {
+        debugPrint('🔄 Retrying photo update with refreshed token...');
+
+        // Create a new request with the refreshed token
+        var retryRequest = http.MultipartRequest('POST', Uri.parse(url));
+        retryRequest.headers['Authorization'] = 'Bearer $_token';
+        retryRequest.headers['Content-Type'] = 'multipart/form-data';
+        retryRequest.files.add(
+          await http.MultipartFile.fromPath('photo', file.path),
+        );
+
+        response = await retryRequest.send();
+        debugPrint('🔄 Retry response: status=${response.statusCode}');
+      }
+    }
+
     if (response.statusCode != 200) {
       throw Exception('Failed to update photo: ${response.reasonPhrase}');
     }
@@ -2697,19 +2768,13 @@ Network connection error. Please check:
   Future<List<DMConversation>> searchDMConversations(String query) async {
     debugPrint('🔍 DM SEARCH: Starting DM conversation search for "$query"');
 
-    if (_token == null) {
-      throw Exception('Not authenticated');
-    }
-
     final url = '$baseUrl/api/dm/search?q=${Uri.encodeComponent(query)}';
     debugPrint('🔍 DM SEARCH: Calling URL: $url');
 
-    final response = await http.get(
+    final response = await _makeAuthenticatedRequest(
+      'GET',
       Uri.parse(url),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_token',
-      },
+      headers: {'Content-Type': 'application/json'},
     );
 
     debugPrint('🔍 DM SEARCH: Response status: ${response.statusCode}');
@@ -2793,6 +2858,13 @@ Network connection error. Please check:
       final url = Uri.parse('$baseUrl/api/dm/$userId/message');
       debugPrint('🌐 Making request to: $url');
 
+      // Load fresh token from storage
+      await _loadToken();
+
+      if (_token == null || _token!.isEmpty) {
+        throw Exception('No authentication token available');
+      }
+
       var request = http.MultipartRequest('POST', url);
       request.headers['Authorization'] = 'Bearer $_token';
 
@@ -2823,12 +2895,49 @@ Network connection error. Please check:
         debugPrint('🎥 Added video URL: $videoUrl');
       }
 
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
 
       debugPrint(
         '📥 Send DM message response: status=${response.statusCode}, body=${response.body}',
       );
+
+      // If token expired (401/403), try to refresh and retry once
+      if ((response.statusCode == 401 || response.statusCode == 403) &&
+          _refreshToken != null &&
+          _refreshToken!.isNotEmpty) {
+        debugPrint('🔄 Token expired, attempting refresh for DM message...');
+
+        final refreshSuccess = await _refreshAccessToken();
+        if (refreshSuccess) {
+          debugPrint('🔄 Retrying DM message with refreshed token...');
+
+          // Create a new request with the refreshed token
+          var retryRequest = http.MultipartRequest('POST', url);
+          retryRequest.headers['Authorization'] = 'Bearer $_token';
+
+          // Re-add all the fields and files
+          retryRequest.fields['content'] = content ?? '';
+          retryRequest.fields['conversationId'] = conversationId.toString();
+
+          if (mediaPath != null && mediaPath.isNotEmpty) {
+            retryRequest.files.add(
+              await http.MultipartFile.fromPath('media', mediaPath),
+            );
+            if (mediaType != null) {
+              retryRequest.fields['mediaType'] = mediaType;
+            }
+          }
+
+          if (videoUrl != null && videoUrl.isNotEmpty) {
+            retryRequest.fields['videoUrl'] = videoUrl;
+          }
+
+          streamedResponse = await retryRequest.send();
+          response = await http.Response.fromStream(streamedResponse);
+          debugPrint('🔄 Retry response: status=${response.statusCode}');
+        }
+      }
 
       if (response.statusCode == 201) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -3163,9 +3272,10 @@ Network connection error. Please check:
     }
 
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/families/complete-data'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -3196,9 +3306,10 @@ Network connection error. Please check:
     }
 
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/families/$familyId/birthdays'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       debugPrint('Birthdays response status: ${response.statusCode}');
@@ -3224,18 +3335,11 @@ Network connection error. Please check:
   Future<Map<String, dynamic>?> getWeeklyActivity(int familyId) async {
     debugPrint('Getting weekly activity for family $familyId');
 
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    } else {
-      debugPrint('No token available for getting weekly activity');
-      return null;
-    }
-
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/families/$familyId/weekly-activity'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       debugPrint('Weekly activity response status: ${response.statusCode}');
@@ -3263,18 +3367,11 @@ Network connection error. Please check:
   Future<Map<String, dynamic>?> getMonthlyActivity(int familyId) async {
     debugPrint('Getting monthly activity for family $familyId');
 
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    } else {
-      debugPrint('No token available for getting monthly activity');
-      return null;
-    }
-
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/families/$familyId/monthly-activity'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       debugPrint('Monthly activity response status: ${response.statusCode}');
@@ -3302,18 +3399,11 @@ Network connection error. Please check:
   Future<Map<String, dynamic>?> getYearlyActivity(int familyId) async {
     debugPrint('Getting yearly activity for family $familyId');
 
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    } else {
-      debugPrint('No token available for getting yearly activity');
-      return null;
-    }
-
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/families/$familyId/yearly-activity'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       debugPrint('Yearly activity response status: ${response.statusCode}');
@@ -3341,18 +3431,11 @@ Network connection error. Please check:
   Future<Map<String, dynamic>?> getMultiYearActivity(int familyId) async {
     debugPrint('Getting multi-year activity for family $familyId');
 
-    final headers = {'Content-Type': 'application/json'};
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
-    } else {
-      debugPrint('No token available for getting multi-year activity');
-      return null;
-    }
-
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/families/$familyId/multi-year-activity'),
-        headers: headers,
+        headers: {'Content-Type': 'application/json'},
       );
 
       debugPrint('Multi-year activity response status: ${response.statusCode}');
@@ -3735,12 +3818,10 @@ Network connection error. Please check:
     debugPrint('Getting unread message count by family');
 
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/messages/unread-by-family'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
+        headers: {'Content-Type': 'application/json'},
       );
 
       debugPrint(
@@ -3809,12 +3890,10 @@ Network connection error. Please check:
     debugPrint('Getting unread DM message count');
 
     try {
-      final response = await client.get(
+      final response = await _makeAuthenticatedRequest(
+        'GET',
         Uri.parse('$baseUrl/api/messages/dm/unread-count'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
+        headers: {'Content-Type': 'application/json'},
       );
 
       debugPrint(

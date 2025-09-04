@@ -2680,13 +2680,31 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
           child: Row(
             children: [
               // Member avatar
-              UserAvatar(
-                photoUrl: member.photo,
-                firstName: member.firstName,
-                lastName: member.lastName,
-                radius: 20,
-                backgroundColor: isNew ? Colors.green : null,
-                useFirstInitialOnly: true,
+              Stack(
+                children: [
+                  UserAvatar(
+                    photoUrl: member.photo,
+                    firstName: member.firstName,
+                    lastName: member.lastName,
+                    radius: 20,
+                    useFirstInitialOnly: true,
+                  ),
+                  // Show "new" indicator with a small green dot for new members
+                  if (isNew)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(width: 12),
 
