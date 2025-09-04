@@ -2522,7 +2522,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         Navigator.pop(context);
 
         // Handle specific error cases with better UI
-        String errorMessage = e.toString();
+        String errorMessage;
+        if (e is InvitationException) {
+          errorMessage = e.message;
+        } else {
+          errorMessage = e.toString();
+        }
         debugPrint('🔍 Invitation error: $errorMessage');
         if (errorMessage.contains('already a member of this family')) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -2533,11 +2538,23 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
               backgroundColor: Colors.orange,
             ),
           );
-        } else if (errorMessage.contains('already pending')) {
+        } else if (errorMessage.contains('already pending') ||
+            errorMessage.contains(
+              'invitation to this family is already pending',
+            )) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
                 'There is already a pending invitation for this email.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        } else if (errorMessage.contains('already accepted an invitation')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This email has already accepted an invitation to this family.',
               ),
               backgroundColor: Colors.orange,
             ),

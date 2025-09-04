@@ -484,7 +484,14 @@ class ProfileScreenState extends State<ProfileScreen>
     } catch (e) {
       debugPrint('Error sending invitation: $e');
       if (!mounted) return;
-      _showErrorSnackBar('Failed to send invitation: ${e.toString()}');
+
+      String errorMessage;
+      if (e is InvitationException) {
+        errorMessage = e.message;
+      } else {
+        errorMessage = e.toString();
+      }
+      _showErrorSnackBar('Failed to send invitation: $errorMessage');
     }
   }
 

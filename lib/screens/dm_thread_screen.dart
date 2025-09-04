@@ -576,6 +576,9 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToBottomIfNeeded();
         });
+
+        // Auto-mark as read since user is actively viewing this conversation
+        _markConversationAsRead();
       } else {
         debugPrint(
           '⚠️ DM: Message for different conversation: ${message.conversationId} vs ${widget.conversationId}',
