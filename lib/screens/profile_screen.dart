@@ -234,6 +234,18 @@ class ProfileScreenState extends State<ProfileScreen>
                     return;
                   }
 
+                  // Validate email format
+                  final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+                  if (!emailRegex.hasMatch(email)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter a valid email address'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    return;
+                  }
+
                   Navigator.pop(context); // Close the dialog immediately
 
                   // Show a loading indicator

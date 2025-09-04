@@ -2483,6 +2483,18 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       return;
     }
 
+    // Validate email format
+    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+    if (!emailRegex.hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid email address'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     // Prevent multiple invitations
     if (_isInviting) return;
 
