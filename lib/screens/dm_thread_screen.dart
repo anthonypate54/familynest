@@ -156,7 +156,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       if (mounted && response != null) {
         // Extract messages from the paginated response
         final messagesJson = response['messages'];
-        //      debugPrint('DM: Raw messages from response: $messagesJson');
 
         if (messagesJson is List) {
           final messages =
@@ -594,6 +593,15 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       final apiService = Provider.of<ApiService>(context, listen: false);
       await apiService.markDMConversationAsRead(widget.conversationId);
       debugPrint('✅ DM: Marked conversation ${widget.conversationId} as read');
+
+      // Update local message provider to mark other users' messages as read
+      _dmMessageProvider?.markOtherUsersMessagesAsRead(
+        widget.conversationId,
+        widget.currentUserId,
+      );
+      debugPrint(
+        '✅ DM: Updated local messages - marked other users\' messages as read',
+      );
 
       // Use callback to update parent screen
       widget.onMarkAsRead?.call();

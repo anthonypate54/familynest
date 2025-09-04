@@ -48,4 +48,51 @@ class DMMessageProvider extends ChangeNotifier {
     _conversationMessages[conversationId] = [];
     notifyListeners();
   }
+
+  // Mark messages from other users in a conversation as read
+  // Only marks messages from OTHER users, not your own messages
+  void markOtherUsersMessagesAsRead(int conversationId, int currentUserId) {
+    final messages = _conversationMessages[conversationId];
+    if (messages != null) {
+      bool hasChanges = false;
+
+      _conversationMessages[conversationId] =
+          messages.map((message) {
+            // Only mark messages from OTHER users as read, not your own messages
+            if (message.senderId != currentUserId && !message.isRead) {
+              hasChanges = true;
+              return DMMessage(
+                id: message.id,
+                conversationId: message.conversationId,
+                senderId: message.senderId,
+                content: message.content,
+                mediaUrl: message.mediaUrl,
+                mediaType: message.mediaType,
+                mediaThumbnail: message.mediaThumbnail,
+                mediaFilename: message.mediaFilename,
+                mediaSize: message.mediaSize,
+                mediaDuration: message.mediaDuration,
+                isRead: true, // Mark as read
+                deliveredAt: message.deliveredAt,
+                createdAt: message.createdAt,
+                updatedAt: message.updatedAt,
+                senderUsername: message.senderUsername,
+                senderPhoto: message.senderPhoto,
+                senderFirstName: message.senderFirstName,
+                senderLastName: message.senderLastName,
+              );
+            } else {
+              // Keep your own messages and already-read messages unchanged
+              return message;
+            }
+          }).toList();
+
+      if (hasChanges) {
+        debugPrint(
+          '✅ DMMessageProvider: Marked other users\' unread messages in conversation $conversationId as read',
+        );
+        notifyListeners();
+      }
+    }
+  }
 }
