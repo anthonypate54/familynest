@@ -19,6 +19,7 @@ import 'group_management_screen.dart';
 
 import '../screens/profile_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/family_management_screen.dart';
 
 class MessagesHomeScreen extends StatefulWidget {
   final int userId;
@@ -323,6 +324,129 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     slidePush(context, ChooseDMRecipientScreen(userId: widget.userId));
   }
 
+  void _goToFamilyManagement() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FamilyManagementScreen(userId: widget.userId),
+      ),
+    );
+  }
+
+  Widget _buildEmptyConversationsState() {
+    return FutureBuilder<Map<String, dynamic>?>(
+      future:
+          Provider.of<ApiService>(
+            context,
+            listen: false,
+          ).getCompleteFamilyData(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          );
+        }
+
+        // Parse family data to determine the appropriate message
+        String title = 'No conversations yet';
+        String subtitle = 'Start a new conversation';
+        String buttonText = 'Start a new conversation';
+        bool canStartConversation = true;
+        bool shouldGoToFamilyManagement = false;
+
+        if (snapshot.hasData && snapshot.data != null) {
+          final familiesData =
+              snapshot.data!['families'] as List<dynamic>? ?? [];
+
+          if (familiesData.isEmpty) {
+            // User has no families
+            title = 'No family members to chat with';
+            subtitle =
+                'Create a family or accept an invitation to start messaging your family members';
+            buttonText = 'Go to Family Management';
+            canStartConversation = false;
+            shouldGoToFamilyManagement = true;
+          } else {
+            // User has families, check if they have other members
+            int totalOtherMembers = 0;
+            for (var family in familiesData) {
+              final members = family['members'] as List<dynamic>? ?? [];
+              // Count members excluding the current user
+              totalOtherMembers +=
+                  members
+                      .where((member) => member['userId'] != widget.userId)
+                      .length;
+            }
+
+            if (totalOtherMembers == 0) {
+              // User has families but no other members
+              title = 'No family members to chat with';
+              subtitle = 'Invite family members to start having conversations';
+              buttonText = 'Invite family members';
+              canStartConversation = false;
+              shouldGoToFamilyManagement = true;
+            } else {
+              // User has family members but no conversations yet
+              title = 'No conversations yet';
+              subtitle = 'Start chatting with your family members';
+              buttonText = 'Start a new conversation';
+              canStartConversation = true;
+              shouldGoToFamilyManagement = false;
+            }
+          }
+        }
+
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.chat_bubble_outline,
+                size: 64,
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white.withValues(alpha: 0.8),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed:
+                    canStartConversation
+                        ? _startNewConversation
+                        : shouldGoToFamilyManagement
+                        ? _goToFamilyManagement
+                        : null,
+                style: TextButton.styleFrom(
+                  foregroundColor:
+                      canStartConversation ? Colors.white : Colors.white70,
+                ),
+                child: Text(buttonText, style: const TextStyle(fontSize: 16)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // Mark a conversation as read locally (update UI immediately)
   void markConversationAsRead(int conversationId) {
     if (!mounted) return;
@@ -528,56 +652,71 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                         ),
                       )
                       : _conversations.isEmpty
-                      ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.chat_bubble_outline,
-                              size: 64,
-                              color: Colors.white.withOpacity(0.7),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'No conversations yet',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextButton(
-                              onPressed: _startNewConversation,
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.white,
-                              ),
-                              child: const Text(
-                                'Start a new conversation',
-                                style: TextStyle(fontSize: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                      : RefreshIndicator(
-                        onRefresh: _loadConversations,
-                        child: ListView.builder(
-                          itemCount: _filteredConversations.length,
-                          itemBuilder: (context, index) {
-                            final conversation = _filteredConversations[index];
-                            return _buildConversationTile(conversation);
-                          },
+                      ? _buildEmptyConversationsState()
+                      : Expanded(
+                        child: RefreshIndicator(
+                          onRefresh: _loadConversations,
+                          child: ListView.builder(
+                            itemCount: _filteredConversations.length,
+                            itemBuilder: (context, index) {
+                              final conversation =
+                                  _filteredConversations[index];
+                              return _buildConversationTile(conversation);
+                            },
+                          ),
                         ),
                       ),
             ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _startNewConversation,
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        child: const Icon(Icons.message, color: Colors.white),
+      floatingActionButton: FutureBuilder<Map<String, dynamic>?>(
+        future:
+            Provider.of<ApiService>(
+              context,
+              listen: false,
+            ).getCompleteFamilyData(),
+        builder: (context, snapshot) {
+          // While loading, show the button (default behavior)
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return FloatingActionButton(
+              onPressed: _startNewConversation,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              child: const Icon(Icons.message, color: Colors.white),
+            );
+          }
+
+          // Determine if user has family members to chat with
+          bool hasFamilyMembersToChat = false;
+
+          if (snapshot.hasData && snapshot.data != null) {
+            final familiesData =
+                snapshot.data!['families'] as List<dynamic>? ?? [];
+
+            if (familiesData.isNotEmpty) {
+              // Check if user has other family members
+              int totalOtherMembers = 0;
+              for (var family in familiesData) {
+                final members = family['members'] as List<dynamic>? ?? [];
+                // Count members excluding the current user
+                totalOtherMembers +=
+                    members
+                        .where((member) => member['userId'] != widget.userId)
+                        .length;
+              }
+              hasFamilyMembersToChat = totalOtherMembers > 0;
+            }
+          }
+
+          // Only show FAB if user has family members to chat with
+          return hasFamilyMembersToChat
+              ? FloatingActionButton(
+                onPressed: _startNewConversation,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                child: const Icon(Icons.message, color: Colors.white),
+              )
+              : const SizedBox.shrink(); // Hidden FAB
+        },
       ),
     );
   }

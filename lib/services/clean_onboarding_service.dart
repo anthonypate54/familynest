@@ -79,16 +79,11 @@ class CleanOnboardingService {
     if (tourResult == 'create_family') {
       // User wants to create family - go to family tab
       debugPrint('🔀 FRESH_USER: User wants to create family');
-      _navigateToMainApp(
-        context,
-        userId,
-        userRole,
-        initialTab: 3,
-      ); // Family tab
+      navigateToMainApp(context, userId, userRole, initialTab: 3); // Family tab
     } else if (tourResult == 'check_invitations') {
       // User wants to check invitations - go to invitations tab
       debugPrint('🔀 FRESH_USER: User wants to check invitations');
-      _navigateToMainApp(
+      navigateToMainApp(
         context,
         userId,
         userRole,
@@ -96,12 +91,7 @@ class CleanOnboardingService {
       ); // Invitations tab
     } else {
       // Normal completion - go to main app
-      _navigateToMainApp(
-        context,
-        userId,
-        userRole,
-        initialTab: 3,
-      ); // Family tab
+      navigateToMainApp(context, userId, userRole, initialTab: 3); // Family tab
     }
   }
 
@@ -122,7 +112,7 @@ class CleanOnboardingService {
     debugPrint('🔔 Skipping notification setup - already completed');
 
     // 3. Go to main app
-    _navigateToMainApp(context, userId, userRole, initialTab: 3); // Family tab
+    navigateToMainApp(context, userId, userRole, initialTab: 3); // Family tab
   }
 
   /// Case: Fresh user with invite (must take invite tour + notifications)
@@ -149,7 +139,7 @@ class CleanOnboardingService {
     }
 
     // 3. Go to invites screen
-    _navigateToMainApp(
+    navigateToMainApp(
       context,
       userId,
       userRole,
@@ -174,12 +164,7 @@ class CleanOnboardingService {
     );
 
     // 2. Go to main app
-    _navigateToMainApp(
-      context,
-      userId,
-      userRole,
-      initialTab: 0,
-    ); // Messages tab
+    navigateToMainApp(context, userId, userRole, initialTab: 0); // Messages tab
   }
 
   /// Case: Existing user (has activity)
@@ -191,16 +176,11 @@ class CleanOnboardingService {
     debugPrint('🔀 EXISTING_USER: Going directly to main app');
 
     // Go directly to main app - no tour needed
-    _navigateToMainApp(
-      context,
-      userId,
-      userRole,
-      initialTab: 0,
-    ); // Messages tab
+    navigateToMainApp(context, userId, userRole, initialTab: 0); // Messages tab
   }
 
   /// Navigate to main app with clean parameters
-  static void _navigateToMainApp(
+  static void navigateToMainApp(
     BuildContext context,
     int userId,
     String userRole, {
@@ -235,6 +215,6 @@ class CleanOnboardingService {
   /// Fallback for edge cases - go directly to main app
   static void normalFlow(BuildContext context, int userId, String userRole) {
     debugPrint('🔀 NORMAL_FLOW: Going directly to main app for user $userId');
-    _navigateToMainApp(context, userId, userRole, initialTab: 0);
+    navigateToMainApp(context, userId, userRole, initialTab: 0);
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
+import '../../main.dart';
 
 class FreshUserOnboardingScreen extends StatefulWidget {
   final int userId;
@@ -466,11 +467,21 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
 
   void _checkInvitations() {
     debugPrint(
-      '🆕 FRESH_USER_ONBOARDING: Checking invitations for user ${widget.userId}',
+      '🆕 FRESH_USER_ONBOARDING: Navigating to invitations for user ${widget.userId}',
     );
 
-    // Return 'check_invitations' result to let CleanOnboardingService handle routing
-    Navigator.of(context).pop('check_invitations');
+    // Clear entire navigation stack and go to main app with invitations tab
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder:
+            (context) => MainAppContainer(
+              userId: widget.userId,
+              userRole: widget.userRole,
+              initialTabIndex: 4, // Invitations tab
+            ),
+      ),
+      (route) => false, // Remove all previous routes
+    );
   }
 
   void _exploreApp() {
