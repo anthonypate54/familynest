@@ -221,7 +221,7 @@ class MessageService {
               ),
               const SizedBox(height: 16),
               const Text(
-                'No messages yet',
+                'No Family News yet',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -231,7 +231,7 @@ class MessageService {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Start sharing photos and messages with your family',
+                'Start sharing photos and news with your family',
                 style: TextStyle(color: Colors.white70, fontSize: 14),
                 textAlign: TextAlign.center,
               ),

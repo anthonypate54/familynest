@@ -521,8 +521,14 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
             IconButton(
               icon: const Icon(Icons.search, color: Colors.white),
               onPressed: () {
-                // Navigate to comprehensive search screen
-                slidePush(context, MessageSearchScreen(userId: widget.userId));
+                // Navigate to DM search screen
+                slidePush(
+                  context,
+                  MessageSearchScreen(
+                    userId: widget.userId,
+                    isDMSearch: true, // Search DM conversations
+                  ),
+                );
               },
             ),
             // User avatar

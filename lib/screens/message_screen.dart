@@ -17,6 +17,7 @@ import '../services/ios_media_picker.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/gradient_background.dart';
+import 'message_search_screen.dart';
 
 import '../providers/message_provider.dart';
 
@@ -886,11 +887,20 @@ class _MessageScreenState extends State<MessageScreen>
           _buildConnectionStatus(),
           const SizedBox(width: 8),
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
+            icon: const Icon(Icons.search, color: Colors.white),
             onPressed: () {
-              _loadMessages(); // Manual refresh
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => MessageSearchScreen(
+                        userId: int.parse(widget.userId),
+                        isDMSearch: false, // Search family news
+                      ),
+                ),
+              );
             },
-            tooltip: 'Refresh Family News',
+            tooltip: 'Search Family News',
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
