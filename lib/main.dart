@@ -842,7 +842,7 @@ class MainAppContainerState extends State<MainAppContainer>
         children: _screens,
         onPageChanged: (index) {
           final screenNames = [
-            'MessageScreen',
+            'FeedScreen',
             'MessagesHomeScreen',
             'ProfileScreen',
             'FamilyManagementScreen',
@@ -867,13 +867,7 @@ class MainAppContainerState extends State<MainAppContainer>
         controller: _navigationController,
         pendingInvitationsCount: _pendingInvitationsCount,
         onTabChanged: (index) {
-          final tabNames = [
-            'Messages',
-            'DMs',
-            'Profile',
-            'Family',
-            'Invitations',
-          ];
+          final tabNames = ['Feed', 'DMs', 'Profile', 'Family', 'Invitations'];
           debugPrint(
             '🔀 MAIN_NAV: Tab changed to $index (${tabNames[index]}) for user ${widget.userId}',
           );

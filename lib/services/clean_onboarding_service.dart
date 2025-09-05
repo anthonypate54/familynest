@@ -164,7 +164,7 @@ class CleanOnboardingService {
     );
 
     // 2. Go to main app
-    navigateToMainApp(context, userId, userRole, initialTab: 0); // Messages tab
+    navigateToMainApp(context, userId, userRole, initialTab: 0); // Feed tab
   }
 
   /// Case: Existing user (has activity)
@@ -176,7 +176,7 @@ class CleanOnboardingService {
     debugPrint('🔀 EXISTING_USER: Going directly to main app');
 
     // Go directly to main app - no tour needed
-    navigateToMainApp(context, userId, userRole, initialTab: 0); // Messages tab
+    navigateToMainApp(context, userId, userRole, initialTab: 0); // Feed tab
   }
 
   /// Navigate to main app with clean parameters

@@ -499,7 +499,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
   String _getNotificationDisplayName(String field) {
     switch (field) {
       case 'familyMessages':
-        return 'Your notifications from this family';
+        return 'Your family news notifications';
       case 'newMemberAlerts':
         return 'New member notifications';
       // invitationNotifications removed - now always enabled as system notifications

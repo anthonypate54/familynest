@@ -15,7 +15,7 @@ class MyApp extends StatelessWidget {
             children: [
               ElevatedButton(
                 onPressed: () async {
-                  print('Start: ${DateTime.now()}');
+                  debugPrint('Start: ${DateTime.now()}');
                   final stopwatch = Stopwatch()..start();
 
                   FilePickerResult? result = await FilePicker.platform
@@ -27,17 +27,17 @@ class MyApp extends StatelessWidget {
                       );
 
                   stopwatch.stop();
-                  print('End: ${DateTime.now()}');
-                  print('Duration: ${stopwatch.elapsedMilliseconds}ms');
+                  debugPrint('End: ${DateTime.now()}');
+                  debugPrint('Duration: ${stopwatch.elapsedMilliseconds}ms');
 
                   if (result != null) {
                     final file = result.files.first;
-                    print('File: ${file.name}');
-                    print('Size: ${file.size} bytes');
-                    print('Path: ${file.path}');
-                    print('Identifier: ${file.identifier}');
+                    debugPrint('File: ${file.name}');
+                    debugPrint('Size: ${file.size} bytes');
+                    debugPrint('Path: ${file.path}');
+                    debugPrint('Identifier: ${file.identifier}');
                   } else {
-                    print('No file selected');
+                    debugPrint('No file selected');
                   }
                 },
                 child: const Text('Pick Any File'),
@@ -45,7 +45,7 @@ class MyApp extends StatelessWidget {
               SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () async {
-                  print('VIDEO Start: ${DateTime.now()}');
+                  debugPrint('VIDEO Start: ${DateTime.now()}');
                   final stopwatch = Stopwatch()..start();
 
                   FilePickerResult? result = await FilePicker.platform
@@ -57,17 +57,19 @@ class MyApp extends StatelessWidget {
                       );
 
                   stopwatch.stop();
-                  print('VIDEO End: ${DateTime.now()}');
-                  print('VIDEO Duration: ${stopwatch.elapsedMilliseconds}ms');
+                  debugPrint('VIDEO End: ${DateTime.now()}');
+                  debugPrint(
+                    'VIDEO Duration: ${stopwatch.elapsedMilliseconds}ms',
+                  );
 
                   if (result != null) {
                     final file = result.files.first;
-                    print('VIDEO File: ${file.name}');
-                    print('VIDEO Size: ${file.size} bytes');
-                    print('VIDEO Path: ${file.path}');
-                    print('VIDEO Identifier: ${file.identifier}');
+                    debugPrint('VIDEO File: ${file.name}');
+                    debugPrint('VIDEO Size: ${file.size} bytes');
+                    debugPrint('VIDEO Path: ${file.path}');
+                    debugPrint('VIDEO Identifier: ${file.identifier}');
                   } else {
-                    print('No video selected');
+                    debugPrint('No video selected');
                   }
                 },
                 child: const Text('Pick Video Only'),

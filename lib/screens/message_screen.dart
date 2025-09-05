@@ -881,7 +881,7 @@ class _MessageScreenState extends State<MessageScreen>
       backgroundColor: UIConfig.useDarkMode ? Colors.black : Colors.white,
       appBar: AppBar(
         backgroundColor: AppTheme.getAppBarColor(context),
-        title: const Text('Messages'),
+        title: const Text('Family News'),
         actions: [
           _buildConnectionStatus(),
           const SizedBox(width: 8),
@@ -890,7 +890,7 @@ class _MessageScreenState extends State<MessageScreen>
             onPressed: () {
               _loadMessages(); // Manual refresh
             },
-            tooltip: 'Refresh Messages',
+            tooltip: 'Refresh Family News',
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),

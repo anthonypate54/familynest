@@ -46,8 +46,8 @@ class _BottomNavigationState extends State<BottomNavigation> {
       },
       items: [
         const BottomNavigationBarItem(
-          icon: Icon(Icons.message),
-          label: 'Messages',
+          icon: Icon(Icons.dynamic_feed),
+          label: 'Feed',
         ),
         const BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'DMs'),
         const BottomNavigationBarItem(

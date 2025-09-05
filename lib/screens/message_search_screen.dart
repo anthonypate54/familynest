@@ -12,8 +12,13 @@ import '../utils/group_avatar_utils.dart'; // Import the shared utility
 
 class MessageSearchScreen extends StatefulWidget {
   final int userId;
+  final bool isDMSearch; // true for DM search, false for Family News search
 
-  const MessageSearchScreen({super.key, required this.userId});
+  const MessageSearchScreen({
+    super.key, 
+    required this.userId,
+    this.isDMSearch = false, // Default to Family News search
+  });
 
   @override
   State<MessageSearchScreen> createState() => _MessageSearchScreenState();
@@ -90,10 +95,33 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
 
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
-      final results = await apiService.searchMessages(
-        query: query,
-        familyId: _selectedFamilyId,
-      );
+      
+      List<Map<String, dynamic>> results;
+      if (widget.isDMSearch) {
+        // Search DM conversations
+        final dmConversations = await apiService.searchDMConversations(query);
+        // Convert DMConversation objects to Map format for consistency
+        results = dmConversations.map((conv) => {
+          'id': conv.id,
+          'is_group': conv.isGroup,
+          'name': conv.name,
+          'other_user_id': conv.otherUserId,
+          'other_first_name': conv.otherFirstName,
+          'other_last_name': conv.otherLastName,
+          'other_username': conv.otherUsername,
+          'other_user_photo': conv.otherUserPhoto,
+          'last_message_content': conv.lastMessageContent,
+          'last_message_time': conv.lastMessageTime?.toIso8601String(),
+          'participant_count': conv.participantCount,
+          'message_type': 'dm_conversation',
+        }).toList();
+      } else {
+        // Search family messages
+        results = await apiService.searchMessages(
+          query: query,
+          familyId: _selectedFamilyId,
+        );
+      }
 
       debugPrint('🔍 Search results: $results');
       if (results.isNotEmpty) {
@@ -120,19 +148,28 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
   void _navigateToMessage(Map<String, dynamic> message) {
     debugPrint('🔍 _navigateToMessage called with message: $message');
 
-    final messageId = message['id'] as int?;
-    final senderId = message['sender_id'] as int?;
-
-    debugPrint('🔍 messageId: $messageId, senderId: $senderId');
-
-    if (messageId != null && senderId != null) {
-      // All search results are DM messages, so navigate to DM thread
-      debugPrint(
-        '🔍 Navigating to DMThreadScreen for messageId: $messageId, senderId: $senderId',
-      );
-      _navigateToDMThread(message);
+    if (widget.isDMSearch) {
+      // DM search result - navigate to DM conversation
+      final conversationId = message['id'] as int?;
+      if (conversationId != null) {
+        debugPrint('🔍 Navigating to DM conversation: $conversationId');
+        _navigateToDMConversation(message);
+      }
     } else {
-      debugPrint('🔍 Cannot navigate - messageId or senderId is null');
+      // Family message search result - navigate to specific message
+      final messageId = message['id'] as int?;
+      final senderId = message['sender_id'] as int?;
+
+      debugPrint('🔍 messageId: $messageId, senderId: $senderId');
+
+      if (messageId != null && senderId != null) {
+        debugPrint(
+          '🔍 Navigating to DMThreadScreen for messageId: $messageId, senderId: $senderId',
+        );
+        _navigateToDMThread(message);
+      } else {
+        debugPrint('🔍 Cannot navigate - messageId or senderId is null');
+      }
     }
   }
 
@@ -204,6 +241,60 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
           content: Text('Error opening conversation: $e'),
           backgroundColor: Colors.red,
         ),
+      );
+    }
+  }
+
+  // Helper method to navigate to DM conversation (for DM search results)
+  Future<void> _navigateToDMConversation(Map<String, dynamic> conversation) async {
+    try {
+      final conversationId = conversation['id'] as int;
+      final isGroup = conversation['is_group'] as bool? ?? false;
+      
+      if (isGroup) {
+        // Group conversation
+        final groupName = conversation['name'] as String? ?? 'Group Chat';
+        final participantCount = conversation['participant_count'] as int? ?? 2;
+        
+        slidePushReplacement(
+          context,
+          DMThreadScreen(
+            currentUserId: widget.userId,
+            otherUserId: 0, // Not applicable for groups
+            otherUserName: groupName,
+            otherUserPhoto: '',
+            conversationId: conversationId,
+            isGroup: true,
+            participantCount: participantCount,
+            participants: [], // Will be loaded in DMThreadScreen
+          ),
+        );
+      } else {
+        // 1:1 conversation
+        final otherUserId = conversation['other_user_id'] as int? ?? 0;
+        final otherFirstName = conversation['other_first_name'] as String? ?? '';
+        final otherLastName = conversation['other_last_name'] as String? ?? '';
+        final otherUserName = '$otherFirstName $otherLastName'.trim();
+        final otherUserPhoto = conversation['other_user_photo'] as String? ?? '';
+        
+        slidePushReplacement(
+          context,
+          DMThreadScreen(
+            currentUserId: widget.userId,
+            otherUserId: otherUserId,
+            otherUserName: otherUserName.isNotEmpty ? otherUserName : 'Unknown User',
+            otherUserPhoto: otherUserPhoto,
+            conversationId: conversationId,
+            isGroup: false,
+            participantCount: 2,
+            participants: [],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('🔍 Error navigating to DM conversation: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open conversation')),
       );
     }
   }
@@ -290,26 +381,12 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       appBar: AppBar(
         backgroundColor: AppTheme.getAppBarColor(context),
         elevation: 0,
-        title: const Text(
-          'Search Messages',
-          style: TextStyle(color: Colors.white),
+        title: Text(
+          widget.isDMSearch ? 'Search Messages' : 'Search Family News',
+          style: const TextStyle(color: Colors.white),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          // Debug button
-          IconButton(
-            icon: const Icon(Icons.bug_report, color: Colors.white),
-            onPressed: () {
-              debugPrint('🔍 Debug button pressed');
-              debugPrint(
-                '🔍 Current search results count: ${_searchResults.length}',
-              );
-              if (_searchResults.isNotEmpty) {
-                debugPrint('🔍 First result: ${_searchResults.first}');
-              }
-            },
-          ),
-        ],
+        // No actions needed for search screen
       ),
       body: GradientBackground(
         child: Column(
