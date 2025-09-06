@@ -189,6 +189,9 @@ class MyAppState extends State<MyApp> {
   Future<Map<String, dynamic>?> _initialize() async {
     debugPrint('🔄 APP: Starting app initialization');
 
+    // Ensure minimum splash screen duration (especially for release builds)
+    final initializationStart = DateTime.now();
+
     try {
       final prefs = await SharedPreferences.getInstance();
       if (!mounted) return null;
@@ -210,11 +213,20 @@ class MyAppState extends State<MyApp> {
           debugPrint(
             '✅ APP: Found user data - userId: $userId, role: $userRole',
           );
+          // No splash delay for logged in users - they should go straight to the app
           return {'userId': int.parse(userId), 'role': userRole};
         }
       }
 
       debugPrint('🔒 APP: Not logged in or no user data found');
+
+      // Only show splash delay for cold starts (when not logged in)
+      final elapsed = DateTime.now().difference(initializationStart);
+      const minSplashDuration = Duration(milliseconds: 1500);
+      if (elapsed < minSplashDuration) {
+        await Future.delayed(minSplashDuration - elapsed);
+      }
+
       return null;
     } catch (e) {
       debugPrint('❌ APP: Error during initialization: $e');
@@ -260,9 +272,50 @@ class MyAppState extends State<MyApp> {
       home: FutureBuilder<Map<String, dynamic>?>(
         future: _initializationFuture,
         builder: (context, snapshot) {
+          debugPrint(
+            '🎨 SPLASH: FutureBuilder state: ${snapshot.connectionState}',
+          );
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
+            debugPrint('🎨 SPLASH: Showing branded loading screen');
+            return Scaffold(
+              backgroundColor: Color(0xFF4CAF50),
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Temporary FamilyNest logo
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: Color(0xFF4CAF50),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          'FN',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 48,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    const Text(
+                      'FamilyNest',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const CircularProgressIndicator(color: Color(0xFF4CAF50)),
+                  ],
+                ),
+              ),
             );
           }
           final user = snapshot.data;
@@ -817,17 +870,42 @@ class MainAppContainerState extends State<MainAppContainer>
   Widget build(BuildContext context) {
     // Show loading indicator while determining initial screen
     if (_isCheckingInitialScreen) {
-      return const Scaffold(
+      return Scaffold(
+        backgroundColor: Color(0xFF4CAF50),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text(
-                'Loading...',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
+              // Temporary FamilyNest logo
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: Color(0xFF4CAF50),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    'FN',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 48,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ),
+              const SizedBox(height: 30),
+              const Text(
+                'FamilyNest',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF2E7D32),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const CircularProgressIndicator(color: Color(0xFF4CAF50)),
             ],
           ),
         ),

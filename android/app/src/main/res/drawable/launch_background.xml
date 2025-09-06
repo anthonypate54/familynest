@@ -2,12 +2,14 @@
 <!-- FamilyNest splash screen -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Background color -->
-    <item android:drawable="@android:color/white" />
-
-    <!-- App icon centered -->
     <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@mipmap/ic_launcher" />
+        <shape android:shape="rectangle">
+            <solid android:color="#4CAF50" />
+        </shape>
     </item>
+
+    <!-- Temporary FamilyNest logo -->
+    <item 
+        android:drawable="@drawable/temp_familynest_logo"
+        android:gravity="center" />
 </layer-list>

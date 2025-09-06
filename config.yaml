@@ -53,6 +53,13 @@ platforms:
     media_url: "https://familynest-staging-media.s3.amazonaws.com"
     build_mode: "release"
     
+  ios_staging_aws:
+    device_id: ""
+    api_url: "http://54.189.190.245:8080"
+    description: "iOS Staging Release (AWS)"
+    media_url: "https://familynest-staging-media.s3.amazonaws.com"
+    build_mode: "ios_release"
+    
   # Production platforms for release builds
   android_production:
     device_id: ""

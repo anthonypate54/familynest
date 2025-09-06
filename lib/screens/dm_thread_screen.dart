@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_linkify/flutter_linkify.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'dart:io';
 import '../services/api_service.dart';
@@ -1164,8 +1166,18 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                   ],
                   // Display text content if present
                   if (content.isNotEmpty)
-                    Text(
-                      content,
+                    Linkify(
+                      onOpen: (link) async {
+                        try {
+                          await launchUrl(
+                            Uri.parse(link.url),
+                            mode: LaunchMode.externalApplication,
+                          );
+                        } catch (e) {
+                          debugPrint('Could not launch URL: ${link.url}');
+                        }
+                      },
+                      text: content,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight:
@@ -1184,6 +1196,22 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                                         Brightness.dark
                                     ? Colors.white
                                     : Colors.black87),
+                      ),
+                      linkStyle: TextStyle(
+                        fontSize: 16,
+                        fontWeight:
+                            (!isMe && !message.isRead)
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                        color:
+                            isMe
+                                ? Colors
+                                    .lightBlue[100] // Very light blue for your messages
+                                : Colors
+                                    .blue[600], // Brighter blue for received messages
+                        decoration: TextDecoration.underline,
+                        decorationColor:
+                            isMe ? Colors.lightBlue[100] : Colors.blue[600],
                       ),
                     ),
                   if (timeString.isNotEmpty) ...[

@@ -31,7 +31,7 @@ MEDIA_URL_CONFIG=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "media_url" | cut
 BUILD_MODE=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "build_mode" | cut -d'"' -f2)
 
 # Check for empty device_id (skip for release builds)
-if [ -z "$DEVICE_ID" ] && [ "$PLATFORM" != "web" ] && [ "$BUILD_MODE" != "release" ]; then
+if [ -z "$DEVICE_ID" ] && [ "$PLATFORM" != "web" ] && [ "$BUILD_MODE" != "release" ] && [ "$BUILD_MODE" != "ios_release" ]; then
   echo "No device ID specified for $PLATFORM in config.yaml"
   
   # List available devices
@@ -129,6 +129,15 @@ if [ "$BUILD_MODE" = "release" ]; then
   flutter build apk --release --dart-define=ENVIRONMENT=staging
   echo "✅ Release APK built successfully!"
   echo "📱 APK location: build/app/outputs/flutter-apk/app-release.apk"
+  
+  # Create a friendlier copy of the APK
+  cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/familynest-staging.apk
+  echo "📱 Friendly copy: build/app/outputs/flutter-apk/familynest-staging.apk"
+elif [ "$BUILD_MODE" = "ios_release" ]; then
+  echo "Building Flutter iOS archive for staging..."
+  flutter build ios --release --dart-define=ENVIRONMENT=staging
+  echo "✅ iOS build completed!"
+  echo "📱 Next: Open ios/Runner.xcworkspace in Xcode to archive for TestFlight"
 elif [ "$PLATFORM" = "web" ]; then
   RENDERER=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "renderer" | cut -d'"' -f2)
   echo "Running Flutter on web with renderer: $RENDERER"

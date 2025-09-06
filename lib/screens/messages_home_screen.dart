@@ -659,17 +659,14 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                       )
                       : _conversations.isEmpty
                       ? _buildEmptyConversationsState()
-                      : Expanded(
-                        child: RefreshIndicator(
-                          onRefresh: _loadConversations,
-                          child: ListView.builder(
-                            itemCount: _filteredConversations.length,
-                            itemBuilder: (context, index) {
-                              final conversation =
-                                  _filteredConversations[index];
-                              return _buildConversationTile(conversation);
-                            },
-                          ),
+                      : RefreshIndicator(
+                        onRefresh: _loadConversations,
+                        child: ListView.builder(
+                          itemCount: _filteredConversations.length,
+                          itemBuilder: (context, index) {
+                            final conversation = _filteredConversations[index];
+                            return _buildConversationTile(conversation);
+                          },
                         ),
                       ),
             ),
@@ -865,6 +862,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
           ],
         ),
         onTap: () {
+          _hasNavigatedAway = true;
           slidePush(
             context,
             DMThreadScreen(

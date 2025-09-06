@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_linkify/flutter_linkify.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/message.dart';
 import '../services/api_service.dart';
 import '../providers/message_provider.dart';
@@ -775,14 +777,44 @@ class _MessageCardState extends State<MessageCard> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                widget.message.content,
+                              Linkify(
+                                onOpen: (link) async {
+                                  try {
+                                    await launchUrl(
+                                      Uri.parse(link.url),
+                                      mode: LaunchMode.externalApplication,
+                                    );
+                                  } catch (e) {
+                                    debugPrint(
+                                      'Could not launch URL: ${link.url}',
+                                    );
+                                  }
+                                },
+                                text: widget.message.content,
                                 style: Theme.of(
                                   context,
                                 ).textTheme.bodyMedium?.copyWith(
                                   color:
                                       Theme.of(context).colorScheme.onSurface,
                                   fontWeight: FontWeight.normal,
+                                ),
+                                linkStyle: Theme.of(
+                                  context,
+                                ).textTheme.bodyMedium?.copyWith(
+                                  color:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors
+                                              .lightBlue[200] // Light blue for dark mode
+                                          : Colors
+                                              .blue[600], // Brighter blue for light mode
+                                  fontWeight: FontWeight.normal,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.lightBlue[200]
+                                          : Colors.blue[600],
                                 ),
                               ),
                               if (mediaUrl != null && mediaUrl.isNotEmpty)
