@@ -114,30 +114,13 @@ void main() async {
   // Initialize app configuration
   final config = AppConfig();
 
-  // 🚀 CHECK DART-DEFINE ENVIRONMENT FIRST
-  const dartDefineEnv = String.fromEnvironment('ENVIRONMENT');
-  if (dartDefineEnv.isNotEmpty) {
-    debugPrint('🎯 Using dart-define ENVIRONMENT: $dartDefineEnv');
-    switch (dartDefineEnv.toLowerCase()) {
-      case 'staging':
-        await config.setEnvironment(Environment.staging);
-        break;
-      case 'production':
-        await config.setEnvironment(Environment.production);
-        break;
-      case 'development':
-      default:
-        await config.setEnvironment(Environment.development);
-        break;
-    }
-  } else {
-    // 🚀 FALLBACK: AUTO-DETECTION - Let run.sh control via .env files
-    // Environment is automatically detected from API_URL in .env file:
-    // - android_emulator: http://10.0.2.2:8080 → Environment.development
-    // - android_emulator_aws: http://54.189.190.245:8080 → Environment.staging
-    debugPrint('🔍 No dart-define ENVIRONMENT, using auto-detection from .env');
-    await config.initialize();
-  }
+  // 🚀 ENVIRONMENT AUTO-DETECTION - Let run.sh control via .env files
+  // Environment is automatically detected from API_URL in .env file:
+  // - android_emulator: http://10.0.2.2:8080 → Environment.development
+  // - android_emulator_aws: http://54.189.190.245:8080 → Environment.staging
+  // No manual setEnvironment() call needed - AppConfig detects automatically
+
+  await config.initialize();
 
   debugPrint('🌐 API URL: ${config.baseUrl}');
   debugPrint(
