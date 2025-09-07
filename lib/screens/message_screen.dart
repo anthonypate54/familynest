@@ -18,6 +18,7 @@ import '../services/ios_media_picker.dart';
 import '../theme/app_theme.dart';
 import '../widgets/gradient_background.dart';
 import 'message_search_screen.dart';
+import 'login_screen.dart';
 
 import '../providers/message_provider.dart';
 
@@ -195,6 +196,17 @@ class _MessageScreenState extends State<MessageScreen>
       }
     } catch (e) {
       debugPrint('❌ MessageScreen: Error loading messages: $e');
+
+      // Check if it's an authentication error
+      if (e.toString().contains('403') ||
+          e.toString().contains('401') ||
+          e.toString().contains('Invalid token') ||
+          e.toString().contains('Session expired')) {
+        debugPrint('🔒 Authentication error detected, redirecting to login');
+        _redirectToLogin();
+        return;
+      }
+
       if (mounted) {
         if (showLoading) {
           setState(() {
@@ -208,6 +220,18 @@ class _MessageScreenState extends State<MessageScreen>
         }
       }
     }
+  }
+
+  // Redirect to login on authentication errors
+  void _redirectToLogin() {
+    if (!mounted) return;
+    Future.delayed(Duration.zero, () {
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false, // Remove all previous routes
+      );
+    });
   }
 
   // Method to scroll to a specific message

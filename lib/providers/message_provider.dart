@@ -118,11 +118,18 @@ class MessageProvider extends ChangeNotifier {
     final idx = _messages.indexWhere((m) => m.id == messageId);
     if (idx != -1) {
       final msg = _messages[idx];
+      // Debug: Uncomment for notification debugging
+      // debugPrint('🔄 MESSAGE_PROVIDER: Updating message $messageId commentCount: ${msg.commentCount} → $commentCount, hasUnreadComments: ${msg.hasUnreadComments} → $hasUnreadComments');
       _messages[idx] = msg.copyWith(
         commentCount: commentCount,
         hasUnreadComments: hasUnreadComments,
       );
       notifyListeners();
+      // Debug: Uncomment for notification debugging
+      // debugPrint('✅ MESSAGE_PROVIDER: Message $messageId updated and listeners notified');
+    } else {
+      // Debug: Uncomment for notification debugging
+      // debugPrint('❌ MESSAGE_PROVIDER: Message $messageId not found in provider');
     }
   }
 

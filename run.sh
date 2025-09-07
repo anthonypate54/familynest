@@ -111,11 +111,16 @@ fi
 echo "API_URL=$API_URL" > .env
 echo "ENVIRONMENT=$ENVIRONMENT" >> .env
 
-# Add MEDIA_URL for ngrok support (required for video playback on all Android devices)
-# Use static ngrok URL for all platforms to avoid cleartext HTTP issues
-MEDIA_URL="https://familynesngrok.ngrok.io"
+# Add MEDIA_URL from config.yaml or fallback to ngrok for development
+if [ -n "$MEDIA_URL_CONFIG" ]; then
+  MEDIA_URL="$MEDIA_URL_CONFIG"
+  echo "✅ Using MEDIA_URL from config.yaml: $MEDIA_URL"
+else
+  # Fallback to ngrok for local development
+  MEDIA_URL="https://familynesngrok.ngrok.io"
+  echo "⚠️ Using fallback ngrok MEDIA_URL: $MEDIA_URL"
+fi
 echo "MEDIA_URL=$MEDIA_URL" >> .env
-echo "✅ Added static ngrok URL for media: $MEDIA_URL"
 
 # Also update .env.development since the app loads this file first
 echo "API_URL=$API_URL" > .env.development

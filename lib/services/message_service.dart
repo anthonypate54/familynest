@@ -1243,10 +1243,16 @@ class _MessageCardState extends State<MessageCard> {
   // Simple check: use the has_unread_comments field from backend
   bool _hasRecentActivity(Message message, int commentCount) {
     // Must have comments to show activity
-    if (commentCount == 0) return false;
+    if (commentCount == 0) {
+      // Debug: Uncomment for notification debugging
+      // debugPrint('🔍 ACTIVITY_CHECK: Message ${message.id} has 0 comments, no activity');
+      return false;
+    }
 
     // Use the backend's has_unread_comments field
     final hasUnreadComments = message.hasUnreadComments;
+    // Debug: Uncomment for notification debugging
+    // debugPrint('🔍 ACTIVITY_CHECK: Message ${message.id} commentCount=$commentCount, hasUnreadComments=$hasUnreadComments');
 
     return hasUnreadComments ?? false;
   }

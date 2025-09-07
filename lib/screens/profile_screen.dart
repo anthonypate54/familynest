@@ -1030,7 +1030,7 @@ class ProfileScreenState extends State<ProfileScreen>
             user: user,
             photoUrl:
                 user.photo != null
-                    ? '${Provider.of<ApiService>(context, listen: false).baseUrl}${user.photo}?t=${DateTime.now().millisecondsSinceEpoch}'
+                    ? '${Provider.of<ApiService>(context, listen: false).mediaBaseUrl}${user.photo}?t=${DateTime.now().millisecondsSinceEpoch}'
                     : null,
             onEditPhoto: _pickPhoto,
           ),
