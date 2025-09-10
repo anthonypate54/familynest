@@ -612,11 +612,6 @@ class MessageCard extends StatefulWidget {
 }
 
 class _MessageCardState extends State<MessageCard> {
-  String _capitalizeFirst(String text) {
-    if (text.isEmpty) return text;
-    return text[0].toUpperCase() + text.substring(1).toLowerCase();
-  }
-
   bool isLiked = false;
   bool isLoved = false;
 
@@ -626,11 +621,6 @@ class _MessageCardState extends State<MessageCard> {
     // Initialize like state from the message
     isLiked = widget.message.isLiked;
     isLoved = widget.message.isLoved;
-    debugPrint('Message ${widget.message.id} initial state:');
-    debugPrint('- isLiked: $isLiked');
-    debugPrint('- isLoved: $isLoved');
-    debugPrint('- likeCount: ${widget.message.likeCount}');
-    debugPrint('- loveCount: ${widget.message.loveCount}');
   }
 
   @override
@@ -696,10 +686,6 @@ class _MessageCardState extends State<MessageCard> {
 
     final String displayDay = widget.dayText ?? '';
     final String? mediaUrl = widget.message.mediaUrl;
-
-    if (displayDay.isEmpty) {
-      debugPrint('Message is null: widget.dayText = $widget.dayText');
-    }
 
     // Simplified: no unread tracking needed, avatars show message ownership
     return _buildMessageContent(
@@ -914,10 +900,6 @@ class _MessageCardState extends State<MessageCard> {
           final lastName = widget.message.senderLastName ?? '';
           final senderUserName = widget.message.senderUserName ?? '';
 
-          debugPrint(
-            '🧵 THREAD Avatar: firstName="$firstName", lastName="$lastName" (NO username fallback)',
-          );
-
           return UserAvatar(
             photoUrl: senderPhoto,
             firstName: firstName,
@@ -1017,6 +999,7 @@ class _MessageCardState extends State<MessageCard> {
           onTap: () => widget.onTap?.call(widget.message),
           child: VideoMessageCard(
             videoUrl: widget.message.mediaUrl!,
+            localMediaPath: widget.message.localMediaPath,
             thumbnailUrl: widget.message.thumbnailUrl,
             apiService: apiService,
             isCurrentlyPlaying:
@@ -1069,9 +1052,6 @@ class _MessageCardState extends State<MessageCard> {
                 'isLiked': message.isLiked,
                 'isLoved': message.isLoved,
               };
-              debugPrint(
-                '🔍 Navigating to parent thread for comment ${message.id} -> parent ${message.parentMessageId}',
-              );
             } else {
               // This is a root message - convert to map for ThreadScreen
               threadMessage = message.toJson();

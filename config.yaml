@@ -25,6 +25,18 @@ platforms:
     description: "Physical Android Device"
     setup_command: "adb reverse tcp:8080 tcp:8080"
     
+  android_physical_wifi:
+    device_id: "10.0.0.245:46607"
+    api_url: "http://54.189.190.245:8080"
+    description: "Physical Android Device (WiFi ADB - AWS)"
+    media_url: "https://familynest-staging-media.s3.amazonaws.com"
+    
+  android_physical_wifi_local:
+    device_id: "10.0.0.245:46607"
+    api_url: "http://10.0.0.9:8080"
+    description: "Physical Android Device (WiFi ADB - Local Backend)"
+    media_url: "https://familynesngrok.ngrok.io"
+    
   ios_simulator:
     device_id: "32EE6B99-A19F-4328-9082-A32C6F6F08E5"
     api_url: "http://localhost:8080"

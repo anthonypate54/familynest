@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../config/app_config.dart';
 import '../dialogs/large_video_dialog.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class IosPickedFile {
   final String id;
@@ -31,10 +32,15 @@ class UnifiedMediaPicker {
   /// Show cross-platform media picker with options for Photos app AND Files app
   static Future<File?> pickMedia({
     required BuildContext context,
-    required String type, // 'photo' or 'video'
+    required String type, // 'photo', 'video', or 'media' (both)
     required Function() onShowPicker, // Callback to re-show picker if needed
   }) async {
     try {
+      // For 'media' type, go directly to Files (Google Messages style)
+      if (type == 'media') {
+        return await _pickFromFiles(context, type, onShowPicker);
+      }
+
       // Show clean modal bottom sheet
       final source = await showModalBottomSheet<String>(
         context: context,
@@ -61,7 +67,11 @@ class UnifiedMediaPicker {
                     ),
                   ),
                   Text(
-                    'Select ${type == 'photo' ? 'Photo' : 'Video'}',
+                    'Select ${type == 'photo'
+                        ? 'Photo'
+                        : type == 'video'
+                        ? 'Video'
+                        : 'Media'}',
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w600,
@@ -73,12 +83,21 @@ class UnifiedMediaPicker {
                     icon:
                         type == 'photo'
                             ? Icons.photo_library
-                            : Icons.video_library,
-                    title: type == 'photo' ? 'Photos' : 'Videos',
+                            : type == 'video'
+                            ? Icons.video_library
+                            : Icons.perm_media,
+                    title:
+                        type == 'photo'
+                            ? 'Photos'
+                            : type == 'video'
+                            ? 'Videos'
+                            : 'Media',
                     subtitle:
                         type == 'photo'
                             ? 'From your photo library'
-                            : 'From your video library',
+                            : type == 'video'
+                            ? 'From your video library'
+                            : 'Photos and videos from your device',
                     onTap: () => Navigator.pop(context, 'photos'),
                   ),
                   _buildOptionTile(
@@ -122,12 +141,23 @@ class UnifiedMediaPicker {
     }
   }
 
+  // Check permissions
+  static Future<bool> _checkPermissions() async {
+    final status = await Permission.photos.request();
+    if (!status.isGranted) {
+      debugPrint('🍎 Photo library permission denied');
+      return false;
+    }
+    return true;
+  }
+
   /// Pick from iOS Photos app using standard ImagePicker
   static Future<File?> _pickFromPhotos(
     BuildContext context,
     String type,
     Function() onShowPicker,
   ) async {
+    if (!(await _checkPermissions())) return null;
     try {
       debugPrint('🍎 Picking $type from Photos app using ImagePicker');
 
@@ -141,11 +171,21 @@ class UnifiedMediaPicker {
           maxWidth: 1920,
           maxHeight: 1920,
         );
-      } else {
+      } else if (type == 'video') {
         pickedFile = await picker.pickVideo(
           source: ImageSource.gallery,
           maxDuration: const Duration(minutes: 10),
         );
+      } else {
+        // type == 'media' - use pickMultipleMedia for unified photo+video selection
+        final List<XFile> mediaList = await picker.pickMultipleMedia(
+          imageQuality: 85,
+          limit: 2, // Minimum allowed limit
+        );
+
+        if (mediaList.isNotEmpty) {
+          pickedFile = mediaList.first; // Use first selected media
+        }
       }
 
       if (pickedFile == null) return null; // User cancelled
@@ -160,7 +200,15 @@ class UnifiedMediaPicker {
 
       // Check file size
       if (fileSizeMB > AppConfig.maxFileUploadSizeMB) {
-        if (type == 'photo') {
+        // For media type, determine if it's a photo or video based on file extension
+        final String extension = pickedFile.path.toLowerCase();
+        final bool isVideo =
+            extension.endsWith('.mp4') ||
+            extension.endsWith('.mov') ||
+            extension.endsWith('.avi') ||
+            extension.endsWith('.wmv');
+
+        if (type == 'photo' || (type == 'media' && !isVideo)) {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -249,17 +297,28 @@ class UnifiedMediaPicker {
       }
 
       // Filter by type if needed
-      bool isCorrectType =
-          type == 'photo'
-              ? (cloudFile.mimeType.startsWith('image/'))
-              : (cloudFile.mimeType.startsWith('video/'));
+      bool isCorrectType;
+      if (type == 'photo') {
+        isCorrectType = cloudFile.mimeType.startsWith('image/');
+      } else if (type == 'video') {
+        isCorrectType = cloudFile.mimeType.startsWith('video/');
+      } else {
+        // type == 'media' - accept both images and videos
+        isCorrectType =
+            cloudFile.mimeType.startsWith('image/') ||
+            cloudFile.mimeType.startsWith('video/');
+      }
 
       if (!isCorrectType) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Please select a ${type == 'photo' ? 'photo' : 'video'} file',
+                'Please select a ${type == 'photo'
+                    ? 'photo'
+                    : type == 'video'
+                    ? 'video'
+                    : 'photo or video'} file',
               ),
               duration: const Duration(seconds: 2),
             ),

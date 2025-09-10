@@ -9,7 +9,6 @@ import 'package:video_player/video_player.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 
-
 class VideoThumbnailUtil {
   // Cache for video thumbnails (videoUrl -> thumbnailPath) during the current session
   static final Map<String, File> _thumbnailCache = {};
@@ -74,8 +73,8 @@ class VideoThumbnailUtil {
           '⏱️ _saveThumbnailPermanently took: ${saveStopwatch.elapsedMilliseconds}ms',
         );
 
-        // Much more aggressive cache management for memory safety
-        if (_thumbnailCache.length > 3) {
+        // More aggressive cache management for memory safety
+        if (_thumbnailCache.length > 2) {
           debugPrint(
             '🧹 Clearing thumbnail cache aggressively (${_thumbnailCache.length} items)',
           );
@@ -317,7 +316,6 @@ class VideoThumbnailUtil {
   static void _printMemoryUsage(String context) {
     try {
       // Force garbage collection and add timeline marker
-
 
       final timestamp = DateTime.now().toIso8601String();
       final cacheSize = _thumbnailCache.length;

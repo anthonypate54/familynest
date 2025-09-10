@@ -25,6 +25,7 @@ class Message {
   final List<Message> replies;
   final int depth;
   final String? mediaUrl;
+  final String? localMediaPath;
   final String? mediaType;
   final DateTime? createdAt;
   final String? senderId;
@@ -49,6 +50,7 @@ class Message {
     this.replies = const [],
     this.depth = 0,
     this.mediaUrl,
+    this.localMediaPath,
     this.mediaType,
     this.createdAt,
     this.senderId,
@@ -71,7 +73,7 @@ class Message {
 
   // Factory constructor for creating a Message from JSON
   factory Message.fromJson(Map<String, dynamic> json) {
-    return Message(
+    final message = Message(
       id: json['id'].toString(),
       content: json['content'] as String,
       replies:
@@ -81,6 +83,9 @@ class Message {
           [],
       depth: json['depth'] as int? ?? 0,
       mediaUrl: json['mediaUrl'] as String? ?? json['media_url'] as String?,
+      localMediaPath:
+          json['localMediaPath'] as String? ??
+          json['local_media_path'] as String?,
       mediaType: json['mediaType'] as String? ?? json['media_type'] as String?,
       createdAt:
           json['timestamp'] != null
@@ -133,6 +138,8 @@ class Message {
       isLiked: json['isLiked'] as bool? ?? json['is_liked'] as bool? ?? false,
       isLoved: json['isLoved'] as bool? ?? json['is_loved'] as bool? ?? false,
     );
+
+    return message;
   }
   // Convert Message to JSON
   Map<String, dynamic> toJson() {
@@ -142,6 +149,7 @@ class Message {
       'replies': replies.map((e) => e.toJson()).toList(),
       'depth': depth,
       'mediaUrl': mediaUrl,
+      'localMediaPath': localMediaPath,
       'mediaType': mediaType,
       'createdAt': createdAt?.toIso8601String(),
       'senderId': senderId,
@@ -168,6 +176,7 @@ class Message {
     List<Message>? replies,
     int? depth,
     String? mediaUrl,
+    String? localMediaPath,
     String? mediaType,
     DateTime? createdAt,
     String? senderId,
@@ -194,6 +203,7 @@ class Message {
       replies: replies ?? this.replies,
       depth: depth ?? this.depth,
       mediaUrl: mediaUrl ?? this.mediaUrl,
+      localMediaPath: localMediaPath ?? this.localMediaPath,
       mediaType: mediaType ?? this.mediaType,
       createdAt: createdAt ?? this.createdAt,
       senderId: senderId ?? this.senderId,

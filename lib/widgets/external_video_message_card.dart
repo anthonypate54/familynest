@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import '../utils/thumbnail_utils.dart';
 
 class ExternalVideoMessageCard extends StatelessWidget {
   final String externalVideoUrl;
@@ -78,7 +79,7 @@ class ExternalVideoMessageCard extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               // Thumbnail or default background
-              if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+              if (ThumbnailUtils.isValidThumbnailUrl(thumbnailUrl))
                 CachedNetworkImage(
                   imageUrl:
                       thumbnailUrl!.startsWith('http')

@@ -1038,11 +1038,13 @@ Network connection error. Please check:
     int? familyId,
     String? videoUrl,
     String? thumbnailUrl,
+    String? localMediaPath,
   }) async {
     try {
       debugPrint('Starting postMessage for userId: $userId');
       debugPrint('Content: "$content"');
       debugPrint('Media path: $mediaPath, media type: $mediaType');
+      debugPrint('Local media path: $localMediaPath');
       debugPrint('Video URL: $videoUrl, thumbnail URL: $thumbnailUrl');
       debugPrint('Explicit family ID provided: $familyId');
 
@@ -1101,6 +1103,12 @@ Network connection error. Please check:
       if (thumbnailUrl != null && thumbnailUrl.startsWith('http')) {
         debugPrint('Adding thumbnail URL to message: $thumbnailUrl');
         request.fields['thumbnailUrl'] = thumbnailUrl;
+      }
+
+      // Add local media path for sender's instant playback
+      if (localMediaPath != null && localMediaPath.isNotEmpty) {
+        debugPrint('Adding local media path: $localMediaPath');
+        request.fields['localMediaPath'] = localMediaPath;
       }
 
       // Add media file if provided
@@ -1203,11 +1211,13 @@ Network connection error. Please check:
     int? familyId,
     String? videoUrl,
     String? thumbnailUrl,
+    String? localMediaPath,
   }) async {
     try {
       debugPrint('Starting postComment for parentMessageId: $parentMessageId');
       debugPrint('Content: "$content"');
       debugPrint('Media path: $mediaPath, media type: $mediaType');
+      debugPrint('Local media path: $localMediaPath');
       debugPrint('Video URL: $videoUrl, thumbnail URL: $thumbnailUrl');
       debugPrint('Explicit family ID provided: $familyId');
 
@@ -1265,6 +1275,12 @@ Network connection error. Please check:
       if (thumbnailUrl != null && thumbnailUrl.startsWith('http')) {
         debugPrint('Adding thumbnail URL to message: $thumbnailUrl');
         request.fields['thumbnailUrl'] = thumbnailUrl;
+      }
+
+      // Add local media path for sender's instant playback
+      if (localMediaPath != null && localMediaPath.isNotEmpty) {
+        debugPrint('Adding local media path: $localMediaPath');
+        request.fields['localMediaPath'] = localMediaPath;
       }
 
       // Add media file if provided
@@ -2368,6 +2384,7 @@ Network connection error. Please check:
 
   // Message-related methods
   Future<List<Message>> getUserMessages(String userId) async {
+    debugPrint('🚨 getUserMessages CALLED for userId: $userId');
     try {
       // Use proper authenticated request with automatic token refresh
       final response = await _makeAuthenticatedRequest(
@@ -2379,12 +2396,19 @@ Network connection error. Please check:
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(response.body);
 
-        // 🐛 DEBUG: Log the raw JSON to see has_unread_comments values
-        for (int i = 0; i < jsonList.length && i < 3; i++) {
-          final json = jsonList[i];
+        // 🔥 DUMP THE ENTIRE FREAKING RESPONSE
+        debugPrint('🔥 FULL API RESPONSE DUMP:');
+        debugPrint('🔥 Response status: ${response.statusCode}');
+        debugPrint('🔥 Response length: ${response.body.length}');
+        debugPrint('🔥 jsonList length: ${jsonList.length}');
+
+        if (jsonList.isNotEmpty) {
+          debugPrint('🔥 First message keys: ${jsonList[0].keys.toList()}');
           debugPrint(
-            '🐛 Message ${json['id']}: has_unread_comments = ${json['has_unread_comments']} (type: ${json['has_unread_comments'].runtimeType})',
+            '🔥 First message localMediaPath: ${jsonList[0]['localMediaPath']}',
           );
+        } else {
+          debugPrint('🔥 ERROR: jsonList is EMPTY!');
         }
 
         final messages =

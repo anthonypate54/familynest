@@ -23,12 +23,12 @@ if ! grep -q "  $PLATFORM:" config.yaml; then
 fi
 
 # Extract values from config.yaml
-API_URL=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "api_url" | cut -d'"' -f2)
-DEVICE_ID=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "device_id" | cut -d'"' -f2)
-DESCRIPTION=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "description" | cut -d'"' -f2)
-SETUP_COMMAND=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "setup_command" | cut -d'"' -f2)
-MEDIA_URL_CONFIG=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "media_url" | cut -d'"' -f2)
-BUILD_MODE=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "build_mode" | cut -d'"' -f2)
+API_URL=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "api_url" | head -1 | cut -d'"' -f2)
+DEVICE_ID=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "device_id" | head -1 | cut -d'"' -f2)
+DESCRIPTION=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "description" | head -1 | cut -d'"' -f2)
+SETUP_COMMAND=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "setup_command" | head -1 | cut -d'"' -f2)
+MEDIA_URL_CONFIG=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "media_url" | head -1 | cut -d'"' -f2)
+BUILD_MODE=$(grep -A 7 "  $PLATFORM:" config.yaml | grep "build_mode" | head -1 | cut -d'"' -f2)
 
 # Check for empty device_id (skip for release builds)
 if [ -z "$DEVICE_ID" ] && [ "$PLATFORM" != "web" ] && [ "$BUILD_MODE" != "release" ] && [ "$BUILD_MODE" != "ios_release" ]; then
