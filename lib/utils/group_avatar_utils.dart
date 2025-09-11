@@ -190,7 +190,7 @@ class GroupAvatarUtils {
     Widget result = Container(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.5),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 1.5),
       ),
       child: avatarWidget,
     );

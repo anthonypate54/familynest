@@ -72,6 +72,7 @@ class DMMessageProvider extends ChangeNotifier {
                 mediaFilename: message.mediaFilename,
                 mediaSize: message.mediaSize,
                 mediaDuration: message.mediaDuration,
+                localMediaPath: message.localMediaPath,
                 isRead: true, // Mark as read
                 deliveredAt: message.deliveredAt,
                 createdAt: message.createdAt,
@@ -92,6 +93,26 @@ class DMMessageProvider extends ChangeNotifier {
           '✅ DMMessageProvider: Marked other users\' unread messages in conversation $conversationId as read',
         );
         notifyListeners();
+      }
+    }
+  }
+
+  void updateMessage(int conversationId, DMMessage updatedMessage) {
+    final messages = _conversationMessages[conversationId];
+    if (messages != null) {
+      final messageIndex = messages.indexWhere(
+        (message) => message.id == updatedMessage.id,
+      );
+      if (messageIndex != -1) {
+        debugPrint(
+          '🔄 DMMessageProvider: Updating message ${updatedMessage.id} in conversation $conversationId',
+        );
+        _conversationMessages[conversationId]![messageIndex] = updatedMessage;
+        notifyListeners();
+      } else {
+        debugPrint(
+          '⚠️ DMMessageProvider: Message ${updatedMessage.id} not found in conversation $conversationId',
+        );
       }
     }
   }

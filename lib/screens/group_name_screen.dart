@@ -199,15 +199,15 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
                   labelStyle: TextStyle(
                     color:
                         Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white.withOpacity(0.7)
-                            : Colors.black.withOpacity(0.6),
+                            ? Colors.white.withValues(alpha: 0.7)
+                            : Colors.black.withValues(alpha: 0.6),
                   ),
                   enabledBorder: UnderlineInputBorder(
                     borderSide: BorderSide(
                       color:
                           Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white.withOpacity(0.5)
-                              : Colors.black.withOpacity(0.3),
+                              ? Colors.white.withValues(alpha: 0.5)
+                              : Colors.black.withValues(alpha: 0.3),
                     ),
                   ),
                   focusedBorder: UnderlineInputBorder(
@@ -251,8 +251,8 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
                 style: TextStyle(
                   color:
                       Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white.withOpacity(0.7)
-                          : Colors.black.withOpacity(0.6),
+                          ? Colors.white.withValues(alpha: 0.7)
+                          : Colors.black.withValues(alpha: 0.6),
                   fontSize: 14,
                 ),
               ),

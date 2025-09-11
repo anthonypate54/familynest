@@ -85,7 +85,7 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
 
   // Clean icon drawer function
   Widget videoIconDraw(String state) {
-    print('DEBUG: videoIconDraw called with state: $state');
+    debugPrint('DEBUG: videoIconDraw called with state: $state');
     switch (state) {
       case 'photo_ready':
       case 'video_waiting':
@@ -124,7 +124,10 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
           decoration: BoxDecoration(
             color: Colors.red,
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.5),
+              width: 2,
+            ),
           ),
           child: Center(
             child: Container(
@@ -212,23 +215,23 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
   }
 
   Future<void> _startRecording() async {
-    print('DEBUG: _startRecording called');
-    print('DEBUG: _cameraController null? ${_cameraController == null}');
-    print(
+    debugPrint('DEBUG: _startRecording called');
+    debugPrint('DEBUG: _cameraController null? ${_cameraController == null}');
+    debugPrint(
       'DEBUG: camera initialized? ${_cameraController?.value.isInitialized}',
     );
 
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      print('DEBUG: Camera not ready, returning');
+      debugPrint('DEBUG: Camera not ready, returning');
       return;
     }
 
     try {
-      print('DEBUG: About to start video recording');
+      debugPrint('DEBUG: About to start video recording');
 
       // Try reinitializing camera if recording fails
       if (!_cameraController!.value.isRecordingVideo) {
-        print('DEBUG: Reinitializing camera before recording');
+        debugPrint('DEBUG: Reinitializing camera before recording');
         await _initializeCameraController();
         await Future.delayed(const Duration(milliseconds: 500)); // Give it time
       }
@@ -477,12 +480,12 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
                       width: 80,
                       height: 80,
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
+                        color: Colors.black.withValues(alpha: 0.7),
                         shape: BoxShape.circle,
                       ),
                       child: Container(
                         margin: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
+                        decoration: const BoxDecoration(
                           color: Colors.black,
                           shape: BoxShape.circle,
                         ),
@@ -507,7 +510,7 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.close, color: Colors.white, size: 24),
@@ -528,7 +531,7 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -555,7 +558,7 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -624,7 +627,7 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.delete, color: Colors.white, size: 32),
@@ -636,7 +639,7 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
             onTap: _sendVideo,
             child: Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.green,
                 shape: BoxShape.circle,
               ),
@@ -664,7 +667,7 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 2),
                   ),
@@ -704,7 +707,9 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
                                 valueColor: const AlwaysStoppedAnimation<Color>(
                                   Colors.red,
                                 ),
-                                backgroundColor: Colors.white.withOpacity(0.3),
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.3,
+                                ),
                               );
                             },
                           ),
@@ -724,7 +729,7 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 2),
                   ),
@@ -755,7 +760,7 @@ class _CustomVideoRecorderState extends State<CustomVideoRecorder>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(25),
               ),
               child: Row(

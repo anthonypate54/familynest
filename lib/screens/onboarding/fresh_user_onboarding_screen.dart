@@ -135,7 +135,7 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
             width: 120,
             height: 120,
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(60),
             ),
             child: Icon(
@@ -197,7 +197,7 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
             width: 120,
             height: 120,
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(60),
             ),
             child: const Icon(Icons.auto_awesome, size: 64, color: Colors.blue),
@@ -282,8 +282,8 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
                     _hasPendingInvitations
                         ? Theme.of(
                           context,
-                        ).colorScheme.secondary.withOpacity(0.1)
-                        : Colors.green.withOpacity(0.1),
+                        ).colorScheme.secondary.withValues(alpha: 0.1)
+                        : Colors.green.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(60),
               ),
               child: Icon(

@@ -255,16 +255,31 @@ class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
             .isDirectoryKey
           ])
           
-          // Copy file to temporary location for persistent access
-          let tempDir = FileManager.default.temporaryDirectory
           let fileName = resourceValues.name ?? "unknown_file"
-          let tempFileURL = tempDir.appendingPathComponent(fileName)
+          let fileSize = resourceValues.fileSize ?? 0
           
-          // Remove existing temp file if it exists
-          try? FileManager.default.removeItem(at: tempFileURL)
+          // Check file size before copying (25MB limit)
+          let maxFileSizeBytes = 25 * 1024 * 1024
+          let sizeLimitExceeded = fileSize > maxFileSizeBytes
           
-          // Copy the file to temp location
-          try FileManager.default.copyItem(at: url, to: tempFileURL)
+          var tempPath: String? = nil
+          
+          if !sizeLimitExceeded {
+            // File size is acceptable - copy to temp location
+            let tempDir = FileManager.default.temporaryDirectory
+            let tempFileURL = tempDir.appendingPathComponent(fileName)
+            
+            // Remove existing temp file if it exists
+            try? FileManager.default.removeItem(at: tempFileURL)
+            
+            // Copy the file to temp location
+            try FileManager.default.copyItem(at: url, to: tempFileURL)
+            tempPath = tempFileURL.path
+            
+            print("📁 iOS File size OK: \(String(format: "%.1f", Double(fileSize) / (1024.0 * 1024.0)))MB")
+          } else {
+            print("📁 iOS File too large: \(String(format: "%.1f", Double(fileSize) / (1024.0 * 1024.0)))MB (limit: 25MB)")
+          }
           
           // Get file type for mime type
           var fileType = "unknown"
@@ -275,11 +290,12 @@ class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
           let fileInfo: [String: Any] = [
             "id": url.absoluteString,
             "name": fileName,
-            "size": resourceValues.fileSize ?? 0,
-            "path": tempFileURL.path,  // Use temp path for persistent access
+            "size": fileSize,
+            "path": tempPath ?? url.absoluteString,  // Use temp path if available, otherwise original URL
             "type": fileType,
             "isDirectory": resourceValues.isDirectory ?? false,
-            "mimeType": self.getMimeType(for: fileType)
+            "mimeType": self.getMimeType(for: fileType),
+            "sizeLimitExceeded": sizeLimitExceeded
           ]
           
           fileInfos.append(fileInfo)

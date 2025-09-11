@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 class DMMessage {
   final int id;
   final int conversationId;
@@ -13,6 +11,7 @@ class DMMessage {
   final String? mediaFilename;
   final int? mediaSize;
   final int? mediaDuration;
+  final String? localMediaPath;
 
   // DM-specific fields
   final bool isRead;
@@ -37,6 +36,7 @@ class DMMessage {
     this.mediaFilename,
     this.mediaSize,
     this.mediaDuration,
+    this.localMediaPath,
     this.isRead = false,
     this.deliveredAt,
     required this.createdAt,
@@ -69,6 +69,9 @@ class DMMessage {
       mediaFilename: json['media_filename'] as String?,
       mediaSize: json['media_size'] as int?,
       mediaDuration: json['media_duration'] as int?,
+      localMediaPath:
+          json['local_media_path'] as String? ??
+          json['localMediaPath'] as String?,
       isRead: json['is_read'] as bool? ?? false,
       deliveredAt:
           json['delivered_at'] != null
@@ -110,6 +113,7 @@ class DMMessage {
       'mediaFilename': mediaFilename,
       'mediaSize': mediaSize,
       'mediaDuration': mediaDuration,
+      'localMediaPath': localMediaPath,
       'isRead': isRead,
       'deliveredAt': deliveredAt?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
@@ -133,6 +137,7 @@ class DMMessage {
     String? mediaFilename,
     int? mediaSize,
     int? mediaDuration,
+    String? localMediaPath,
     bool? isRead,
     DateTime? deliveredAt,
     DateTime? createdAt,
@@ -153,6 +158,7 @@ class DMMessage {
       mediaFilename: mediaFilename ?? this.mediaFilename,
       mediaSize: mediaSize ?? this.mediaSize,
       mediaDuration: mediaDuration ?? this.mediaDuration,
+      localMediaPath: localMediaPath ?? this.localMediaPath,
       isRead: isRead ?? this.isRead,
       deliveredAt: deliveredAt ?? this.deliveredAt,
       createdAt: createdAt ?? this.createdAt,

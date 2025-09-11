@@ -55,42 +55,48 @@ class _UnifiedSendButtonState extends State<UnifiedSendButton> {
             !isProcessing &&
             (widget.requiresMediaOrText ? (hasText || hasMedia) : hasText);
 
-        return CircleAvatar(
-          backgroundColor: _getBackgroundColor(
-            isEnabled,
-            isProcessing,
-            widget.isSending,
-            _primaryColor!,
-            _isDarkMode!,
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Progress indicator for processing or sending
-              if (isProcessing || widget.isSending)
-                SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    value: null, // Indeterminate spinner
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Colors.white,
-                    ),
-                    backgroundColor: Colors.white.withValues(alpha: 0.3),
-                  ),
-                ),
-
-              // Send icon with different states
-              GestureDetector(
-                onTap: isEnabled ? widget.onSend : null,
-                child: Icon(
-                  _getIcon(isProcessing, widget.isSending),
-                  color: Colors.white,
-                  size: 20,
-                ),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: isEnabled ? widget.onSend : null,
+            borderRadius: BorderRadius.circular(
+              20,
+            ), // Match CircleAvatar radius
+            child: CircleAvatar(
+              backgroundColor: _getBackgroundColor(
+                isEnabled,
+                isProcessing,
+                widget.isSending,
+                _primaryColor!,
+                _isDarkMode!,
               ),
-            ],
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Progress indicator for processing or sending
+                  if (isProcessing || widget.isSending)
+                    SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        value: null, // Indeterminate spinner
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Colors.white,
+                        ),
+                        backgroundColor: Colors.white.withValues(alpha: 0.3),
+                      ),
+                    ),
+
+                  // Send icon with different states
+                  Icon(
+                    _getIcon(isProcessing, widget.isSending),
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },

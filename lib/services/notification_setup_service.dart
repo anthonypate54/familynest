@@ -13,6 +13,9 @@ class NotificationSetupService {
   ) async {
     debugPrint('🔔 NOTIFICATION_SETUP: Starting for user $userId');
 
+    // Get apiService before any async operations
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
     // Check if user has already seen the notification dialog
     bool hasSeenDialog = await hasSeenNotificationDialog(userId);
     if (hasSeenDialog) {
@@ -31,7 +34,6 @@ class NotificationSetupService {
 
       // Still need to call enable-all API to set database flags
       try {
-        final apiService = Provider.of<ApiService>(context, listen: false);
         bool success = await apiService.enableAllNotificationPreferences(
           userId,
         );
@@ -56,6 +58,7 @@ class NotificationSetupService {
 
     // Show notification permission dialog
     debugPrint('🔔 NOTIFICATION_SETUP: Showing notification dialog');
+    if (!context.mounted) return false;
     return await _showNotificationDialog(context, userId, userRole);
   }
 
@@ -169,7 +172,7 @@ class NotificationSetupService {
                           SnackBar(
                             content: Text('Error enabling preferences: $e'),
                             backgroundColor: Colors.red,
-                            duration: Duration(seconds: 3),
+                            duration: const Duration(seconds: 3),
                           ),
                         );
                       }

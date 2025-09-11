@@ -55,7 +55,7 @@ class _SimpleVideoPlayerState extends State<SimpleVideoPlayer> {
         }
       }
     } catch (e) {
-      print('Failed to preload video: $e');
+      debugPrint('Failed to preload video: $e');
     }
   }
 
@@ -99,7 +99,7 @@ class _SimpleVideoPlayerState extends State<SimpleVideoPlayer> {
                   width: 70,
                   height: 70,
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
+                    color: Colors.black.withValues(alpha: 0.7),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -530,7 +530,7 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
+                        color: Colors.black.withValues(alpha: 0.6),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -550,7 +550,7 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
                       width: 70,
                       height: 70,
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
+                        color: Colors.black.withValues(alpha: 0.7),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -577,7 +577,7 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
                         begin: Alignment.bottomCenter,
                         end: Alignment.topCenter,
                         colors: [
-                          Colors.black.withOpacity(0.8),
+                          Colors.black.withValues(alpha: 0.8),
                           Colors.transparent,
                         ],
                       ),

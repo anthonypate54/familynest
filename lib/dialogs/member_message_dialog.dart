@@ -243,8 +243,8 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
                 color: Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(8.0),
               ),
-              child: Column(
-                children: const [
+              child: const Column(
+                children: [
                   Icon(
                     Icons.notifications_active,
                     color: Colors.blue,
@@ -456,10 +456,10 @@ class _MemberMessageDialogState extends State<MemberMessageDialog> {
                             // Family ownership icon
                             if (member.containsKey('isOwner') &&
                                 member['isOwner'] == true)
-                              Tooltip(
+                              const Tooltip(
                                 message: 'Family Owner',
                                 child: Padding(
-                                  padding: const EdgeInsets.only(left: 8.0),
+                                  padding: EdgeInsets.only(left: 8.0),
                                   child: Icon(
                                     Icons.home,
                                     color: Colors.amber,

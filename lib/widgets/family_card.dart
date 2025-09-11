@@ -53,8 +53,8 @@ class _FamilyCardState extends State<FamilyCard> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    family.roleColor.withOpacity(0.8),
-                    family.roleColor.withOpacity(0.6),
+                    family.roleColor.withValues(alpha: 0.8),
+                    family.roleColor.withValues(alpha: 0.6),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -71,7 +71,7 @@ class _FamilyCardState extends State<FamilyCard> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(family.roleIcon, color: Colors.white, size: 24),
@@ -100,7 +100,7 @@ class _FamilyCardState extends State<FamilyCard> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
+                                color: Colors.white.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
@@ -132,7 +132,7 @@ class _FamilyCardState extends State<FamilyCard> {
                         Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.2),
+                            color: Colors.red.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
@@ -145,7 +145,7 @@ class _FamilyCardState extends State<FamilyCard> {
                         Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.2),
+                            color: Colors.orange.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
@@ -321,7 +321,7 @@ class _FamilyCardState extends State<FamilyCard> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, color: color, size: 20),
@@ -393,7 +393,7 @@ class _FamilyMemberCardState extends State<FamilyMemberCard> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+                  color: Colors.blue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
@@ -412,7 +412,7 @@ class _FamilyMemberCardState extends State<FamilyMemberCard> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: member.roleColor.withOpacity(0.1),
+                color: member.roleColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -429,7 +429,7 @@ class _FamilyMemberCardState extends State<FamilyMemberCard> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
+                  color: Colors.green.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -452,7 +452,7 @@ class _FamilyMemberCardState extends State<FamilyMemberCard> {
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
+                  color: Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: const Icon(

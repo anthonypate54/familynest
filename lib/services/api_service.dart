@@ -2865,6 +2865,7 @@ Network connection error. Please check:
     String? mediaPath,
     String? mediaType,
     String? videoUrl,
+    String? localMediaPath,
   }) async {
     try {
       debugPrint(
@@ -2916,7 +2917,12 @@ Network connection error. Please check:
       // Add video URL if provided (for external videos)
       if (videoUrl != null && videoUrl.isNotEmpty) {
         request.fields['videoUrl'] = videoUrl;
-        debugPrint('🎥 Added video URL: $videoUrl');
+      }
+
+      // Add local media path if provided (for instant playback)
+      if (localMediaPath != null && localMediaPath.isNotEmpty) {
+        request.fields['localMediaPath'] = localMediaPath;
+        debugPrint('📱 Added local media path: $localMediaPath');
       }
 
       var streamedResponse = await request.send();

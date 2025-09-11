@@ -84,10 +84,9 @@ class VideoCompositionService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('❌ VideoCompositionService: Error processing media file: $e');
+      debugPrint('Error processing media file: $e');
       return false;
     } finally {
-      debugPrint('🔄 VideoCompositionService: Media processing completed');
       _isProcessingMedia = false;
       notifyListeners();
     }
@@ -102,7 +101,11 @@ class VideoCompositionService extends ChangeNotifier {
     _selectedMediaFile = null;
     _selectedMediaType = null;
     _selectedVideoThumbnail = null;
+    _isProcessingMedia = false; // Ensure processing state is reset
 
+    debugPrint(
+      '🧹 VideoCompositionService: Cleared composition, isProcessingMedia = false',
+    );
     notifyListeners();
   }
 

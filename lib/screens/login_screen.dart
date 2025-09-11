@@ -6,7 +6,6 @@ import '../services/notification_service.dart'; // Add notification service impo
 import '../models/user.dart'; // Import User model
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/gradient_background.dart';
-import '../main.dart';
 import '../utils/error_codes.dart'; // Add error codes import
 
 class LoginScreen extends StatefulWidget {
@@ -127,7 +126,7 @@ class LoginScreenState extends State<LoginScreen> {
     });
 
     // Add a slight delay to let the UI initialize before checking login
-    Future.delayed(Duration(milliseconds: 300), () {
+    Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) {
         _checkLoggedInUser();
       }
@@ -160,6 +159,9 @@ class LoginScreenState extends State<LoginScreen> {
     try {
       debugPrint('LOGIN_SCREEN: Starting auto-login check...');
 
+      // Get apiService before any async operations
+      final apiService = Provider.of<ApiService>(context, listen: false);
+
       // First check if explicitly logged out
       final prefs = await SharedPreferences.getInstance();
       final wasExplicitlyLoggedOut =
@@ -172,11 +174,7 @@ class LoginScreenState extends State<LoginScreen> {
         return; // Stay on login screen
       }
 
-      final userResponse =
-          await Provider.of<ApiService>(
-            context,
-            listen: false,
-          ).getCurrentUser();
+      final userResponse = await apiService.getCurrentUser();
 
       if (userResponse != null && mounted) {
         // Extract user data
@@ -213,12 +211,14 @@ class LoginScreenState extends State<LoginScreen> {
           }
 
           // Use OnboardingService to route based on onboarding state bitmap
-          await CleanOnboardingService.routeAfterLogin(
-            context,
-            userId,
-            userRole,
-            onboardingState ?? 0,
-          );
+          if (mounted) {
+            await CleanOnboardingService.routeAfterLogin(
+              context,
+              userId,
+              userRole,
+              onboardingState ?? 0,
+            );
+          }
         } else {
           debugPrint('LOGIN_SCREEN: Not navigating - userId is null');
         }
@@ -330,16 +330,19 @@ class LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     if (!_loginFormKey.currentState!.validate()) return;
 
+    // Get apiService before any async operations
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
     try {
       setState(() {
         _isLoading = true;
         _errorMessage = '';
       });
 
-      final response = await Provider.of<ApiService>(
-        context,
-        listen: false,
-      ).login(_loginUsernameController.text, _loginPasswordController.text);
+      final response = await apiService.login(
+        _loginUsernameController.text,
+        _loginPasswordController.text,
+      );
 
       if (response != null) {
         if (!mounted) return;
@@ -356,7 +359,6 @@ class LoginScreenState extends State<LoginScreen> {
         );
 
         // Get current user to check onboarding state
-        final apiService = Provider.of<ApiService>(context, listen: false);
         final userResponse = await apiService.getCurrentUser();
 
         if (userResponse != null && mounted) {
@@ -378,19 +380,20 @@ class LoginScreenState extends State<LoginScreen> {
           }
 
           // Use OnboardingService to route based on onboarding state bitmap
-          await CleanOnboardingService.routeAfterLogin(
-            context,
-            userId,
-            userRole,
-            onboardingState ?? 0,
-          );
+          if (mounted) {
+            await CleanOnboardingService.routeAfterLogin(
+              context,
+              userId,
+              userRole,
+              onboardingState ?? 0,
+            );
+          }
         } else {
           // Fallback to normal flow if we can't get user data
           debugPrint('Could not get user data, falling back to normal flow');
 
           // Still try to register FCM token even in fallback
           try {
-            final apiService = Provider.of<ApiService>(context, listen: false);
             await NotificationService.sendTokenToBackend(
               userId.toString(),
               apiService,
@@ -402,7 +405,9 @@ class LoginScreenState extends State<LoginScreen> {
             debugPrint('⚠️ Failed to register FCM token in fallback: $e');
           }
 
-          CleanOnboardingService.normalFlow(context, userId, userRole);
+          if (mounted) {
+            CleanOnboardingService.normalFlow(context, userId, userRole);
+          }
         }
       } else {
         if (!mounted) return;
@@ -547,9 +552,9 @@ class LoginScreenState extends State<LoginScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          const Text(
             'Login',
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 24),
           if (_errorMessage != null)
@@ -601,9 +606,9 @@ class LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: Text(
+                child: const Text(
                   'Login',
-                  style: const TextStyle(fontSize: 16, color: Colors.white),
+                  style: TextStyle(fontSize: 16, color: Colors.white),
                 ),
               ),
           const SizedBox(height: 16),
@@ -630,9 +635,9 @@ class LoginScreenState extends State<LoginScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          const Text(
             'Register',
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 24),
           if (_errorMessage != null)
@@ -832,9 +837,9 @@ class LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: Text(
+                child: const Text(
                   'Create Account',
-                  style: const TextStyle(fontSize: 16, color: Colors.white),
+                  style: TextStyle(fontSize: 16, color: Colors.white),
                 ),
               ),
         ],
@@ -908,15 +913,21 @@ class LoginScreenState extends State<LoginScreen> {
           ),
         );
       } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('An error occurred. Please try again.'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error sending password reset request: $e');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('An error occurred. Please try again.')),
         );
       }
-    } catch (e) {
-      debugPrint('Error sending password reset request: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('An error occurred. Please try again.')),
-      );
     } finally {
       if (mounted) {
         setState(() {
@@ -990,15 +1001,21 @@ class LoginScreenState extends State<LoginScreen> {
           ),
         );
       } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('An error occurred. Please try again.'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error sending username reminder request: $e');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('An error occurred. Please try again.')),
         );
       }
-    } catch (e) {
-      debugPrint('Error sending username reminder request: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('An error occurred. Please try again.')),
-      );
     } finally {
       if (mounted) {
         setState(() {

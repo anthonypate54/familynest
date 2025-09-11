@@ -11,8 +11,8 @@ import '../services/websocket_service.dart';
 import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'dart:async';
+import 'package:path_provider/path_provider.dart';
 
-import 'package:image_picker/image_picker.dart';
 import '../widgets/gradient_background.dart';
 import '../theme/app_theme.dart';
 
@@ -22,6 +22,8 @@ import '../services/ios_media_picker.dart';
 import '../services/video_composition_service.dart';
 import '../widgets/video_composition_preview.dart';
 import '../widgets/unified_send_button.dart';
+import '../utils/video_thumbnail_util.dart';
+import '../utils/camera_utils.dart';
 
 class ThreadScreen extends StatefulWidget {
   final int userId;
@@ -314,111 +316,45 @@ class _ThreadScreenState extends State<ThreadScreen>
       return;
     }
 
-    showModalBottomSheet(
+    CameraUtils.showModernMediaPicker(
       context: context,
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Wrap(
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: const Text('Take a photo'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickMediaFromCamera('photo');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('Choose from gallery'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickMedia('photo');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.videocam),
-                title: const Text('Record a video'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickMediaFromCamera('video');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.video_library),
-                title: const Text('Choose video from gallery'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickMedia('video');
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    ).then((_) {
-      // Reset flag when modal closes
-    });
+      onCameraPressed: _openCustomCamera,
+      onGalleryPressed: _openUnifiedMediaPicker,
+    );
   }
 
-  // Unified media picker that accesses Photos AND Files
-  Future<void> _pickMedia(String type) async {
-    try {
-      final File? file = await UnifiedMediaPicker.pickMedia(
-        context: context,
-        type: type,
-        onShowPicker: () => _showMediaPicker(),
-      );
-
-      if (!mounted) return;
-
-      if (file != null) {
-        await _compositionService?.processLocalFile(file, type);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error picking media: $e'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+  Future<void> _openUnifiedMediaPicker() async {
+    final File? file = await UnifiedMediaPicker.pickMedia(
+      context: context,
+      type: 'media',
+      onShowPicker: () => _showMediaPicker(),
+    );
+    if (!mounted) return;
+    if (file != null) {
+      final String type = CameraUtils.getMediaType(file.path);
+      await _processLocalFile(file, type);
     }
   }
 
-  Future<void> _pickMediaFromCamera(String type) async {
+  Future<void> _openCustomCamera() async {
+    final String? capturedPath = await CameraUtils.openCustomCamera(context);
+    if (!mounted) return;
+    if (capturedPath != null) {
+      final File file = File(capturedPath);
+      // Determine if it's a photo or video based on file extension
+      String type = CameraUtils.getMediaType(file.path);
+      await _processLocalFile(file, type);
+    }
+  }
+
+  Future<void> _processLocalFile(File file, String type) async {
     try {
-      XFile? pickedFile;
-
-      if (type == 'photo') {
-        pickedFile = await ImagePicker().pickImage(
-          source: ImageSource.camera,
-          imageQuality: 80,
-          maxWidth: 1920,
-          maxHeight: 1920,
-        );
-      } else if (type == 'video') {
-        pickedFile = await ImagePicker().pickVideo(
-          source: ImageSource.camera,
-          maxDuration: const Duration(minutes: 5),
-        );
-      }
-
-      if (!mounted) return;
-
-      if (pickedFile != null) {
-        File file = File(pickedFile.path);
-
-        // Process the captured file
-        await _compositionService?.processLocalFile(file, type);
-      }
+      await _compositionService?.processLocalFile(file, type);
     } catch (e) {
-      debugPrint('Error capturing $type with camera: $e');
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error accessing camera: $e'),
+          content: Text('Error processing $type: $e'),
           duration: const Duration(seconds: 3),
         ),
       );
@@ -436,11 +372,13 @@ class _ThreadScreenState extends State<ThreadScreen>
   }
 
   void _onVideoTap(String messageId) {
+    // Modern video system: SimpleVideoPlayer handles full-screen playback automatically
+    // Just track which video is "selected" for UI consistency
     setState(() {
       if (_currentlyPlayingVideoId == messageId) {
-        _currentlyPlayingVideoId = null; // Stop playing if already playing
+        _currentlyPlayingVideoId = null; // Deselect if already selected
       } else {
-        _currentlyPlayingVideoId = messageId; // Start playing this video
+        _currentlyPlayingVideoId = messageId; // Select this video
       }
     });
   }
@@ -483,14 +421,35 @@ class _ThreadScreenState extends State<ThreadScreen>
             familyId: widget.message['familyId'] as int?,
           );
         } else if (_compositionService?.selectedMediaType == 'video') {
+          // For videos: Copy to persistent storage for instant playback
+          debugPrint(
+            '📱 Video Comment: Copying to persistent storage for local playback',
+          );
+          final String? persistentPath = await _copyVideoToPersistentStorage(
+            _compositionService!.selectedMediaFile!.path,
+          );
+
           newComment = await apiService.postComment(
             widget.userId,
             int.parse(widget.message['id'].toString()),
             userMessage.isNotEmpty ? userMessage : 'Shared a video',
-            mediaPath: _compositionService?.selectedMediaFile!.path,
+            mediaPath:
+                _compositionService
+                    ?.selectedMediaFile!
+                    .path, // Upload original file
             mediaType: 'video',
+            localMediaPath:
+                persistentPath, // Use persistent path for local playback
             familyId: widget.message['familyId'] as int?,
           );
+
+          // Upload video in background (don't await)
+          if (newComment != null) {
+            _uploadVideoInBackground(
+              newComment,
+              _compositionService!.selectedMediaFile!,
+            );
+          }
         }
       } else {
         newComment = await apiService.postComment(
@@ -507,6 +466,11 @@ class _ThreadScreenState extends State<ThreadScreen>
 
         _messageController.clear();
         await _compositionService?.clearComposition();
+
+        // Additional memory cleanup after posting video
+        if (_compositionService?.selectedMediaType == 'video') {
+          VideoThumbnailUtil.clearCache();
+        }
 
         setState(() {});
         await Future.delayed(
@@ -816,5 +780,101 @@ class _ThreadScreenState extends State<ThreadScreen>
         ),
       ],
     );
+  }
+
+  // Upload video in background and update comment when complete
+  void _uploadVideoInBackground(Message comment, File videoFile) async {
+    try {
+      debugPrint('🔄 Background upload starting for comment ${comment.id}');
+
+      final apiService = context.read<ApiService>();
+      final videoData = await apiService.uploadVideoWithThumbnail(videoFile);
+
+      if (videoData['videoUrl'] != null && videoData['videoUrl']!.isNotEmpty) {
+        debugPrint('✅ Background upload complete: ${videoData['videoUrl']}');
+
+        // Update the comment with server URL (for other users and future loads)
+        final updatedComment = comment.copyWith(
+          mediaUrl: videoData['videoUrl'],
+          thumbnailUrl: videoData['thumbnailUrl'],
+        );
+
+        // Update the comment in the provider
+        if (mounted) {
+          final commentProvider = context.read<CommentProvider>();
+          commentProvider.updateComment(updatedComment);
+        }
+
+        // Clean up temporary video file after successful upload
+        try {
+          if (await videoFile.exists()) {
+            await videoFile.delete();
+            debugPrint('🧹 Temporary video file cleaned up: ${videoFile.path}');
+          }
+        } catch (cleanupError) {
+          debugPrint(
+            '⚠️ Error cleaning up temporary video file: $cleanupError',
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Background upload failed: $e');
+      // Video will continue to play from local file
+    } finally {
+      // Additional memory cleanup after background upload
+      VideoThumbnailUtil.clearCache();
+    }
+  }
+
+  // Copy video to persistent storage for instant local playback
+  Future<String?> _copyVideoToPersistentStorage(String originalPath) async {
+    try {
+      // Get the application documents directory
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String appDocPath = appDocDir.path;
+
+      // Create sent_videos subdirectory
+      final Directory sentVideosDir = Directory('$appDocPath/sent_videos');
+      if (!await sentVideosDir.exists()) {
+        await sentVideosDir.create(recursive: true);
+      }
+
+      // Extract timestamp from original filename to ensure matching
+      String timestamp;
+      final String originalFileName = originalPath.split('/').last;
+      final RegExp timestampRegex = RegExp(r'(\d{13})_REC');
+      final Match? match = timestampRegex.firstMatch(originalFileName);
+
+      if (match != null) {
+        timestamp = match.group(1)!;
+        debugPrint('📱 Using original video timestamp: $timestamp');
+      } else {
+        timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+        debugPrint('⚠️ Could not extract timestamp, using current: $timestamp');
+      }
+
+      final String fileName = 'video_$timestamp.mp4';
+      final String persistentPath = '${sentVideosDir.path}/$fileName';
+
+      // Copy the video file to persistent location
+      final File originalFile = File(originalPath);
+      final File persistentFile = await originalFile.copy(persistentPath);
+
+      // Ensure file is fully written to disk before returning
+      await persistentFile.writeAsBytes(
+        await persistentFile.readAsBytes(),
+        flush: true,
+      );
+
+      // Small delay to ensure Android file system has processed the file
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      debugPrint('✅ Video copied to persistent storage for instant playback');
+
+      return persistentFile.path;
+    } catch (e) {
+      debugPrint('❌ Error copying video to persistent storage: $e');
+      return null;
+    }
   }
 }

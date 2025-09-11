@@ -670,30 +670,6 @@ class _MessageScreenState extends State<MessageScreen>
     }
   }
 
-  Future<void> _pickMedia(String type) async {
-    try {
-      final File? file = await UnifiedMediaPicker.pickMedia(
-        context: context,
-        type: type,
-        onShowPicker: () => _showMediaPicker(),
-      );
-
-      if (!mounted) return;
-
-      if (file != null) {
-        await _processLocalFile(file, type);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error picking media: $e'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
   Future<void> _openCustomCamera() async {
     final String? capturedPath = await CameraUtils.openCustomCamera(context);
 

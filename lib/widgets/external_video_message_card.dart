@@ -46,13 +46,13 @@ class ExternalVideoMessageCard extends StatelessWidget {
           Icon(
             Icons.cloud_outlined,
             size: 48,
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
           ),
           const SizedBox(height: 8),
           Text(
             'External Video',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withValues(alpha: 0.8),
               fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
@@ -137,7 +137,7 @@ class ExternalVideoMessageCard extends StatelessWidget {
                 width: 64,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
+                  color: Colors.black.withValues(alpha: 0.7),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -157,7 +157,7 @@ class ExternalVideoMessageCard extends StatelessWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.9),
+                    color: Colors.blue.withValues(alpha: 0.9),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Row(
@@ -188,13 +188,13 @@ class ExternalVideoMessageCard extends StatelessWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
+                    color: Colors.black.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     'Tap to open',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 10,
                     ),
                   ),

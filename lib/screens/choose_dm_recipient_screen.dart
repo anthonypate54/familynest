@@ -270,7 +270,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
               displayName,
               style: const TextStyle(color: Colors.black87, fontSize: 14),
             ),
-            backgroundColor: Colors.white.withOpacity(0.9),
+            backgroundColor: Colors.white.withValues(alpha: 0.9),
             deleteIcon: const Icon(
               Icons.close,
               color: Colors.black54,
@@ -343,7 +343,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
           style: TextStyle(color: Colors.white, fontSize: 16),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white.withOpacity(0.2),
+          backgroundColor: Colors.white.withValues(alpha: 0.2),
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
@@ -440,7 +440,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
               radius: 18,
               backgroundColor: Theme.of(
                 context,
-              ).colorScheme.primary.withOpacity(0.2),
+              ).colorScheme.primary.withValues(alpha: 0.2),
             ),
             const SizedBox(width: 8),
           ],
@@ -465,7 +465,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       // "To:" label
-                      Text(
+                      const Text(
                         'To:',
                         style: TextStyle(
                           color:
@@ -551,7 +551,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
                               Icon(
                                 Icons.family_restroom,
                                 size: 64,
-                                color: Colors.white.withOpacity(0.7),
+                                color: Colors.white.withValues(alpha: 0.7),
                               ),
                               const SizedBox(height: 16),
                               const Text(
@@ -622,10 +622,10 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
       decoration: BoxDecoration(
         color:
             _isGroupMode && isSelected
-                ? Colors.white.withOpacity(
-                  0.3,
+                ? Colors.white.withValues(
+                  alpha: 0.3,
                 ) // Highlight selected in group mode
-                : Colors.white.withOpacity(0.1),
+                : Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
@@ -704,7 +704,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
               color:
                   isSelected
                       ? Theme.of(context).primaryColor
-                      : Colors.white.withOpacity(0.5),
+                      : Colors.white.withValues(alpha: 0.5),
               width: 2,
             ),
           ),

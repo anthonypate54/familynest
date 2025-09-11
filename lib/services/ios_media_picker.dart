@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../config/app_config.dart';
 import '../dialogs/large_video_dialog.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class IosPickedFile {
   final String id;
@@ -122,6 +122,8 @@ class UnifiedMediaPicker {
 
       if (source == null) return null; // User cancelled
 
+      if (!context.mounted) return null;
+
       if (source == 'photos') {
         return await _pickFromPhotos(context, type, onShowPicker);
       } else {
@@ -232,14 +234,7 @@ class UnifiedMediaPicker {
               onShowPicker();
             } else if (action == VideoSizeAction.shareAsLink) {
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Upload your video to Google Drive or Dropbox first, then select it from there.',
-                    ),
-                    duration: Duration(seconds: 4),
-                  ),
-                );
+                await _showShareAsLinkDialog(context);
               }
               onShowPicker();
             }
@@ -287,6 +282,9 @@ class UnifiedMediaPicker {
         mimeType: cloudFileData['mimeType'],
         provider: 'files',
       );
+
+      // Check if size limit was exceeded in native code
+      final bool sizeLimitExceeded = cloudFileData['sizeLimitExceeded'] == true;
 
       // Detect actual file type from MIME type
       String actualType = type;
@@ -353,14 +351,7 @@ class UnifiedMediaPicker {
               onShowPicker();
             } else if (action == VideoSizeAction.shareAsLink) {
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Upload your video to Google Drive or Dropbox first, then select it from there.',
-                    ),
-                    duration: Duration(seconds: 4),
-                  ),
-                );
+                await _showShareAsLinkDialog(context);
               }
               onShowPicker();
             }
@@ -369,14 +360,50 @@ class UnifiedMediaPicker {
         }
       }
 
-      if (cloudFile.localPath == null) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Unable to access selected file'),
-              duration: Duration(seconds: 2),
-            ),
-          );
+      if (cloudFile.localPath == null || sizeLimitExceeded) {
+        if (sizeLimitExceeded) {
+          // File was too large - show the large video dialog
+          final double fileSizeMB = cloudFile.size / (1024 * 1024);
+          if (actualType == 'photo') {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Photo too large (${fileSizeMB.toStringAsFixed(1)}MB). Please select a photo under ${AppConfig.maxFileUploadSizeMB}MB.',
+                  ),
+                  duration: const Duration(seconds: 4),
+                  action: SnackBarAction(
+                    label: 'Choose Another',
+                    onPressed: () => onShowPicker(),
+                  ),
+                ),
+              );
+            }
+          } else {
+            // Video too large - show dialog
+            if (context.mounted) {
+              final action = await LargeVideoDialog.show(context, fileSizeMB);
+
+              if (action == VideoSizeAction.chooseDifferent) {
+                onShowPicker();
+              } else if (action == VideoSizeAction.shareAsLink) {
+                if (context.mounted) {
+                  await _showShareAsLinkDialog(context);
+                }
+                // Don't call onShowPicker() - just return to message screen
+              }
+            }
+          }
+        } else {
+          // Actual file access error
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Unable to access selected file'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
         }
         return null;
       }
@@ -422,6 +449,66 @@ class UnifiedMediaPicker {
         style: TextStyle(fontSize: 14, color: Colors.grey[600]),
       ),
       onTap: onTap,
+    );
+  }
+
+  /// Shows a simple dialog explaining how to share large videos via link
+  static Future<void> _showShareAsLinkDialog(BuildContext context) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.link, color: Colors.blue, size: 28),
+              SizedBox(width: 8),
+              Text('Share as Link'),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Your video is too large to upload directly.',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'To share it:',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '1. Copy the sharing link from your cloud storage (Google Drive, Dropbox, etc.)',
+              ),
+              SizedBox(height: 8),
+              Text('2. Paste the link directly in the message text area below'),
+              SizedBox(height: 16),
+              Text(
+                'The link will work for anyone who has access to view the file.',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Got it'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

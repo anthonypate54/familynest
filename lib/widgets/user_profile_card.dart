@@ -27,8 +27,8 @@ class UserProfileCard extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Colors.blue.withOpacity(0.1),
-              Colors.purple.withOpacity(0.05),
+              Colors.blue.withValues(alpha: 0.1),
+              Colors.purple.withValues(alpha: 0.05),
             ],
           ),
         ),
@@ -61,7 +61,7 @@ class UserProfileCard extends StatelessWidget {
                 border: Border.all(color: Colors.white, width: 3),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),
@@ -133,7 +133,7 @@ class UserProfileCard extends StatelessWidget {
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
+                  color: Colors.green.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -159,8 +159,8 @@ class UserProfileCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Colors.blue.withOpacity(0.8),
-            Colors.purple.withOpacity(0.8),
+            Colors.blue.withValues(alpha: 0.8),
+            Colors.purple.withValues(alpha: 0.8),
           ],
         ),
       ),

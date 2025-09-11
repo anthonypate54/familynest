@@ -34,8 +34,8 @@ class SubscriptionCard extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              subscription!.statusColor.withOpacity(0.1),
-              subscription!.statusColor.withOpacity(0.05),
+              subscription!.statusColor.withValues(alpha: 0.1),
+              subscription!.statusColor.withValues(alpha: 0.05),
             ],
           ),
         ),
@@ -67,8 +67,8 @@ class SubscriptionCard extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Colors.blue.withOpacity(0.1),
-              Colors.blue.withOpacity(0.05),
+              Colors.blue.withValues(alpha: 0.1),
+              Colors.blue.withValues(alpha: 0.05),
             ],
           ),
         ),
@@ -77,10 +77,10 @@ class SubscriptionCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
                   Icon(Icons.star_border, color: Colors.blue, size: 32),
-                  const SizedBox(width: 12),
+                  SizedBox(width: 12),
                   Text(
                     'Start Your Free Trial',
                     style: TextStyle(

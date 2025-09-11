@@ -272,13 +272,10 @@ class MyAppState extends State<MyApp> {
       home: FutureBuilder<Map<String, dynamic>?>(
         future: _initializationFuture,
         builder: (context, snapshot) {
-          debugPrint(
-            '🎨 SPLASH: FutureBuilder state: ${snapshot.connectionState}',
-          );
           if (snapshot.connectionState == ConnectionState.waiting) {
             debugPrint('🎨 SPLASH: Showing branded loading screen');
             return Scaffold(
-              backgroundColor: Color(0xFF4CAF50),
+              backgroundColor: const Color(0xFF4CAF50),
               body: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -287,11 +284,11 @@ class MyAppState extends State<MyApp> {
                     Container(
                       width: 120,
                       height: 120,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         color: Color(0xFF4CAF50),
                         shape: BoxShape.circle,
                       ),
-                      child: Center(
+                      child: const Center(
                         child: Text(
                           'FN',
                           style: TextStyle(
@@ -871,7 +868,7 @@ class MainAppContainerState extends State<MainAppContainer>
     // Show loading indicator while determining initial screen
     if (_isCheckingInitialScreen) {
       return Scaffold(
-        backgroundColor: Color(0xFF4CAF50),
+        backgroundColor: const Color(0xFF4CAF50),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -880,11 +877,11 @@ class MainAppContainerState extends State<MainAppContainer>
               Container(
                 width: 120,
                 height: 120,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: Color(0xFF4CAF50),
                   shape: BoxShape.circle,
                 ),
-                child: Center(
+                child: const Center(
                   child: Text(
                     'FN',
                     style: TextStyle(

@@ -306,7 +306,7 @@ class WebSocketService extends ChangeNotifier {
     final timeSinceLastMessage =
         _lastMessageTime != null
             ? now.difference(_lastMessageTime!)
-            : Duration(hours: 1);
+            : const Duration(hours: 1);
 
     // Progressive ping logic based on industry standards
     bool shouldPing = false;

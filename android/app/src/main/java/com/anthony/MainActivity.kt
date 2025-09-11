@@ -192,10 +192,20 @@ class MainActivity: FlutterActivity() {
         val size = if (sizeIndex != -1) it.getLong(sizeIndex) else 0L
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
         
-        // For content URIs, only provide temp file access if size is within limits
+        // Check file size before downloading (25MB limit = 26,214,400 bytes)
+        val maxFileSizeBytes = 25 * 1024 * 1024L
+        val fileSizeMB = size / (1024.0 * 1024.0)
+        
         val path = if (uri.scheme == "content") {
-          // Copy content URI to temp file (just like FilePicker does)
-          copyContentUriToTempFile(uri, name)
+          if (size > maxFileSizeBytes) {
+            // File is too large - don't download it, return null path
+            Log.d("MainActivity", "📁 File too large: ${String.format("%.1f", fileSizeMB)}MB (limit: 25MB)")
+            null
+          } else {
+            // File size is acceptable - proceed with download
+            Log.d("MainActivity", "📁 File size OK: ${String.format("%.1f", fileSizeMB)}MB")
+            copyContentUriToTempFile(uri, name)
+          }
         } else {
           getPathFromUri(uri)
         }
@@ -206,7 +216,8 @@ class MainActivity: FlutterActivity() {
           "size" to size,
           "path" to (path ?: uri.toString()),
           "mimeType" to mimeType,
-          "isDirectory" to false
+          "isDirectory" to false,
+          "sizeLimitExceeded" to (size > maxFileSizeBytes)
         )
       } else {
         mapOf(

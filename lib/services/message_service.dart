@@ -649,7 +649,6 @@ class _MessageCardState extends State<MessageCard> {
       // WebSocket will handle the UI update - no local state changes needed
     } catch (e) {
       if (!mounted) return;
-      debugPrint('Error toggling like: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to update like: $e')));

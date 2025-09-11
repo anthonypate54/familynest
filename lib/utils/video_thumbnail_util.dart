@@ -55,7 +55,7 @@ class VideoThumbnailUtil {
             quality: 10,
             position: 500,
           );
-        }).timeout(Duration(seconds: 3)); // Shorter timeout
+        }).timeout(const Duration(seconds: 3)); // Shorter timeout
 
         stopwatch.stop();
         debugPrint(
@@ -209,7 +209,7 @@ class VideoThumbnailUtil {
     );
 
     // Draw a play icon
-    paint.color = Colors.white.withOpacity(0.8);
+    paint.color = Colors.white.withValues(alpha: 0.8);
     const double iconSize = 60;
     final double centerX = width / 2;
     final double centerY = height / 2;

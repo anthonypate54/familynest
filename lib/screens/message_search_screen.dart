@@ -225,6 +225,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       );
 
       // Navigate to DM thread screen
+      if (!mounted) return;
       slidePushReplacement(
         context,
         DMThreadScreen(
@@ -241,12 +242,14 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
     } catch (e) {
       debugPrint('🔍 Error navigating to DM thread: $e');
       // Show user-friendly error message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error opening conversation: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening conversation: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -424,7 +427,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
                               ? 'Search messages...'
                               : 'Search Family News...',
                       hintStyle: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                       prefixIcon: const Icon(Icons.search, color: Colors.white),
                       suffixIcon:
@@ -444,7 +447,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.2),
+                      fillColor: Colors.white.withValues(alpha: 0.2),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -457,7 +460,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: DropdownButtonHideUnderline(
@@ -586,11 +589,14 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(
-          0.15,
+        color: Colors.white.withValues(
+          alpha: 0.15,
         ), // Light green like MessagesHomeScreen
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1,
+        ),
       ),
       child: InkWell(
         onTap: () {
@@ -641,8 +647,8 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
                           Text(
                             content,
                             style: TextStyle(
-                              color: Colors.white.withOpacity(
-                                0.7,
+                              color: Colors.white.withValues(
+                                alpha: 0.7,
                               ), // Light white like MessagesHomeScreen
                               fontSize: 14,
                             ),
@@ -657,8 +663,8 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
                   Text(
                     _formatTimestamp(timestamp),
                     style: TextStyle(
-                      color: Colors.white.withOpacity(
-                        0.7,
+                      color: Colors.white.withValues(
+                        alpha: 0.7,
                       ), // Light white like MessagesHomeScreen
                       fontSize: 12,
                     ),

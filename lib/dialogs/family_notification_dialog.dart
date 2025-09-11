@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/family.dart';
 import '../services/family_service.dart';
-import '../widgets/family_card.dart';
-import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 
 class FamilyNotificationDialog extends StatefulWidget {
@@ -227,7 +225,9 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
             Text(
               'Mute specific family members',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
                 fontSize: 12,
               ),
             ),
@@ -296,7 +296,7 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
         subtitle,
         style: TextStyle(
           fontSize: 12,
-          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
         ),
       ),
       trailing: Switch(
@@ -322,7 +322,7 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, color: color),
@@ -335,7 +335,9 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
           subtitle,
           style: TextStyle(
             fontSize: 12,
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.7),
           ),
         ),
         trailing: const Icon(Icons.touch_app),
@@ -388,7 +390,9 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
             fontWeight: FontWeight.w500,
             color:
                 isMuted
-                    ? Theme.of(context).colorScheme.onSurface.withOpacity(0.5)
+                    ? Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.5)
                     : null,
           ),
         ),
@@ -398,7 +402,9 @@ class _FamilyNotificationDialogState extends State<FamilyNotificationDialog> {
             fontSize: 12,
             color:
                 isMuted
-                    ? Theme.of(context).colorScheme.onSurface.withOpacity(0.5)
+                    ? Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.5)
                     : member.roleColor,
           ),
         ),

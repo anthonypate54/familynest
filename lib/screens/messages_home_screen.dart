@@ -504,7 +504,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         title: Row(
           children: [
             // App logo
-            Icon(
+            const Icon(
               Icons.message, // Replace with your app logo
               color: Colors.white,
               size: 28,
@@ -588,7 +588,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                 }
 
                 // Fallback while loading - not tappable during loading
-                return UserAvatar(displayName: 'U', radius: 18);
+                return const UserAvatar(displayName: 'U', radius: 18);
               },
             ),
             const SizedBox(width: 8), // Add some padding at the end
@@ -786,7 +786,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
@@ -796,7 +796,11 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
           children: [
             // Group icon for group chats
             if (conversation.isGroup) ...[
-              Icon(Icons.group, size: 16, color: Colors.white.withOpacity(0.7)),
+              Icon(
+                Icons.group,
+                size: 16,
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
               const SizedBox(width: 4),
             ],
             Expanded(
@@ -815,7 +819,9 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                 style: TextStyle(
                   fontSize: 12,
                   color:
-                      hasUnread ? Colors.white : Colors.white.withOpacity(0.7),
+                      hasUnread
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.7),
                   fontWeight: hasUnread ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
@@ -830,8 +836,8 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                   fontSize: 14,
                   color:
                       hasUnread
-                          ? Colors.white.withOpacity(0.9)
-                          : Colors.white.withOpacity(0.7),
+                          ? Colors.white.withValues(alpha: 0.9)
+                          : Colors.white.withValues(alpha: 0.7),
                   fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
                   fontStyle:
                       lastMessageContent == null || lastMessageContent.isEmpty

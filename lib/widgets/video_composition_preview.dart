@@ -34,7 +34,7 @@ class VideoCompositionPreview extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Theme.of(context).dividerColor.withOpacity(0.3),
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
               width: 1,
             ),
           ),

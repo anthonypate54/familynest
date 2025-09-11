@@ -4,7 +4,6 @@ import '../services/api_service.dart';
 import '../widgets/gradient_background.dart';
 import 'dm_thread_screen.dart';
 import '../utils/page_transitions.dart';
-import '../models/dm_conversation.dart';
 import '../theme/app_theme.dart';
 
 class ChooseDMRecipientScreen extends StatefulWidget {
@@ -241,7 +240,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
                     borderRadius: BorderRadius.circular(25),
                   ),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.9),
+                  fillColor: Colors.white.withValues(alpha: 0.9),
                 ),
               ),
             ),

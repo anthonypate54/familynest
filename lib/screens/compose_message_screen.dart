@@ -42,7 +42,7 @@ class ComposeMessageScreen extends StatelessWidget {
                   backgroundColor: Colors.blue.shade200,
                   radius: 24,
                   backgroundImage: null, // TODO: Use user photo if available
-                  child: Text(
+                  child: const Text(
                     'U',
                     style: TextStyle(color: Colors.white, fontSize: 18),
                   ),
@@ -63,10 +63,10 @@ class ComposeMessageScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             // Placeholder for media options row
-            Row(
-              children: [
+            const Row(
+              children: <Widget>[
                 Icon(Icons.public, color: Colors.blue, size: 18),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
                   'Everyone can reply',
                   style: TextStyle(color: Colors.blue, fontSize: 14),
@@ -74,18 +74,18 @@ class ComposeMessageScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            Row(
+            const Row(
               children: [
                 Icon(Icons.text_fields, color: Colors.blue),
-                const SizedBox(width: 16),
+                SizedBox(width: 16),
                 Icon(Icons.image_outlined, color: Colors.blue),
-                const SizedBox(width: 16),
+                SizedBox(width: 16),
                 Icon(Icons.gif_box_outlined, color: Colors.blue),
-                const SizedBox(width: 16),
+                SizedBox(width: 16),
                 Icon(Icons.poll_outlined, color: Colors.blue),
-                const SizedBox(width: 16),
+                SizedBox(width: 16),
                 Icon(Icons.location_on_outlined, color: Colors.blue),
-                const SizedBox(width: 16),
+                SizedBox(width: 16),
                 Icon(Icons.add_circle_outline, color: Colors.blue),
               ],
             ),

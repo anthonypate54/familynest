@@ -3,6 +3,8 @@ import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'dart:io';
+import 'dart:async';
+import 'package:path_provider/path_provider.dart';
 import '../services/api_service.dart';
 // Removed DM view tracker import
 import '../widgets/gradient_background.dart';
@@ -21,11 +23,12 @@ import 'group_management_screen.dart';
 import '../widgets/photo_viewer.dart';
 import '../screens/messages_home_screen.dart';
 import '../widgets/emoji_message_input.dart';
-import 'package:image_picker/image_picker.dart';
 import '../services/ios_media_picker.dart';
 import '../services/video_composition_service.dart';
 import '../widgets/video_composition_preview.dart';
 import '../widgets/unified_send_button.dart';
+import '../utils/camera_utils.dart';
+import '../utils/video_thumbnail_util.dart';
 
 class DMThreadScreen extends StatefulWidget {
   final int currentUserId;
@@ -62,7 +65,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  // final FocusNode _messageFocusNode = FocusNode(); // Removed - let EmojiMessageInput manage its own focus
 
   // Remove local messages state since we'll use provider
   bool _isLoading = true;
@@ -235,7 +237,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
     _messageController.dispose();
     _scrollController.dispose();
-    // _messageFocusNode.dispose(); // Removed - focus node no longer used
 
     // Cleanup composition service
     _compositionService?.clearComposition();
@@ -266,22 +267,54 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       Map<String, dynamic>? result;
 
       if (_compositionService?.selectedMediaFile != null) {
-        // Send message with media using DMController's new postMessage endpoint
-        debugPrint(
-          '🚀 DM: Sending media message, type: $_compositionService?.selectedMediaType, path: ${_compositionService?.selectedMediaFile!.path}',
-        );
-        debugPrint(
-          '🎬 DM SEND DEBUG - Thumbnail path: ${_compositionService?.selectedVideoThumbnail?.path}',
-        );
-        debugPrint(
-          '🎬 DM SEND DEBUG - Has thumbnail: ${_compositionService?.selectedVideoThumbnail != null}',
-        );
-        result = await apiService.sendDMMessage(
-          conversationId: widget.conversationId,
-          content: content,
-          mediaPath: _compositionService?.selectedMediaFile!.path,
-          mediaType: _compositionService?.selectedMediaType!,
-        );
+        final mediaType = _compositionService?.selectedMediaType!;
+
+        if (mediaType == 'video') {
+          // For videos: Copy to persistent storage for instant playback
+          debugPrint(
+            '📱 Video DM: Copying to persistent storage for local playback',
+          );
+          final String? persistentPath = await _copyVideoToPersistentStorage(
+            _compositionService!.selectedMediaFile!.path,
+          );
+
+          // 🔍 DEBUG: Check what persistentPath we're sending
+          debugPrint('📱 DM SEND - persistentPath: $persistentPath');
+          debugPrint(
+            '📱 DM SEND - original media path: ${_compositionService!.selectedMediaFile!.path}',
+          );
+
+          result = await apiService.sendDMMessage(
+            conversationId: widget.conversationId,
+            content: content,
+            mediaPath:
+                _compositionService
+                    ?.selectedMediaFile!
+                    .path, // Upload original file
+            mediaType: mediaType,
+            localMediaPath:
+                persistentPath, // Use persistent path for local playback
+          );
+
+          // Upload video in background (don't await)
+          if (result != null) {
+            _uploadVideoInBackground(
+              DMMessage.fromJson(result),
+              _compositionService!.selectedMediaFile!,
+            );
+          }
+        } else {
+          // For photos: Use normal upload flow
+          debugPrint(
+            '🚀 DM: Sending media message, type: $mediaType, path: ${_compositionService?.selectedMediaFile!.path}',
+          );
+          result = await apiService.sendDMMessage(
+            conversationId: widget.conversationId,
+            content: content,
+            mediaPath: _compositionService?.selectedMediaFile!.path,
+            mediaType: mediaType,
+          );
+        }
         debugPrint('🚀 DM: Media message API call completed');
       } else {
         // Send text message
@@ -297,6 +330,11 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         // Clear input and media composition
         _messageController.clear();
         await _compositionService?.clearComposition();
+
+        // Additional memory cleanup after posting video
+        if (_compositionService?.selectedMediaType == 'video') {
+          VideoThumbnailUtil.clearCache();
+        }
 
         // Then update state in a single setState
         setState(() {});
@@ -323,13 +361,15 @@ class _DMThreadScreenState extends State<DMThreadScreen>
           }
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Message sent!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 1),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Message sent!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -371,112 +411,48 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       return;
     }
 
-    showModalBottomSheet(
+    CameraUtils.showModernMediaPicker(
       context: context,
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Wrap(
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: const Text('Take a photo'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickDMMediaFromCamera('photo');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('Choose from gallery'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickDMMedia('photo');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.videocam),
-                title: const Text('Record a video'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickDMMediaFromCamera('video');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.video_library),
-                title: const Text('Choose video from gallery'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickDMMedia('video');
-                },
-              ),
-            ],
-          ),
-        );
-      },
+      onCameraPressed: _openCustomCamera,
+      onGalleryPressed: _openUnifiedMediaPicker,
     );
   }
 
-  Future<void> _pickDMMedia(String type) async {
+  Future<void> _openUnifiedMediaPicker() async {
+    final File? file = await UnifiedMediaPicker.pickMedia(
+      context: context,
+      type: 'media',
+      onShowPicker: () => _showDMMediaPicker(),
+    );
+    if (!mounted) return;
+    if (file != null) {
+      final String type = CameraUtils.getMediaType(file.path);
+      await _processLocalFile(file, type);
+    }
+  }
+
+  Future<void> _openCustomCamera() async {
+    final String? capturedPath = await CameraUtils.openCustomCamera(context);
+    if (!mounted) return;
+    if (capturedPath != null) {
+      final File file = File(capturedPath);
+      // Determine if it's a photo or video based on file extension
+      String type = CameraUtils.getMediaType(file.path);
+      await _processLocalFile(file, type);
+    }
+  }
+
+  Future<void> _processLocalFile(File file, String type) async {
     try {
-      final File? file = await UnifiedMediaPicker.pickMedia(
-        context: context,
-        type: type,
-        onShowPicker: () => _showDMMediaPicker(),
-      );
-
-      if (!mounted) return;
-
-      if (file != null) {
-        await _compositionService?.processLocalFile(file, type);
-      }
+      await _compositionService?.processLocalFile(file, type);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error picking media: $e'),
+          content: Text('Error processing $type: $e'),
           duration: const Duration(seconds: 3),
         ),
       );
-    }
-  }
-
-  Future<void> _pickDMMediaFromCamera(String type) async {
-    try {
-      XFile? pickedFile;
-
-      if (type == 'photo') {
-        pickedFile = await ImagePicker().pickImage(
-          source: ImageSource.camera,
-          imageQuality: 80,
-          maxWidth: 1920,
-          maxHeight: 1920,
-        );
-      } else if (type == 'video') {
-        pickedFile = await ImagePicker().pickVideo(
-          source: ImageSource.camera,
-          maxDuration: const Duration(minutes: 5),
-        );
-      }
-
-      if (!mounted) return;
-
-      if (pickedFile != null) {
-        File file = File(pickedFile.path);
-        debugPrint('📸 DM Camera $type captured: ${file.path}');
-
-        // Process the captured file
-        await _compositionService?.processLocalFile(file, type);
-      }
-    } catch (e) {
-      debugPrint('Error picking DM media from camera: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error accessing camera: $e'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
     }
   }
 
@@ -867,7 +843,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                   // Message input (using reusable component)
                   EmojiMessageInput(
                     controller: _messageController,
-                    // focusNode: _messageFocusNode, // Removed - let EmojiMessageInput manage its own focus
                     hintText: 'Message ${widget.otherUserName}...',
                     onSend: _sendMessage,
                     onMediaAttach: _showDMMediaPicker,
@@ -1021,14 +996,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     final String? mediaType = message.mediaType;
     final String? thumbnailUrl = message.mediaThumbnail;
 
-    // DEBUG: Log what thumbnail data we're getting
-    if (mediaType == 'video') {
-      debugPrint('🎬 DM Video Message Debug:');
-      debugPrint('  mediaUrl: $mediaUrl');
-      debugPrint('  thumbnailUrl: $thumbnailUrl');
-      debugPrint('  mediaThumbnail: ${message.mediaThumbnail}');
-    }
-
     // Construct full URLs for media
     final String? fullMediaUrl =
         mediaUrl != null
@@ -1150,16 +1117,21 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                             apiService: apiService,
                           )
                           : // Local video - use VideoMessageCard
-                          GestureDetector(
-                            behavior: HitTestBehavior.deferToChild,
-                            onTap: () => _onVideoTap(message.id),
-                            child: VideoMessageCard(
-                              videoUrl: fullMediaUrl,
-                              thumbnailUrl: fullThumbnailUrl,
-                              apiService: apiService,
-                              isCurrentlyPlaying:
-                                  _currentlyPlayingVideoId == (message.id),
-                            ),
+                          Builder(
+                            builder: (context) {
+                              return GestureDetector(
+                                behavior: HitTestBehavior.deferToChild,
+                                onTap: () => _onVideoTap(message.id),
+                                child: VideoMessageCard(
+                                  videoUrl: fullMediaUrl,
+                                  localMediaPath: message.localMediaPath,
+                                  thumbnailUrl: fullThumbnailUrl,
+                                  apiService: apiService,
+                                  isCurrentlyPlaying:
+                                      _currentlyPlayingVideoId == (message.id),
+                                ),
+                              );
+                            },
                           ),
                       if (content.isNotEmpty) const SizedBox(height: 8),
                     ],
@@ -1244,5 +1216,106 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
     // Simplified: no view tracking, just return the message content
     return messageContent;
+  }
+
+  // Upload video in background and update DM message when complete
+  void _uploadVideoInBackground(DMMessage dmMessage, File videoFile) async {
+    try {
+      debugPrint(
+        '🔄 Background upload starting for DM message ${dmMessage.id}',
+      );
+
+      final apiService = context.read<ApiService>();
+      final videoData = await apiService.uploadVideoWithThumbnail(videoFile);
+
+      if (videoData['videoUrl'] != null && videoData['videoUrl']!.isNotEmpty) {
+        debugPrint('✅ Background upload complete: ${videoData['videoUrl']}');
+
+        // Update the DM message with server URL (for other users and future loads)
+        final updatedMessage = dmMessage.copyWith(
+          mediaUrl: videoData['videoUrl'],
+          mediaThumbnail: videoData['thumbnailUrl'],
+        );
+
+        // Update the message in the provider
+        if (mounted) {
+          final dmMessageProvider = context.read<DMMessageProvider>();
+          dmMessageProvider.updateMessage(
+            widget.conversationId,
+            updatedMessage,
+          );
+        }
+
+        // Clean up temporary video file after successful upload
+        try {
+          if (await videoFile.exists()) {
+            await videoFile.delete();
+            debugPrint('🧹 Temporary video file cleaned up: ${videoFile.path}');
+          }
+        } catch (cleanupError) {
+          debugPrint(
+            '⚠️ Error cleaning up temporary video file: $cleanupError',
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Background upload failed: $e');
+      // Video will continue to play from local file
+    } finally {
+      // Additional memory cleanup after background upload
+      VideoThumbnailUtil.clearCache();
+    }
+  }
+
+  // Copy video to persistent storage for instant local playback
+  Future<String?> _copyVideoToPersistentStorage(String originalPath) async {
+    try {
+      // Get the application documents directory
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String appDocPath = appDocDir.path;
+
+      // Create sent_videos subdirectory
+      final Directory sentVideosDir = Directory('$appDocPath/sent_videos');
+      if (!await sentVideosDir.exists()) {
+        await sentVideosDir.create(recursive: true);
+      }
+
+      // Extract timestamp from original filename to ensure matching
+      String timestamp;
+      final String originalFileName = originalPath.split('/').last;
+      final RegExp timestampRegex = RegExp(r'(\d{13})_REC');
+      final Match? match = timestampRegex.firstMatch(originalFileName);
+
+      if (match != null) {
+        timestamp = match.group(1)!;
+        debugPrint('📱 Using original video timestamp: $timestamp');
+      } else {
+        timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+        debugPrint('⚠️ Could not extract timestamp, using current: $timestamp');
+      }
+
+      final String fileName = 'video_$timestamp.mp4';
+      final String persistentPath = '${sentVideosDir.path}/$fileName';
+
+      // Copy the video file to persistent location
+      final File originalFile = File(originalPath);
+      final File persistentFile = await originalFile.copy(persistentPath);
+
+      // Ensure file is fully written to disk before returning
+      await persistentFile.writeAsBytes(
+        await persistentFile.readAsBytes(),
+        flush: true,
+      );
+
+      // Small delay to ensure Android file system has processed the file
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      debugPrint('✅ Video copied to persistent storage for instant playback');
+
+      return persistentFile.path;
+    } catch (e) {
+      debugPrint('❌ Error copying video to persistent storage: $e');
+      return null;
+    }
   }
 }

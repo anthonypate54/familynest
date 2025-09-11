@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../widgets/user_avatar.dart';
-import '../models/dm_conversation.dart';
 
 class AvatarUtils {
   /// Build an avatar for any conversation (1:1 or group)
@@ -35,7 +34,8 @@ class AvatarUtils {
           lastName: participant['last_name'] as String?,
           radius: radius,
           showBorder: true,
-          borderColor: hasUnread ? Colors.white : Colors.white.withOpacity(0.3),
+          borderColor:
+              hasUnread ? Colors.white : Colors.white.withValues(alpha: 0.3),
           borderWidth: hasUnread ? 2.0 : 1.0,
           fontSize: fontSize,
           useFirstInitialOnly: true,
@@ -52,7 +52,8 @@ class AvatarUtils {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-            color: hasUnread ? Colors.white : Colors.white.withOpacity(0.3),
+            color:
+                hasUnread ? Colors.white : Colors.white.withValues(alpha: 0.3),
             width: hasUnread ? 2.0 : 1.0,
           ),
         ),
@@ -178,7 +179,8 @@ class AvatarUtils {
       fontSize: fontSize,
       useFirstInitialOnly: true,
       showBorder: hasUnread,
-      borderColor: hasUnread ? Colors.white : Colors.white.withOpacity(0.3),
+      borderColor:
+          hasUnread ? Colors.white : Colors.white.withValues(alpha: 0.3),
       borderWidth: hasUnread ? 2.0 : 1.0,
     );
 

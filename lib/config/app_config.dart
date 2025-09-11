@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 
 /// Environment types
 enum Environment { development, staging, production }
@@ -195,7 +194,6 @@ class AppConfig {
           if (dotenv.isInitialized) {
             final mediaUrl = dotenv.env['MEDIA_URL'];
             if (mediaUrl != null && mediaUrl.isNotEmpty) {
-              debugPrint('✅ Using MEDIA_URL from .env: $mediaUrl (ngrok mode)');
               return mediaUrl;
             }
           }
@@ -241,7 +239,7 @@ class AppConfig {
 
   // Media Upload Configuration
   /// Maximum file size for direct upload (in MB)
-  static const double maxFileUploadSizeMB = 100.0;
+  static const double maxFileUploadSizeMB = 25.0;
 
   /// Maximum video duration for uploads (in minutes)
   static const int maxVideoDurationMinutes = 10;

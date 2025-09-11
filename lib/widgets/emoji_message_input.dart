@@ -107,7 +107,6 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
 
   void _onTextFieldTap() {
     // Google Messages style: Tap in text field always shows keyboard
-    debugPrint('🎯 Text field tapped - hiding emoji picker, showing keyboard');
     _hideEmojiPicker();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -120,7 +119,6 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
   }
 
   void _onEmojiSelected() {
-    debugPrint('🎉 Emoji selected, switching back to keyboard');
     // Hide emoji picker and show keyboard (Google Messages style)
     _hideEmojiPicker();
     // Request focus to show keyboard
@@ -188,7 +186,6 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
                       ),
                     ),
                     onEmojiSelected: (Category? category, Emoji emoji) {
-                      debugPrint('🎉 Emoji selected: ${emoji.emoji}');
                       _onEmojiSelected();
                     },
                   ),
@@ -276,20 +273,25 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
 
             // Send button
             widget.sendButton ??
-                CircleAvatar(
-                  backgroundColor:
-                      widget.enabled && widget.controller.text.trim().isNotEmpty
-                          ? Theme.of(context).colorScheme.primary
-                          : Colors.grey.shade400,
-                  child: GestureDetector(
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
                     onTap:
                         widget.enabled &&
                                 widget.controller.text.trim().isNotEmpty
                             ? widget.onSend
                             : null,
-                    child: const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Icon(Icons.send, color: Colors.white),
+                    borderRadius: BorderRadius.circular(20),
+                    child: CircleAvatar(
+                      backgroundColor:
+                          widget.enabled &&
+                                  widget.controller.text.trim().isNotEmpty
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey.shade400,
+                      child: const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Icon(Icons.send, color: Colors.white),
+                      ),
                     ),
                   ),
                 ),

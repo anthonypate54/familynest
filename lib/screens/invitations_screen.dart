@@ -3,7 +3,6 @@ import '../services/api_service.dart';
 import '../controllers/bottom_navigation_controller.dart';
 import 'package:provider/provider.dart';
 import '../widgets/gradient_background.dart';
-import '../services/service_provider.dart';
 import '../services/websocket_service.dart';
 import '../theme/app_theme.dart';
 
@@ -168,9 +167,11 @@ class _InvitationsScreenState extends State<InvitationsScreen>
       }
     } catch (e) {
       debugPrint('Error responding to invitation: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -264,9 +265,9 @@ class _InvitationsScreenState extends State<InvitationsScreen>
 
     // If there are no invitations
     if (_invitations.isEmpty) {
-      return Center(
+      return const Center(
         child: Padding(
-          padding: const EdgeInsets.all(32.0),
+          padding: EdgeInsets.all(32.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -327,7 +328,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
                 leading: CircleAvatar(
                   backgroundColor: Theme.of(
                     context,
-                  ).colorScheme.primary.withOpacity(0.8),
+                  ).colorScheme.primary.withValues(alpha: 0.8),
                   child: const Icon(Icons.mail, color: Colors.white, size: 20),
                 ),
                 title: Text(

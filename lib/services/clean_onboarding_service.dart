@@ -69,13 +69,17 @@ class CleanOnboardingService {
 
     // 2. Handle notification setup REGARDLESS of tour choice
     debugPrint('🔀 FRESH_USER: Tour completed, starting notification setup');
-    await NotificationSetupService.handleNotificationSetup(
-      context,
-      userId,
-      userRole,
-    );
+    if (context.mounted) {
+      await NotificationSetupService.handleNotificationSetup(
+        context,
+        userId,
+        userRole,
+      );
+    }
 
     // 3. Handle different tour results for navigation
+    if (!context.mounted) return;
+
     if (tourResult == 'create_family') {
       // User wants to create family - go to family tab
       debugPrint('🔀 FRESH_USER: User wants to create family');
@@ -112,7 +116,9 @@ class CleanOnboardingService {
     debugPrint('🔔 Skipping notification setup - already completed');
 
     // 3. Go to main app
-    navigateToMainApp(context, userId, userRole, initialTab: 3); // Family tab
+    if (context.mounted) {
+      navigateToMainApp(context, userId, userRole, initialTab: 3); // Family tab
+    }
   }
 
   /// Case: Fresh user with invite (must take invite tour + notifications)
@@ -130,7 +136,7 @@ class CleanOnboardingService {
     await TourService.showTour(context, userId, userRole, TourType.invitation);
 
     // 2. Handle notification setup if not seen
-    if (!hasSeenNotificationDialog) {
+    if (!hasSeenNotificationDialog && context.mounted) {
       await NotificationSetupService.handleNotificationSetup(
         context,
         userId,
@@ -139,12 +145,14 @@ class CleanOnboardingService {
     }
 
     // 3. Go to invites screen
-    navigateToMainApp(
-      context,
-      userId,
-      userRole,
-      initialTab: 4,
-    ); // Invitations tab
+    if (context.mounted) {
+      navigateToMainApp(
+        context,
+        userId,
+        userRole,
+        initialTab: 4,
+      ); // Invitations tab
+    }
   }
 
   /// Case: Family member (has family, no activity)
@@ -164,7 +172,9 @@ class CleanOnboardingService {
     );
 
     // 2. Go to main app
-    navigateToMainApp(context, userId, userRole, initialTab: 0); // Feed tab
+    if (context.mounted) {
+      navigateToMainApp(context, userId, userRole, initialTab: 0); // Feed tab
+    }
   }
 
   /// Case: Existing user (has activity)

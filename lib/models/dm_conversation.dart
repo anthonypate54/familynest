@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 class DMConversation {
   final int id;
   final int? user1Id; // Nullable for group chats (for 1:1 chats)

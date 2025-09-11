@@ -125,6 +125,9 @@ class ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _pickPhoto() async {
+    // Get apiService before any async operations
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
     try {
       final pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
@@ -133,7 +136,7 @@ class ProfileScreenState extends State<ProfileScreen>
         maxHeight: 500,
       );
 
-      if (pickedFile != null) {
+      if (pickedFile != null && mounted) {
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -151,10 +154,7 @@ class ProfileScreenState extends State<ProfileScreen>
         );
 
         try {
-          await Provider.of<ApiService>(
-            context,
-            listen: false,
-          ).updatePhoto(widget.userId, pickedFile.path);
+          await apiService.updatePhoto(widget.userId, pickedFile.path);
 
           if (mounted) {
             Navigator.of(context).pop();
@@ -190,12 +190,12 @@ class ProfileScreenState extends State<ProfileScreen>
 
   // ignore: unused_element
   Future<void> _sendInvitation() async {
+    // Get apiService before any async operations
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
     try {
       // First check if user has a family
-      final userData = await Provider.of<ApiService>(
-        context,
-        listen: false,
-      ).getUserById(widget.userId);
+      final userData = await apiService.getUserById(widget.userId);
       final familyId = userData['familyId'];
 
       if (familyId == null) {
@@ -205,6 +205,7 @@ class ProfileScreenState extends State<ProfileScreen>
 
       // User has a family, proceed with invitation
       final TextEditingController emailController = TextEditingController();
+      if (!mounted) return;
       await showDialog(
         context: context,
         barrierDismissible: false,
@@ -274,12 +275,14 @@ class ProfileScreenState extends State<ProfileScreen>
                           result['message'] ?? 'Invitation sent successfully';
                       final recipientName = result['recipientName'];
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(message),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(message),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
 
                       // Show additional info if user exists
                       if (userExists && recipientName != null) {
@@ -298,21 +301,25 @@ class ProfileScreenState extends State<ProfileScreen>
 
                       // Handle specific error cases with better UI
                       if (error.contains('already a member of this family')) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(error),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                      } else if (error.contains('already pending')) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'There is already a pending invitation for this email.',
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error),
+                              backgroundColor: Colors.orange,
                             ),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
+                          );
+                        }
+                      } else if (error.contains('already pending')) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'There is already a pending invitation for this email.',
+                              ),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                        }
                       } else if (suggestedEmails != null &&
                           suggestedEmails.isNotEmpty) {
                         _showEmailSuggestionsDialog(
@@ -979,10 +986,10 @@ class ProfileScreenState extends State<ProfileScreen>
               fontWeight: FontWeight.normal,
               fontSize: 14,
             ),
-            tabs: [
-              Tab(icon: const Icon(Icons.person), text: 'Profile'),
-              Tab(icon: const Icon(Icons.star), text: 'Subscription'),
-              Tab(icon: const Icon(Icons.edit), text: 'Edit Info'),
+            tabs: const [
+              Tab(icon: Icon(Icons.person), text: 'Profile'),
+              Tab(icon: Icon(Icons.star), text: 'Subscription'),
+              Tab(icon: Icon(Icons.edit), text: 'Edit Info'),
             ],
           ),
         ),
@@ -1202,7 +1209,7 @@ class ProfileScreenState extends State<ProfileScreen>
   // ignore: unused_element
   void _redirectToLogin() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      slidePushAndRemoveUntil(context, LoginScreen(), (route) => false);
+      slidePushAndRemoveUntil(context, const LoginScreen(), (route) => false);
     });
   }
 
@@ -1482,7 +1489,7 @@ class ProfileScreenState extends State<ProfileScreen>
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.green),
+              borderSide: const BorderSide(color: Colors.green),
             ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,
@@ -1611,7 +1618,7 @@ class ProfilePhoto extends StatelessWidget {
             border: Border.all(color: Colors.white, width: 4),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -1648,7 +1655,7 @@ class ProfilePhoto extends StatelessWidget {
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 5,
                 offset: const Offset(0, 2),
               ),

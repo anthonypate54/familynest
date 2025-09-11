@@ -43,6 +43,9 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
 
   // Add new members to the group
   Future<void> _addMembers() async {
+    // Get apiService before any async operations
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    
     try {
       final result = await slidePush(
         context,
@@ -61,8 +64,6 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
         });
 
         debugPrint('🔧 Adding ${result.length} new members to group');
-
-        final apiService = Provider.of<ApiService>(context, listen: false);
         final response = await apiService.addGroupParticipants(
           widget.conversationId,
           result,
@@ -112,6 +113,9 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
 
   // Remove a member from the group
   Future<void> _removeMember(Map<String, dynamic> participant) async {
+    // Get apiService before any async operations
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    
     final participantName =
         participant['first_name'] ?? participant['username'] ?? 'Unknown';
 
@@ -144,8 +148,6 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
         });
 
         debugPrint('🔧 Removing member: $participantName');
-
-        final apiService = Provider.of<ApiService>(context, listen: false);
         final response = await apiService.removeGroupParticipant(
           widget.conversationId,
           participant['id'] as int,
@@ -200,6 +202,9 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
 
   // Leave the group
   Future<void> _leaveGroup() async {
+    // Get apiService before any async operations
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
@@ -229,8 +234,6 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
         });
 
         debugPrint('🔧 User leaving group');
-
-        final apiService = Provider.of<ApiService>(context, listen: false);
         await apiService.removeGroupParticipant(
           widget.conversationId,
           widget.currentUserId,

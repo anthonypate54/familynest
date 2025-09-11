@@ -215,8 +215,8 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
                 color: Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(8.0),
               ),
-              child: Column(
-                children: const [
+              child: const Column(
+                children: [
                   Icon(
                     Icons.notifications_active,
                     color: Colors.blue,
@@ -251,11 +251,11 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_families.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
+              const Padding(
+                padding: EdgeInsets.all(16.0),
                 child: Center(
                   child: Column(
-                    children: const [
+                    children: [
                       Icon(Icons.people_alt, color: Colors.grey, size: 40),
                       SizedBox(height: 12),
                       Text(
@@ -379,10 +379,10 @@ class _FamiliesMessageDialogState extends State<FamiliesMessageDialog> {
                               ),
                             ),
                             if (isOwner)
-                              Tooltip(
+                              const Tooltip(
                                 message: 'Family Owner',
                                 child: Padding(
-                                  padding: const EdgeInsets.only(left: 8.0),
+                                  padding: EdgeInsets.only(left: 8.0),
                                   child: Icon(
                                     Icons.home,
                                     color: Colors.amber,
