@@ -94,7 +94,7 @@ class ProfileScreenState extends State<ProfileScreen>
         _pendingSaveValue != null) {
       _saveTimer?.cancel();
       debugPrint(
-        '💾 FORCE SAVING pending changes due to navigation: $_pendingSaveField = "$_pendingSaveValue"',
+        'FORCE SAVING pending changes due to navigation: $_pendingSaveField = "$_pendingSaveValue"',
       );
 
       // Execute the save immediately (fire and forget)
@@ -358,7 +358,7 @@ class ProfileScreenState extends State<ProfileScreen>
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text('✅ User Found'),
+            title: const Text('User Found'),
             content: Text(
               'Invitation sent to $recipientName ($email).\n\nThey will receive a real-time notification if they\'re currently online.',
             ),
@@ -432,7 +432,7 @@ class ProfileScreenState extends State<ProfileScreen>
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text('⚠️ Email Not Found'),
+            title: const Text('Email Not Found'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1561,20 +1561,20 @@ class ProfileScreenState extends State<ProfileScreen>
       // Create the update data map
       final updateData = {field: value};
       debugPrint(
-        '💾 SAVING FIELD: $field = "$value" for userId: ${widget.userId}',
+        'SAVING FIELD: $field = "$value" for userId: ${widget.userId}',
       );
-      debugPrint('💾 Update data: $updateData');
+      debugPrint('Update data: $updateData');
 
       // Call the API to save the field silently
       final response = await Provider.of<ApiService>(
         context,
         listen: false,
       ).updateDemographics(widget.userId, updateData);
-      debugPrint('💾 SAVE RESPONSE: $response');
+      debugPrint('SAVE RESPONSE: $response');
 
       // No UI feedback - completely seamless
     } catch (e) {
-      debugPrint('❌ Error saving field $field: $e');
+      debugPrint('$e');
       // Only show error messages, no success messages
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

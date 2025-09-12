@@ -25,12 +25,12 @@ class CommentProvider extends ChangeNotifier {
 
     if (alreadyExists) {
       debugPrint(
-        '⚠️ CommentProvider: Comment ${comment.id} already exists, skipping',
+        'Comment ${comment.id} already exists, skipping',
       );
       return;
     }
 
-    debugPrint('✅ CommentProvider: Adding comment ${comment.id}');
+    debugPrint('Adding comment ${comment.id}');
 
     if (insertAtBeggining) {
       _comments.insert(0, comment);

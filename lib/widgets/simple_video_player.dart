@@ -195,13 +195,13 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
     // Proactive memory cleanup before opening new video
     VideoThumbnailUtil.clearCache();
 
-    debugPrint('🧹 [FULLSCREEN] Starting new video player');
+    debugPrint('[FULLSCREEN] Starting new video player');
     _initializeVideo();
   }
 
   @override
   void dispose() {
-    debugPrint('🧹 [FULLSCREEN] Starting video player disposal');
+    debugPrint('[FULLSCREEN] Starting video player disposal');
 
     // Cancel all timers first
     _hideControlsTimer?.cancel();
@@ -222,7 +222,7 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
     // Additional memory cleanup when leaving video player
     VideoThumbnailUtil.clearCache();
 
-    debugPrint('🧹 [FULLSCREEN] Video player disposal complete');
+    debugPrint('[FULLSCREEN] Video player disposal complete');
 
     super.dispose();
   }
@@ -247,7 +247,7 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
       );
 
       if (_controller == null) {
-        debugPrint('❌ [FULLSCREEN] Failed to create video controller');
+        debugPrint('[FULLSCREEN] Failed to create video controller');
         return;
       }
 
@@ -270,7 +270,7 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
         '⏱️ [FLUTTER] Total video initialization took: ${totalTime}ms',
       );
     } catch (e) {
-      debugPrint('❌ [FULLSCREEN] Video initialization error: $e');
+      debugPrint('$e');
     }
   }
 

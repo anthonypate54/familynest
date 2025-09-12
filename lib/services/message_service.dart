@@ -1054,7 +1054,7 @@ class _MessageCardState extends State<MessageCard> {
             } else {
               // This is a root message - convert to map for ThreadScreen
               threadMessage = message.toJson();
-              debugPrint('🔍 Navigating to root message thread ${message.id}');
+              debugPrint('Navigating to root message thread ${message.id}');
             }
 
             Navigator.push(
@@ -1068,7 +1068,7 @@ class _MessageCardState extends State<MessageCard> {
             ).then((_) {
               // Update the specific message's unread status when returning from thread
               debugPrint(
-                '🔄 Returned from ThreadScreen, marking message as read',
+                'Returned from ThreadScreen, marking message as read',
               );
               if (context.mounted) {
                 final messageId =
@@ -1224,14 +1224,14 @@ class _MessageCardState extends State<MessageCard> {
     // Must have comments to show activity
     if (commentCount == 0) {
       // Debug: Uncomment for notification debugging
-      // debugPrint('🔍 ACTIVITY_CHECK: Message ${message.id} has 0 comments, no activity');
+      // debugPrint('Message ${message.id} has 0 comments, no activity');
       return false;
     }
 
     // Use the backend's has_unread_comments field
     final hasUnreadComments = message.hasUnreadComments;
     // Debug: Uncomment for notification debugging
-    // debugPrint('🔍 ACTIVITY_CHECK: Message ${message.id} commentCount=$commentCount, hasUnreadComments=$hasUnreadComments');
+    // debugPrint('Message ${message.id} commentCount=$commentCount, hasUnreadComments=$hasUnreadComments');
 
     return hasUnreadComments ?? false;
   }

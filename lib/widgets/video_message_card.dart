@@ -46,7 +46,7 @@ class VideoMessageCardState extends State<VideoMessageCard> {
 
   @override
   Widget build(BuildContext context) {
-    // 🔍 DEBUG: Check what localMediaPath we receive
+    // Check what localMediaPath we receive
     // Build thumbnail URL for the simple video player
     String? thumbnailUrl;
     if (ThumbnailUtils.isValidThumbnailUrl(widget.thumbnailUrl)) {

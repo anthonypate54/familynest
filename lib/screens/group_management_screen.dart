@@ -69,7 +69,7 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
           result,
         );
 
-        debugPrint('✅ Successfully added participants: ${response['message']}');
+        debugPrint('${response['message']}');
 
         // Add the new participants to local state
         final addedParticipants =
@@ -96,7 +96,7 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
         }
       }
     } catch (e) {
-      debugPrint('❌ Error adding members: $e');
+      debugPrint('$e');
       setState(() {
         _isLoading = false;
       });
@@ -154,7 +154,7 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
         );
 
         debugPrint(
-          '✅ Successfully removed participant: ${response['message']}',
+          '${response['message']}',
         );
 
         // Remove from local state immediately
@@ -184,7 +184,7 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
           }
         }
       } catch (e) {
-        debugPrint('❌ Error removing member: $e');
+        debugPrint('$e');
         setState(() {
           _isLoading = false;
         });
@@ -253,7 +253,7 @@ class _GroupManagementScreenState extends State<GroupManagementScreen> {
           Navigator.pop(context);
         }
       } catch (e) {
-        debugPrint('❌ Error leaving group: $e');
+        debugPrint('$e');
         setState(() {
           _isLoading = false;
         });

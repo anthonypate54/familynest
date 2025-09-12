@@ -88,12 +88,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       final apiService = Provider.of<ApiService>(context, listen: false);
       final response = await apiService.getSentInvitations();
 
-      debugPrint('🔍 SENT INVITATIONS DEBUG - Response: $response');
+      debugPrint('$response');
 
       if (response['success'] != false) {
         final List<dynamic> invitations = response['invitations'] ?? [];
 
-        debugPrint('🔍 SENT INVITATIONS DEBUG - Raw invitations: $invitations');
+        debugPrint('$invitations');
 
         // Process invitations and count pending ones by family
         Map<int, int> pendingCounts = {};
@@ -102,7 +102,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         for (var invitation in invitations) {
           final invitationMap = invitation as Map<String, dynamic>;
           debugPrint(
-            '🔍 SENT INVITATIONS DEBUG - Processing invitation: $invitationMap',
+            '$invitationMap',
           );
 
           sentInvitations.add(invitationMap);
@@ -128,7 +128,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         }
 
         debugPrint(
-          '🔍 SENT INVITATIONS DEBUG - Pending counts: $pendingCounts',
+          '$pendingCounts',
         );
 
         if (mounted) {
@@ -215,7 +215,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       }
 
       debugPrint(
-        '📊 ACTIVITY DEBUG - Loaded $targetPeriod activity for family ${selectedFamily.id}: $activity',
+        '$activity',
       );
 
       if (mounted) {
@@ -260,12 +260,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         });
 
         debugPrint(
-          '📋 Loaded individual demographics settings: $_demographicsSettings',
+          'Loaded individual demographics settings: $_demographicsSettings',
         );
-        debugPrint('📋 Full userSettings: $userSettings');
+        debugPrint('Full userSettings: $userSettings');
       }
     } catch (e) {
-      debugPrint('❌ Error loading demographics settings: $e');
+      debugPrint('$e');
       if (mounted) {
         setState(() {
           _loadingDemographics = false;
@@ -327,7 +327,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         );
       }
     } catch (e) {
-      debugPrint('❌ Backend save failed: $e');
+      debugPrint('$e');
 
       // ONLY revert the UI if the backend save actually failed
       if (mounted) {
@@ -406,11 +406,11 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         });
 
         debugPrint(
-          '📋 Loaded notification settings for family ${_selectedFamily?.name}: $_notificationPreferences',
+          'Loaded notification settings for family ${_selectedFamily?.name}: $_notificationPreferences',
         );
       }
     } catch (e) {
-      debugPrint('❌ Error loading notification settings: $e');
+      debugPrint('$e');
       if (mounted) {
         setState(() {
           _loadingNotifications = false;
@@ -477,7 +477,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         );
       }
     } catch (e) {
-      debugPrint('❌ Notification backend save failed: $e');
+      debugPrint('$e');
 
       // ONLY revert the UI if the backend save actually failed
       if (mounted) {
@@ -1999,7 +1999,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
               .getUserMessages(widget.userId.toString())
               .then((messages) {
                 messageProvider.setMessages(messages);
-                debugPrint('✅ Messages refreshed after muting change');
+                debugPrint('Messages refreshed after muting change');
               })
               .catchError((e) {
                 debugPrint(
@@ -2540,7 +2540,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         } else {
           errorMessage = e.toString();
         }
-        debugPrint('🔍 Invitation error: $errorMessage');
+        debugPrint('$errorMessage');
         if (errorMessage.contains('already a member of this family')) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -2926,10 +2926,10 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       );
 
       debugPrint(
-        '✅ FAMILY_MGMT: WebSocket initialized and subscribed to /user/${widget.userId}/invitations',
+        'WebSocket initialized and subscribed to /user/${widget.userId}/invitations',
       );
     } catch (e) {
-      debugPrint('❌ FAMILY_MGMT: Error initializing WebSocket: $e');
+      debugPrint('Error initializing WebSocket: $e');
     }
   }
 
@@ -2941,10 +2941,10 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
           '/user/${widget.userId}/invitations',
           _invitationHandler!,
         );
-        debugPrint('✅ FAMILY_MGMT: WebSocket cleaned up');
+        debugPrint('WebSocket cleaned up');
       }
     } catch (e) {
-      debugPrint('❌ FAMILY_MGMT: Error cleaning up WebSocket: $e');
+      debugPrint('Error cleaning up WebSocket: $e');
     }
   }
 
@@ -2979,7 +2979,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         }
       }
     } catch (e) {
-      debugPrint('❌ FAMILY_MGMT: Error handling invitation response: $e');
+      debugPrint('Error handling invitation response: $e');
     }
   }
 }

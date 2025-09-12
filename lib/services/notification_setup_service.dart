@@ -41,15 +41,15 @@ class NotificationSetupService {
 
         if (success) {
           debugPrint(
-            '✅ NOTIFICATION_SETUP: All notification preferences enabled (pre-granted permissions)',
+            'All notification preferences enabled (pre-granted permissions)',
           );
         } else {
           debugPrint(
-            '❌ NOTIFICATION_SETUP: Failed to enable notification preferences',
+            'Failed to enable notification preferences',
           );
         }
       } catch (e) {
-        debugPrint('❌ NOTIFICATION_SETUP: Error enabling preferences: $e');
+        debugPrint('Error enabling preferences: $e');
       }
 
       await markNotificationDialogSeen(userId);
@@ -134,7 +134,7 @@ class NotificationSetupService {
 
                       if (success) {
                         debugPrint(
-                          '✅ NOTIFICATION_SETUP: All notification preferences enabled',
+                          'All notification preferences enabled',
                         );
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -149,7 +149,7 @@ class NotificationSetupService {
                         }
                       } else {
                         debugPrint(
-                          '❌ NOTIFICATION_SETUP: Failed to enable notification preferences',
+                          'Failed to enable notification preferences',
                         );
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -165,7 +165,7 @@ class NotificationSetupService {
                       }
                     } catch (e) {
                       debugPrint(
-                        '❌ NOTIFICATION_SETUP: Error enabling preferences: $e',
+                        'Error enabling preferences: $e',
                       );
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -179,7 +179,7 @@ class NotificationSetupService {
                     }
                   } else {
                     debugPrint(
-                      '❌ NOTIFICATION_SETUP: Permissions not granted OR context not mounted',
+                      'Permissions not granted OR context not mounted',
                     );
                     debugPrint('   - granted: $granted');
                     debugPrint('   - context.mounted: ${context.mounted}');
@@ -213,7 +213,7 @@ class NotificationSetupService {
       return false; // Always show for now until backend integration
     } catch (e) {
       debugPrint(
-        '❌ NOTIFICATION_SETUP: Error checking notification dialog bit: $e',
+        'Error checking notification dialog bit: $e',
       );
       return false;
     }
@@ -228,7 +228,7 @@ class NotificationSetupService {
       );
     } catch (e) {
       debugPrint(
-        '❌ NOTIFICATION_SETUP: Error setting notification dialog bit: $e',
+        'Error setting notification dialog bit: $e',
       );
     }
   }
@@ -242,7 +242,7 @@ class NotificationSetupService {
       );
     } catch (e) {
       debugPrint(
-        '❌ NOTIFICATION_SETUP: Error resetting notification dialog bit: $e',
+        'Error resetting notification dialog bit: $e',
       );
     }
   }

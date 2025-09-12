@@ -26,10 +26,10 @@ class LocalFileService {
               .where((file) => file.isWithinSizeLimit)
               .toList();
 
-      debugPrint('📱 Found ${cloudFiles.length} local $type files under 25MB');
+      debugPrint('Found ${cloudFiles.length} local $type files under 25MB');
       return cloudFiles;
     } catch (e) {
-      debugPrint('❌ Error getting local files: $e');
+      debugPrint('$e');
       rethrow;
     }
   }
@@ -49,7 +49,7 @@ class LocalFileService {
         return file.localPath;
       }
     } catch (e) {
-      debugPrint('❌ Error getting local file path: $e');
+      debugPrint('$e');
       return null;
     }
   }

@@ -46,10 +46,10 @@ class _InvitationsScreenState extends State<InvitationsScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    debugPrint('🔄 INVITATIONS_SCREEN: App lifecycle changed to: $state');
+    debugPrint('App lifecycle changed to: $state');
     if (state == AppLifecycleState.resumed && mounted) {
       debugPrint(
-        '🔄 INVITATIONS_SCREEN: App resumed, refreshing invitations...',
+        'App resumed, refreshing invitations...',
       );
       // Refresh when app comes back into focus
       _loadInvitations();
@@ -59,11 +59,11 @@ class _InvitationsScreenState extends State<InvitationsScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    debugPrint('🔄 INVITATIONS_SCREEN: didChangeDependencies called');
+    debugPrint('didChangeDependencies called');
     // Refresh invitations when screen comes into focus
     if (mounted && !_isLoading) {
       debugPrint(
-        '🔄 INVITATIONS_SCREEN: Refreshing via didChangeDependencies...',
+        'Refreshing via didChangeDependencies...',
       );
       _loadInvitations();
     }
@@ -104,7 +104,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
   Future<void> _updateBadgeCountDirectly() async {
     try {
       debugPrint(
-        '🔄 INVITATIONS_SCREEN: Fetching invitations for badge count...',
+        'Fetching invitations for badge count...',
       );
       final response = await _apiService.getInvitations();
 
@@ -117,20 +117,20 @@ class _InvitationsScreenState extends State<InvitationsScreen>
               .length;
 
       debugPrint(
-        '🔄 INVITATIONS_SCREEN: Found $pendingCount pending invitations',
+        'Found $pendingCount pending invitations',
       );
 
       // Update the badge count if navigation controller is available
       if (widget.navigationController != null) {
         widget.navigationController!.setPendingInvitationsCount(pendingCount);
         debugPrint(
-          '🔄 INVITATIONS_SCREEN: Updated badge count to $pendingCount',
+          'Updated badge count to $pendingCount',
         );
       } else {
-        debugPrint('❌ INVITATIONS_SCREEN: navigationController is null');
+        debugPrint('navigationController is null');
       }
     } catch (e) {
-      debugPrint('❌ Error updating badge count directly: $e');
+      debugPrint('$e');
     }
   }
 
@@ -186,20 +186,20 @@ class _InvitationsScreenState extends State<InvitationsScreen>
 
       // Create invitation handler for this screen
       _invitationHandler = (Map<String, dynamic> data) {
-        debugPrint('🔄 INVITATIONS_SCREEN: Received WebSocket message: $data');
+        debugPrint('Received WebSocket message: $data');
 
         final messageType = data['type'] as String?;
         if (messageType == 'NEW_INVITATION' ||
             messageType == 'INVITATION_ACCEPTED' ||
             messageType == 'INVITATION_DECLINED') {
-          debugPrint('🔄 INVITATIONS_SCREEN: Processing $messageType message');
+          debugPrint('Processing $messageType message');
           // Refresh the invitations list
           if (mounted) {
             _loadInvitations();
           } else {
             // If screen isn't mounted, still try to update badge count directly
             debugPrint(
-              '🔄 INVITATIONS_SCREEN: Screen not mounted, updating badge count directly',
+              'Screen not mounted, updating badge count directly',
             );
             _updateBadgeCountDirectly();
           }
@@ -215,7 +215,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
         '🔌 INVITATIONS_SCREEN: Subscribed to /user/${widget.userId}/invitations',
       );
     } catch (e) {
-      debugPrint('❌ INVITATIONS_SCREEN: Error setting up WebSocket: $e');
+      debugPrint('Error setting up WebSocket: $e');
     }
   }
 
@@ -231,7 +231,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
         debugPrint('🔌 INVITATIONS_SCREEN: Unsubscribed from WebSocket');
       }
     } catch (e) {
-      debugPrint('❌ INVITATIONS_SCREEN: Error cleaning up WebSocket: $e');
+      debugPrint('Error cleaning up WebSocket: $e');
     }
   }
 

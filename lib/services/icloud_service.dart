@@ -34,7 +34,7 @@ class ICloudService {
 
       return cloudFiles;
     } catch (e) {
-      debugPrint('❌ Error getting iCloud files: $e');
+      debugPrint('$e');
       rethrow;
     }
   }
@@ -49,7 +49,7 @@ class ICloudService {
       // iCloud files in Documents folder are already accessible via local path
       return file.localPath;
     } catch (e) {
-      debugPrint('❌ Error getting iCloud file path: $e');
+      debugPrint('$e');
       return null;
     }
   }

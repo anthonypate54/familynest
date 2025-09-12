@@ -28,13 +28,13 @@ class GoogleDriveService {
 
       // Authenticate with Google
       final account = await googleSignIn.signInSilently();
-      debugPrint('🔍 Silent sign-in result: ${account?.email ?? 'null'}');
+      debugPrint('${account?.email ?? 'null'}');
 
       if (account == null) {
         debugPrint('🔐 No cached sign-in, attempting interactive sign-in...');
         final interactiveAccount = await googleSignIn.signIn();
         debugPrint(
-          '🔍 Interactive sign-in result: ${interactiveAccount?.email ?? 'null'}',
+          '${interactiveAccount?.email ?? 'null'}',
         );
 
         if (interactiveAccount == null) {
@@ -42,19 +42,19 @@ class GoogleDriveService {
         }
       }
 
-      debugPrint('🔑 Getting authenticated client...');
+      debugPrint('Getting authenticated client...');
       final authClient = await googleSignIn.authenticatedClient();
       if (authClient == null) {
         throw Exception('Failed to get authenticated client');
       }
 
-      debugPrint('✅ Google authentication successful');
+      debugPrint('Google authentication successful');
 
       // Access Google Drive API
       final driveApi = drive.DriveApi(authClient);
       final mimePrefix = type == 'photo' ? 'image/' : 'video/';
 
-      debugPrint('🔍 Searching Google Drive for $type files...');
+      debugPrint('Searching Google Drive for $type files...');
 
       final result = await driveApi.files
           .list(
@@ -93,11 +93,11 @@ class GoogleDriveService {
               .toList();
 
       debugPrint(
-        '✅ Found ${filteredFiles.length} Google Drive $type files under 25MB',
+        'Found ${filteredFiles.length} Google Drive $type files under 25MB',
       );
       return filteredFiles;
     } catch (e) {
-      debugPrint('❌ Google Drive error: $e');
+      debugPrint('$e');
       rethrow;
     }
   }
@@ -133,10 +133,10 @@ class GoogleDriveService {
       await media.stream.pipe(sink);
       await sink.close();
 
-      debugPrint('✅ Downloaded to: $localPath');
+      debugPrint('$localPath');
       return localPath;
     } catch (e) {
-      debugPrint('❌ Error downloading Google Drive file: $e');
+      debugPrint('$e');
       return null;
     }
   }
@@ -145,9 +145,9 @@ class GoogleDriveService {
   Future<void> signOut() async {
     try {
       await googleSignIn.signOut();
-      debugPrint('🚪 Signed out from Google Drive');
+      debugPrint('Signed out from Google Drive');
     } catch (e) {
-      debugPrint('❌ Error signing out: $e');
+      debugPrint('$e');
     }
   }
 

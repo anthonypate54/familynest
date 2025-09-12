@@ -128,10 +128,10 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
         );
       }
 
-      debugPrint('🔍 Search results: $results');
+      debugPrint('$results');
       if (results.isNotEmpty) {
-        debugPrint('🔍 First result keys: ${results.first.keys.toList()}');
-        debugPrint('🔍 First result: ${results.first}');
+        debugPrint('${results.first.keys.toList()}');
+        debugPrint('${results.first}');
       }
 
       if (mounted) {
@@ -151,13 +151,13 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
   }
 
   void _navigateToMessage(Map<String, dynamic> message) {
-    debugPrint('🔍 _navigateToMessage called with message: $message');
+    debugPrint('$message');
 
     if (widget.isDMSearch) {
       // DM search result - navigate to DM conversation
       final conversationId = message['id'] as int?;
       if (conversationId != null) {
-        debugPrint('🔍 Navigating to DM conversation: $conversationId');
+        debugPrint('$conversationId');
         _navigateToDMConversation(message);
       }
     } else {
@@ -165,15 +165,15 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       final messageId = message['id'] as int?;
       final senderId = message['sender_id'] as int?;
 
-      debugPrint('🔍 messageId: $messageId, senderId: $senderId');
+      debugPrint('$messageId, senderId: $senderId');
 
       if (messageId != null && senderId != null) {
         debugPrint(
-          '🔍 Navigating to family message for messageId: $messageId, senderId: $senderId',
+          '$messageId, senderId: $senderId',
         );
         _navigateToDMThread(message);
       } else {
-        debugPrint('🔍 Cannot navigate - messageId or senderId is null');
+        debugPrint('Cannot navigate - messageId or senderId is null');
       }
     }
   }
@@ -188,12 +188,12 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       final conversationId = message['conversation_id'] as int?;
 
       if (senderId == null) {
-        debugPrint('🔍 Cannot navigate to DM - sender_id is null');
+        debugPrint('Cannot navigate to DM - sender_id is null');
         return;
       }
 
       if (conversationId == null) {
-        debugPrint('🔍 Cannot navigate to DM - conversation_id is null');
+        debugPrint('Cannot navigate to DM - conversation_id is null');
         return;
       }
 
@@ -213,7 +213,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       }
 
       if (conversation == null) {
-        debugPrint('🔍 Failed to find conversation: $conversationId');
+        debugPrint('$conversationId');
         return;
       }
 
@@ -221,7 +221,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       final otherUserId = conversation.getOtherUserId(widget.userId);
 
       debugPrint(
-        '🔍 Navigating to DMThreadScreen with conversation: ${conversation.id}, otherUserId: $otherUserId, isGroup: ${conversation.isGroup}',
+        '${conversation.id}, otherUserId: $otherUserId, isGroup: ${conversation.isGroup}',
       );
 
       // Navigate to DM thread screen
@@ -240,7 +240,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
         ),
       );
     } catch (e) {
-      debugPrint('🔍 Error navigating to DM thread: $e');
+      debugPrint('$e');
       // Show user-friendly error message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -306,7 +306,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
         );
       }
     } catch (e) {
-      debugPrint('🔍 Error navigating to DM conversation: $e');
+      debugPrint('$e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to open conversation')),
       );
@@ -380,12 +380,12 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       final apiService = Provider.of<ApiService>(context, listen: false);
       final result = await apiService.testSearchController();
       if (result != null) {
-        debugPrint('✅ Search controller test passed: ${result['message']}');
+        debugPrint('${result['message']}');
       } else {
-        debugPrint('❌ Search controller test failed');
+        debugPrint('Search controller test failed');
       }
     } catch (e) {
-      debugPrint('💥 Error testing search controller: $e');
+      debugPrint('$e');
     }
   }
 
@@ -600,7 +600,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       ),
       child: InkWell(
         onTap: () {
-          debugPrint('🔍 Card tapped! Message: $message');
+          debugPrint('$message');
           _navigateToMessage(message);
         },
         borderRadius: BorderRadius.circular(12),

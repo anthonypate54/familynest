@@ -25,7 +25,7 @@ class MessageProvider extends ChangeNotifier {
       // Message doesn't exist, add it
       _messages.insert(0, message);
       debugPrint(
-        '✅ MessageProvider.addMessage: Added new message ${message.id} at position 0',
+        'Added new message ${message.id} at position 0',
       );
       debugPrint(
         '📝 MessageProvider.addMessage: New message count: ${_messages.length}',
@@ -35,7 +35,7 @@ class MessageProvider extends ChangeNotifier {
       // Message already exists, update it instead
       _messages[existingIndex] = message;
       debugPrint(
-        '🔄 MessageProvider.addMessage: Updated existing message ${message.id} at position $existingIndex',
+        'Updated existing message ${message.id} at position $existingIndex',
       );
       notifyListeners();
     }
@@ -68,7 +68,7 @@ class MessageProvider extends ChangeNotifier {
       );
 
       debugPrint(
-        '✅ MessageProvider.mergeMessages: Added ${uniqueNewMessages.length} new messages, total: ${_messages.length}',
+        'Added ${uniqueNewMessages.length} new messages, total: ${_messages.length}',
       );
       notifyListeners();
     } else {
@@ -119,17 +119,17 @@ class MessageProvider extends ChangeNotifier {
     if (idx != -1) {
       final msg = _messages[idx];
       // Debug: Uncomment for notification debugging
-      // debugPrint('🔄 MESSAGE_PROVIDER: Updating message $messageId commentCount: ${msg.commentCount} → $commentCount, hasUnreadComments: ${msg.hasUnreadComments} → $hasUnreadComments');
+      // debugPrint('Updating message $messageId commentCount: ${msg.commentCount} → $commentCount, hasUnreadComments: ${msg.hasUnreadComments} → $hasUnreadComments');
       _messages[idx] = msg.copyWith(
         commentCount: commentCount,
         hasUnreadComments: hasUnreadComments,
       );
       notifyListeners();
       // Debug: Uncomment for notification debugging
-      // debugPrint('✅ MESSAGE_PROVIDER: Message $messageId updated and listeners notified');
+      // debugPrint('Message $messageId updated and listeners notified');
     } else {
       // Debug: Uncomment for notification debugging
-      // debugPrint('❌ MESSAGE_PROVIDER: Message $messageId not found in provider');
+      // debugPrint('Message $messageId not found in provider');
     }
   }
 

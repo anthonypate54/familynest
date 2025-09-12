@@ -39,7 +39,7 @@ class DMMessageProvider extends ChangeNotifier {
       notifyListeners();
     } else {
       debugPrint(
-        '⚠️ DMMessageProvider: Duplicate message ${message.id}, not adding',
+        'Duplicate message ${message.id}, not adding',
       );
     }
   }
@@ -90,7 +90,7 @@ class DMMessageProvider extends ChangeNotifier {
 
       if (hasChanges) {
         debugPrint(
-          '✅ DMMessageProvider: Marked other users\' unread messages in conversation $conversationId as read',
+          'Marked other users\' unread messages in conversation $conversationId as read',
         );
         notifyListeners();
       }
@@ -105,13 +105,13 @@ class DMMessageProvider extends ChangeNotifier {
       );
       if (messageIndex != -1) {
         debugPrint(
-          '🔄 DMMessageProvider: Updating message ${updatedMessage.id} in conversation $conversationId',
+          'Updating message ${updatedMessage.id} in conversation $conversationId',
         );
         _conversationMessages[conversationId]![messageIndex] = updatedMessage;
         notifyListeners();
       } else {
         debugPrint(
-          '⚠️ DMMessageProvider: Message ${updatedMessage.id} not found in conversation $conversationId',
+          'Message ${updatedMessage.id} not found in conversation $conversationId',
         );
       }
     }

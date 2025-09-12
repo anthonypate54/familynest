@@ -15,7 +15,7 @@ class TourService {
     String userRole,
     TourType tourType,
   ) async {
-    debugPrint('🎯 TOUR: Starting ${tourType.name} tour for user $userId');
+    debugPrint('TOUR: Starting ${tourType.name} tour for user $userId');
 
     Widget tourScreen;
     switch (tourType) {
@@ -51,7 +51,7 @@ class TourService {
     await markTourCompleted(userId);
 
     debugPrint(
-      '🎯 TOUR: ${tourType.name} tour completed for user $userId with result: $result',
+      'TOUR: ${tourType.name} tour completed for user $userId with result: $result',
     );
     return result; // Return the actual result from the tour screen
   }
@@ -66,13 +66,13 @@ class TourService {
   static Future<void> markTourCompleted(int userId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('hasSeenTour_$userId', true);
-    debugPrint('🎯 TOUR: Marked tour completed for user $userId');
+    debugPrint('TOUR: Marked tour completed for user $userId');
   }
 
   /// Reset tour status (for testing/debugging)
   static Future<void> resetTourStatus(int userId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('hasSeenTour_$userId');
-    debugPrint('🎯 TOUR: Reset tour status for user $userId');
+    debugPrint('TOUR: Reset tour status for user $userId');
   }
 }

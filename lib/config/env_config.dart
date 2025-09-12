@@ -15,12 +15,12 @@ class EnvConfig {
   static Future<void> initialize() async {
     try {
       await dotenv.load(fileName: ".env");
-      debugPrint('✅ Loaded environment configuration from .env file');
-      debugPrint('📡 API URL: ${EnvConfig().apiUrl}');
+      debugPrint('Loaded environment configuration from .env file');
+      debugPrint('API URL: ${EnvConfig().apiUrl}');
       debugPrint('🌍 Environment: ${EnvConfig().environment}');
     } catch (e) {
-      debugPrint('❌ Error loading .env file: $e');
-      debugPrint('⚠️ Falling back to default configuration');
+      debugPrint('$e');
+      debugPrint('Falling back to default configuration');
     }
   }
 

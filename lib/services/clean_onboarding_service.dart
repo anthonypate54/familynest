@@ -217,7 +217,7 @@ class CleanOnboardingService {
     TourType tourType,
   ) async {
     debugPrint(
-      '🎯 MANUAL_TOUR: Showing ${tourType.name} tour for user $userId',
+      'MANUAL_TOUR: Showing ${tourType.name} tour for user $userId',
     );
     await TourService.showTour(context, userId, userRole, tourType);
   }

@@ -138,11 +138,11 @@ class CloudFileService {
     required String type, // 'photo' or 'video'
   }) async {
     debugPrint(
-      '🔍 CloudFileService.getFiles called with provider: $provider, type: $type',
+      '$provider, type: $type',
     );
     switch (provider) {
       case 'local':
-        debugPrint('📱 Routing to local file service');
+        debugPrint('Routing to local file service');
         return await _getLocalFiles(type);
       case 'google_drive':
         debugPrint('☁️ Routing to Google Drive service');

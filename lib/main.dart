@@ -59,7 +59,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       data: message.data,
     );
   } catch (e) {
-    debugPrint('❌ Error in background message handler: $e');
+    debugPrint('$e');
   }
 }
 
@@ -90,25 +90,25 @@ void main() async {
   bool envLoaded = false;
   try {
     await dotenv.load(fileName: '.env.development');
-    debugPrint('✅ Loaded environment configuration from .env.development');
-    debugPrint('📡 API URL from env: ${dotenv.env['API_URL']}');
+    debugPrint('Loaded environment configuration from .env.development');
+    debugPrint('API URL from env: ${dotenv.env['API_URL']}');
     envLoaded = true;
   } catch (e) {
-    debugPrint('⚠️ Failed to load .env.development: $e');
+    debugPrint('$e');
     // Try loading the default .env file as fallback
     try {
       await dotenv.load();
-      debugPrint('✅ Loaded environment configuration from .env');
-      debugPrint('📡 API URL from env: ${dotenv.env['API_URL']}');
+      debugPrint('Loaded environment configuration from .env');
+      debugPrint('API URL from env: ${dotenv.env['API_URL']}');
       envLoaded = true;
     } catch (e) {
-      debugPrint('⚠️ Failed to load .env: $e');
+      debugPrint('$e');
       // Continue with default values - dotenv will use fallbacks
     }
   }
 
   if (!envLoaded) {
-    debugPrint('⚠️ No environment file loaded, using default configuration');
+    debugPrint('No environment file loaded, using default configuration');
   }
 
   // Initialize app configuration
@@ -130,13 +130,13 @@ void main() async {
         ? "production"
         : "staging"}',
   );
-  debugPrint('📱 Platform: ${Platform.operatingSystem}');
+  debugPrint('${Platform.operatingSystem}');
 
   // Use shorter polling interval in development for faster testing
   if (config.isDevelopment) {
     config.invitationPollingInterval = const Duration(seconds: 30);
     debugPrint(
-      '🧪 DEVELOPMENT MODE: Using shorter invitation polling interval (30s)',
+      'DEVELOPMENT MODE: Using shorter invitation polling interval (30s)',
     );
   }
 
@@ -144,9 +144,9 @@ void main() async {
   final apiService = ApiService();
   try {
     await apiService.initialize();
-    debugPrint('✅ ApiService initialized successfully');
+    debugPrint('ApiService initialized successfully');
   } catch (e) {
-    debugPrint('❌ Error initializing ApiService: $e');
+    debugPrint('$e');
     // Continue anyway, the service will handle errors appropriately
   }
 
@@ -187,7 +187,7 @@ class MyAppState extends State<MyApp> {
   }
 
   Future<Map<String, dynamic>?> _initialize() async {
-    debugPrint('🔄 APP: Starting app initialization');
+    debugPrint('Starting app initialization');
 
     // Ensure minimum splash screen duration (especially for release builds)
     final initializationStart = DateTime.now();
@@ -197,9 +197,38 @@ class MyAppState extends State<MyApp> {
       if (!mounted) return null;
       final apiService = Provider.of<ApiService>(context, listen: false);
 
+      // Set up session expiry callback to redirect to login (same as logout button)
+      apiService.onSessionExpired = () async {
+        debugPrint('Auto-logout due to session expiry');
+
+        // Use the same navigation pattern as manual logout
+        if (mounted && context.mounted) {
+          try {
+            // Clear message cache to prevent data leaks between users (same as logout)
+            final messageProvider = Provider.of<MessageProvider>(
+              context,
+              listen: false,
+            );
+            messageProvider.clear();
+            debugPrint('Cleared MessageProvider cache');
+
+            // Navigate to login screen (exact same code as logout button)
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+              (route) => false, // This removes all previous routes
+            );
+            debugPrint('Successfully redirected to login');
+          } catch (e) {
+            debugPrint('Auto-logout failed: $e');
+          }
+        } else {
+          debugPrint('Widget not mounted, cannot navigate');
+        }
+      };
+
       // Always initialize ServiceProvider
       _serviceProvider.initialize(apiService);
-      debugPrint('✅ APP: ServiceProvider initialized');
+      debugPrint('ServiceProvider initialized');
 
       // Simple check using provider
       if (apiService.isLoggedIn) {
@@ -211,14 +240,14 @@ class MyAppState extends State<MyApp> {
 
         if (userId != null) {
           debugPrint(
-            '✅ APP: Found user data - userId: $userId, role: $userRole',
+            'Found user data - userId: $userId, role: $userRole',
           );
           // No splash delay for logged in users - they should go straight to the app
           return {'userId': int.parse(userId), 'role': userRole};
         }
       }
 
-      debugPrint('🔒 APP: Not logged in or no user data found');
+      debugPrint('Not logged in or no user data found');
 
       // Only show splash delay for cold starts (when not logged in)
       final elapsed = DateTime.now().difference(initializationStart);
@@ -229,7 +258,7 @@ class MyAppState extends State<MyApp> {
 
       return null;
     } catch (e) {
-      debugPrint('❌ APP: Error during initialization: $e');
+      debugPrint('Error during initialization: $e');
       return null;
     }
   }
@@ -273,7 +302,7 @@ class MyAppState extends State<MyApp> {
         future: _initializationFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            debugPrint('🎨 SPLASH: Showing branded loading screen');
+            debugPrint('SPLASH: Showing branded loading screen');
             return Scaffold(
               backgroundColor: const Color(0xFF4CAF50),
               body: Center(
@@ -395,7 +424,7 @@ class MainAppContainerState extends State<MainAppContainer>
     // Use initial tab index if provided, otherwise check for existing DMs
     if (widget.initialTabIndex != null) {
       debugPrint(
-        '🎯 MAIN: Using provided initial tab index: ${widget.initialTabIndex}',
+        'MAIN: Using provided initial tab index: ${widget.initialTabIndex}',
       );
       setState(() {
         _currentIndex = widget.initialTabIndex!;
@@ -448,7 +477,7 @@ class MainAppContainerState extends State<MainAppContainer>
 
   // Called after initial screen check completes
   Future<void> _finishInitialization() async {
-    debugPrint('🎯 MAIN: Initial screen check complete');
+    debugPrint('MAIN: Initial screen check complete');
   }
 
   // Initialize WebSocket service once for the entire app
@@ -461,9 +490,9 @@ class MainAppContainerState extends State<MainAppContainer>
       // Subscribe to invitation updates for real-time badge count
       _setupInvitationWebSocket(_webSocketService!);
 
-      debugPrint('✅ MAIN: WebSocket service initialized');
+      debugPrint('WebSocket service initialized');
     } catch (e) {
-      debugPrint('❌ MAIN: Error initializing WebSocket service: $e');
+      debugPrint('Error initializing WebSocket service: $e');
     }
   }
 
@@ -482,7 +511,7 @@ class MainAppContainerState extends State<MainAppContainer>
       );
       debugPrint('🔌 MAIN: Subscribed to /user/${widget.userId}/invitations');
     } catch (e) {
-      debugPrint('❌ MAIN: Error setting up invitation WebSocket: $e');
+      debugPrint('Error setting up invitation WebSocket: $e');
     }
   }
 
@@ -504,7 +533,7 @@ class MainAppContainerState extends State<MainAppContainer>
         _refreshInvitationCount();
       }
     } catch (e, stackTrace) {
-      debugPrint('❌ INVITATION: Error handling WebSocket message: $e');
+      debugPrint('Error handling WebSocket message: $e');
       debugPrint('Stack trace: $stackTrace');
     }
   }
@@ -514,7 +543,7 @@ class MainAppContainerState extends State<MainAppContainer>
     try {
       // Check if widget is still mounted before using context
       if (!mounted) {
-        debugPrint('⚠️ INVITATION: Widget unmounted, skipping refresh');
+        debugPrint('Widget unmounted, skipping refresh');
         return;
       }
 
@@ -532,17 +561,17 @@ class MainAppContainerState extends State<MainAppContainer>
         setState(() {
           _pendingInvitationsCount = pendingCount;
         });
-        debugPrint('✅ INVITATION: Updated badge count to $pendingCount');
+        debugPrint('Updated badge count to $pendingCount');
       }
     } catch (e) {
-      debugPrint('❌ INVITATION: Error refreshing count: $e');
+      debugPrint('Error refreshing count: $e');
     }
   }
 
   // Check if we're still authenticated
   Future<void> _checkAuthenticationState() async {
     try {
-      debugPrint('🔍 MAIN: Starting authentication check...');
+      debugPrint('Starting authentication check...');
       // If token is missing or invalid, this will throw an exception
       final apiService = Provider.of<ApiService>(context, listen: false);
       final user = await apiService.getCurrentUser();
@@ -550,28 +579,28 @@ class MainAppContainerState extends State<MainAppContainer>
       // If we got null but didn't throw an exception, we're not authenticated
       if (user == null && mounted) {
         debugPrint(
-          '❌ MAIN: Authentication check failed - user is null, redirecting to login',
+          'Authentication check failed - user is null, redirecting to login',
         );
         _redirectToLogin();
       } else {
         debugPrint(
-          '✅ MAIN: Authentication check passed for user: ${user?['username']}',
+          'Authentication check passed for user: ${user?['username']}',
         );
       }
     } catch (e) {
-      debugPrint('❌ MAIN: Authentication check exception: $e');
+      debugPrint('Authentication check exception: $e');
       if (e.toString().contains('401') ||
           e.toString().contains('403') ||
           e.toString().contains('Not authenticated')) {
         debugPrint(
-          '🔒 MAIN: Authentication error detected, redirecting to login',
+          'Authentication error detected, redirecting to login',
         );
         if (mounted) {
           _redirectToLogin();
         }
       } else {
         // For other errors (like network issues), don't redirect
-        debugPrint('⚠️ MAIN: Non-authentication error in periodic check: $e');
+        debugPrint('Non-authentication error in periodic check: $e');
       }
     }
   }
@@ -579,25 +608,25 @@ class MainAppContainerState extends State<MainAppContainer>
   // Proactively refresh tokens to prevent expiration
   Future<void> _refreshTokenProactively() async {
     try {
-      debugPrint('🔄 MAIN: Proactive token refresh started');
+      debugPrint('Proactive token refresh started');
       final apiService = Provider.of<ApiService>(context, listen: false);
 
       // This will automatically refresh if needed
       final user = await apiService.getCurrentUser();
       if (user != null) {
-        debugPrint('✅ MAIN: Proactive token refresh successful');
+        debugPrint('Proactive token refresh successful');
       } else {
-        debugPrint('⚠️ MAIN: Proactive token refresh - user is null');
+        debugPrint('Proactive token refresh - user is null');
       }
     } catch (e) {
-      debugPrint('❌ MAIN: Proactive token refresh failed: $e');
+      debugPrint('Proactive token refresh failed: $e');
 
       // If it's an auth error during proactive refresh, redirect to login
       if (e.toString().contains('401') ||
           e.toString().contains('403') ||
           e.toString().contains('Invalid token')) {
         debugPrint(
-          '🔒 MAIN: Auth error during proactive refresh, redirecting to login',
+          'Auth error during proactive refresh, redirecting to login',
         );
         _redirectToLogin();
       }
@@ -621,11 +650,11 @@ class MainAppContainerState extends State<MainAppContainer>
   // Check for pending invitations and update badge count
   Future<void> _checkPendingInvitations() async {
     try {
-      debugPrint('🔍 Initial check for pending invitations...');
+      debugPrint('Initial check for pending invitations...');
 
       // Check if widget is still mounted before using context
       if (!mounted) {
-        debugPrint('⚠️ INVITATION: Widget unmounted, skipping initial check');
+        debugPrint('Widget unmounted, skipping initial check');
         return;
       }
 
@@ -647,10 +676,10 @@ class MainAppContainerState extends State<MainAppContainer>
         setState(() {
           _pendingInvitationsCount = pendingCount;
         });
-        debugPrint('✅ Initial load: Found $pendingCount pending invitations');
+        debugPrint('Found $pendingCount pending invitations');
       }
     } catch (e) {
-      debugPrint('❌ Error checking pending invitations: $e');
+      debugPrint('$e');
       // Don't update the count on error - keep the previous value
     }
   }
@@ -658,7 +687,7 @@ class MainAppContainerState extends State<MainAppContainer>
   // Check for existing DMs and set initial screen accordingly
   Future<void> _checkForExistingDMs() async {
     try {
-      debugPrint('🔍 Checking for existing DMs to determine initial screen...');
+      debugPrint('Checking for existing DMs to determine initial screen...');
       if (!mounted) return;
 
       final apiService = Provider.of<ApiService>(context, listen: false);
@@ -667,10 +696,10 @@ class MainAppContainerState extends State<MainAppContainer>
       if (mounted) {
         setState(() {
           if (conversations.isNotEmpty) {
-            debugPrint('🔍 STARTUP: Has DMs - navigating to DM screen');
+            debugPrint('Has DMs - navigating to DM screen');
             _currentIndex = 1; // DM screen index
           } else {
-            debugPrint('🔍 STARTUP: No DMs - staying on MessageScreen');
+            debugPrint('No DMs - staying on MessageScreen');
             _currentIndex = 0; // MessageScreen index
           }
           _isCheckingInitialScreen = false;
@@ -687,7 +716,7 @@ class MainAppContainerState extends State<MainAppContainer>
         _finishInitialization();
       }
     } catch (e) {
-      debugPrint('❌ Error checking for DMs: $e');
+      debugPrint('$e');
       // On error, proceed with default screen (MessageScreen)
       if (mounted) {
         setState(() {
@@ -724,7 +753,7 @@ class MainAppContainerState extends State<MainAppContainer>
         );
         _showNotificationPermissionDialog();
       } else if (hasPermissions && mounted) {
-        debugPrint('✅ MAIN: User already has notification permissions');
+        debugPrint('User already has notification permissions');
 
         // For existing users, just sync device permission status without overriding preferences
         debugPrint('🔔 MAIN: Syncing device permission status with backend');
@@ -736,16 +765,16 @@ class MainAppContainerState extends State<MainAppContainer>
           debugPrint('🔔 MAIN: Device permission sync result: $success');
 
           if (success) {
-            debugPrint('✅ MAIN: Device permission status synced successfully');
+            debugPrint('Device permission status synced successfully');
           } else {
-            debugPrint('❌ MAIN: Failed to sync device permission status');
+            debugPrint('Failed to sync device permission status');
           }
         } catch (e) {
-          debugPrint('❌ MAIN: Error syncing device permission status: $e');
+          debugPrint('Error syncing device permission status: $e');
         }
       }
     } catch (e) {
-      debugPrint('❌ MAIN: Error checking notification permissions: $e');
+      debugPrint('Error checking notification permissions: $e');
     }
   }
 
@@ -805,7 +834,7 @@ class MainAppContainerState extends State<MainAppContainer>
 
                       if (success && mounted) {
                         debugPrint(
-                          '✅ MAIN: Notification preferences enabled successfully',
+                          'Notification preferences enabled successfully',
                         );
                         scaffoldMessenger.showSnackBar(
                           const SnackBar(
@@ -818,16 +847,16 @@ class MainAppContainerState extends State<MainAppContainer>
                         );
                       } else {
                         debugPrint(
-                          '❌ MAIN: Failed to enable notification preferences',
+                          'Failed to enable notification preferences',
                         );
                       }
                     } catch (e) {
                       debugPrint(
-                        '❌ MAIN: Error enabling notification preferences: $e',
+                        'Error enabling notification preferences: $e',
                       );
                     }
                   } else {
-                    debugPrint('❌ MAIN: iOS permission was denied');
+                    debugPrint('iOS permission was denied');
                   }
                 },
                 child: const Text('Enable Notifications'),
@@ -854,10 +883,10 @@ class MainAppContainerState extends State<MainAppContainer>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    debugPrint('🔄 MAIN_APP: App lifecycle changed to: $state');
+    debugPrint('App lifecycle changed to: $state');
 
     if (state == AppLifecycleState.resumed && mounted) {
-      debugPrint('🔄 MAIN_APP: App resumed, refreshing invitation count...');
+      debugPrint('App resumed, refreshing invitation count...');
       // Refresh invitation count when app resumes from background
       _refreshInvitationCount();
     }
@@ -924,7 +953,7 @@ class MainAppContainerState extends State<MainAppContainer>
             'InvitationsScreen',
           ];
           debugPrint(
-            '📱 PAGE_VIEW: Page changed to $index (${screenNames[index]}) for user ${widget.userId}',
+            'Page changed to $index (${screenNames[index]}) for user ${widget.userId}',
           );
 
           setState(() {

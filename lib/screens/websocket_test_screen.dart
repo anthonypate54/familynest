@@ -52,9 +52,9 @@ class WebSocketTestScreenState extends State<WebSocketTestScreen> {
           _subscribedFamiliesCount = userFamilies.length;
         });
 
-        debugPrint('🔍 WebSocket Test: User ID: $userId');
+        debugPrint('User ID: $userId');
         debugPrint(
-          '🔍 WebSocket Test: User belongs to ${userFamilies.length} families:',
+          'User belongs to ${userFamilies.length} families:',
         );
         for (var family in userFamilies) {
           debugPrint(
@@ -66,7 +66,7 @@ class WebSocketTestScreenState extends State<WebSocketTestScreen> {
         _initializeWebSocket(userFamilies);
       }
     } catch (e) {
-      debugPrint('❌ Error getting current user: $e');
+      debugPrint('$e');
       _initializeWebSocket(
         [],
       ); // Still initialize WebSocket even if user fetch fails
@@ -93,7 +93,7 @@ class WebSocketTestScreenState extends State<WebSocketTestScreen> {
     // Don't re-initialize! Just use the existing service
     // The WebSocket service should already be initialized by the main app
     debugPrint(
-      '🔍 WS TEST: Using existing WebSocket service (connected: $_isConnected)',
+      'Using existing WebSocket service (connected: $_isConnected)',
     );
 
     // Use the new simplified approach - single method that handles all message types
@@ -101,7 +101,7 @@ class WebSocketTestScreenState extends State<WebSocketTestScreen> {
       // Use the new addMessageListenerForUser method which handles both DM and family messages
       _webSocketService!.addMessageListenerForUser(_currentUserId!, (message) {
         debugPrint(
-          '🔍 WS TEST: Received message via new architecture: ${message.toJson()}',
+          'Received message via new architecture: ${message.toJson()}',
         );
         if (mounted) {
           setState(() {
@@ -112,7 +112,7 @@ class WebSocketTestScreenState extends State<WebSocketTestScreen> {
 
       // Also add a debug message listener to capture all raw WebSocket traffic
       _debugMessageHandler = (data) {
-        debugPrint('🔍 WS TEST: Raw WebSocket data: $data');
+        debugPrint('Raw WebSocket data: $data');
         if (mounted) {
           setState(() {
             _receivedRawMessages.add(data);
@@ -122,18 +122,18 @@ class WebSocketTestScreenState extends State<WebSocketTestScreen> {
       _webSocketService!.addDebugMessageListener(_debugMessageHandler!);
 
       debugPrint(
-        '🔍 WS TEST: Subscribed using NEW ARCHITECTURE for user $_currentUserId',
+        'Subscribed using NEW ARCHITECTURE for user $_currentUserId',
       );
       debugPrint(
-        '🔍 WS TEST: User belongs to ${families.length} families, using single user-specific subscription',
+        'User belongs to ${families.length} families, using single user-specific subscription',
       );
     }
 
     debugPrint(
-      '🔍 WS TEST: WebSocket Test Screen initialized with NEW IMPROVED architecture',
+      'WebSocket Test Screen initialized with NEW IMPROVED architecture',
     );
     debugPrint(
-      '🔍 WS TEST: Connection status from shared service: $_isConnected',
+      'Connection status from shared service: $_isConnected',
     );
   }
 
@@ -223,7 +223,7 @@ class WebSocketTestScreenState extends State<WebSocketTestScreen> {
             Row(
               children: [
                 Text(
-                  '🔍 Raw WebSocket Data',
+                  'Raw WebSocket Data',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.blue,

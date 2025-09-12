@@ -90,12 +90,12 @@ class _MessageScreenState extends State<MessageScreen>
       // Only reload if we don't have messages already
       if (_cachedMessageProvider!.messages.isEmpty) {
         debugPrint(
-          '🔄 MessageScreen: App resumed with no messages, reloading...',
+          'App resumed with no messages, reloading...',
         );
         _loadMessages(showLoading: false);
       } else {
         debugPrint(
-          '📱 MessageScreen: App resumed with ${_cachedMessageProvider!.messages.length} messages, skipping reload',
+          'App resumed with ${_cachedMessageProvider!.messages.length} messages, skipping reload',
         );
       }
     }
@@ -122,11 +122,11 @@ class _MessageScreenState extends State<MessageScreen>
       listen: false,
     );
     if (messageProvider.messages.isEmpty) {
-      debugPrint('🔄 MessageScreen: initState with no messages, loading...');
+      debugPrint('initState with no messages, loading...');
       _loadMessages();
     } else {
       debugPrint(
-        '📱 MessageScreen: initState with ${messageProvider.messages.length} messages, FORCE LOADING FOR DEBUG',
+        'initState with ${messageProvider.messages.length} messages, FORCE LOADING FOR DEBUG',
       );
       _loadMessages(); // FORCE LOAD FOR DEBUG
     }
@@ -150,13 +150,13 @@ class _MessageScreenState extends State<MessageScreen>
           _currentUserId = userId;
         });
 
-        debugPrint('🔍 MessageScreen: User ID: $userId, Family ID: $familyId');
+        debugPrint('User ID: $userId, Family ID: $familyId');
 
         // Initialize WebSocket after getting user info
         _initWebSocket();
       }
     } catch (e) {
-      debugPrint('❌ Error getting current user for WebSocket: $e');
+      debugPrint('$e');
       // Still try to initialize WebSocket even if user fetch fails
       _initWebSocket();
     }
@@ -171,11 +171,11 @@ class _MessageScreenState extends State<MessageScreen>
     final apiService = Provider.of<ApiService>(context, listen: false);
     try {
       debugPrint(
-        '🔄 MessageScreen: Loading messages for user ${widget.userId}',
+        'Loading messages for user ${widget.userId}',
       );
       final messages = await apiService.getUserMessages(widget.userId);
       if (mounted) {
-        debugPrint('✅ MessageScreen: Loaded ${messages.length} messages');
+        debugPrint('Loaded ${messages.length} messages');
         // Always use setMessages - refresh should get authoritative database state
         Provider.of<MessageProvider>(
           context,
@@ -194,7 +194,7 @@ class _MessageScreenState extends State<MessageScreen>
         }
       }
     } catch (e) {
-      debugPrint('❌ MessageScreen: Error loading messages: $e');
+      debugPrint('Error loading messages: $e');
 
       // Check if it's an authentication error
       if (e.toString().contains('403') ||
@@ -313,9 +313,9 @@ class _MessageScreenState extends State<MessageScreen>
         // If user has activity, mark them as having seen welcome
         if (hasActivity) {
           await prefs.setBool('hasSeenWelcome', true);
-          debugPrint('🔍 User has activity - marked hasSeenWelcome = true');
+          debugPrint('User has activity - marked hasSeenWelcome = true');
         } else {
-          debugPrint('🔍 New user - will show welcome dialog');
+          debugPrint('New user - will show welcome dialog');
         }
       }
     } catch (e) {
@@ -339,7 +339,7 @@ class _MessageScreenState extends State<MessageScreen>
           _isFirstTimeUser = false;
         });
       }
-      debugPrint('🔍 User took action - marked hasSeenWelcome = true');
+      debugPrint('User took action - marked hasSeenWelcome = true');
     } catch (e) {
       debugPrint('Error marking welcome as seen: $e');
     }
@@ -423,7 +423,7 @@ class _MessageScreenState extends State<MessageScreen>
       // Check if this is a new message type
       final messageType = data['type'] as String?;
       if (messageType != 'NEW_MESSAGE') {
-        debugPrint('⚠️ MESSAGE: Not a new message, ignoring');
+        debugPrint('Not a new message, ignoring');
         return;
       }
 
@@ -438,7 +438,7 @@ class _MessageScreenState extends State<MessageScreen>
 
       // Check if provider is available
       if (_messageProvider == null) {
-        debugPrint('❌ MESSAGE: MessageProvider is null!');
+        debugPrint('MessageProvider is null!');
         return;
       }
 
@@ -457,7 +457,7 @@ class _MessageScreenState extends State<MessageScreen>
       // Add message to provider
       _messageProvider!.addMessage(message);
 
-      debugPrint('✅ MESSAGE: Added new message to provider');
+      debugPrint('Added new message to provider');
 
       // Auto-scroll to show new message
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -470,7 +470,7 @@ class _MessageScreenState extends State<MessageScreen>
         }
       });
     } catch (e, stackTrace) {
-      debugPrint('❌ MESSAGE: Error handling WebSocket message: $e');
+      debugPrint('Error handling WebSocket message: $e');
       debugPrint('Stack trace: $stackTrace');
     }
   }
@@ -483,7 +483,7 @@ class _MessageScreenState extends State<MessageScreen>
       // Check if this is a reaction type
       final messageType = data['type'] as String?;
       if (messageType != 'REACTION') {
-        debugPrint('⚠️ REACTION: Not a reaction, ignoring');
+        debugPrint('Not a reaction, ignoring');
         return;
       }
 
@@ -495,7 +495,7 @@ class _MessageScreenState extends State<MessageScreen>
       final isLoved = data['is_loved'] as bool?;
 
       if (messageId == null) {
-        debugPrint('⚠️ REACTION: Missing message ID');
+        debugPrint('Missing message ID');
         return;
       }
 
@@ -512,10 +512,10 @@ class _MessageScreenState extends State<MessageScreen>
           isLiked: isLiked,
           isLoved: isLoved,
         );
-        debugPrint('✅ REACTION: Updated message $messageId reactions');
+        debugPrint('Updated message $messageId reactions');
       }
     } catch (e, stackTrace) {
-      debugPrint('❌ REACTION: Error handling WebSocket reaction: $e');
+      debugPrint('Error handling WebSocket reaction: $e');
       debugPrint('Stack trace: $stackTrace');
     }
   }
@@ -530,7 +530,7 @@ class _MessageScreenState extends State<MessageScreen>
       final hasUnreadComments = data['has_unread_comments'] as bool?;
 
       if (messageId == null || commentCount == null) {
-        debugPrint('⚠️ COMMENT_COUNT: Missing message ID or comment count');
+        debugPrint('Missing message ID or comment count');
         return;
       }
 
@@ -546,13 +546,13 @@ class _MessageScreenState extends State<MessageScreen>
           hasUnreadComments: hasUnreadComments,
         );
         debugPrint(
-          '✅ COMMENT_COUNT: Updated message $messageId comment count and read status',
+          'Updated message $messageId comment count and read status',
         );
       } else {
-        debugPrint('❌ COMMENT_COUNT: MessageProvider is null!');
+        debugPrint('MessageProvider is null!');
       }
     } catch (e, stackTrace) {
-      debugPrint('❌ COMMENT_COUNT: Error handling comment count update: $e');
+      debugPrint('Error handling comment count update: $e');
       debugPrint('Stack trace: $stackTrace');
     }
   }
@@ -704,7 +704,7 @@ class _MessageScreenState extends State<MessageScreen>
   Future<void> _postMessage(ApiService apiService) async {
     // Prevent duplicate sends
     if (_isSending) {
-      debugPrint('⚠️ _postMessage: Already sending, ignoring duplicate tap');
+      debugPrint('Already sending, ignoring duplicate tap');
       return;
     }
 
@@ -731,7 +731,7 @@ class _MessageScreenState extends State<MessageScreen>
         if (mediaType == 'video') {
           // For videos: Copy to persistent storage for instant playback
           debugPrint(
-            '📱 Video: Copying to persistent storage for local playback',
+            'Copying to persistent storage for local playback',
           );
           final String? persistentPath = await _copyVideoToPersistentStorage(
             mediaFile.path,
@@ -773,7 +773,7 @@ class _MessageScreenState extends State<MessageScreen>
         );
       }
     } catch (e) {
-      debugPrint('❌ _postMessage: Error posting message: $e');
+      debugPrint('Error posting message: $e');
 
       // Handle "no family" error specifically
       if (e.toString().contains('User is not a member of any family') ||
@@ -836,10 +836,10 @@ class _MessageScreenState extends State<MessageScreen>
             listen: false,
           );
           messageProvider.addMessage(newMessage);
-          debugPrint('✅ _postMessage: Successfully added message to provider');
+          debugPrint('Successfully added message to provider');
         }
       } catch (e) {
-        debugPrint('❌ _postMessage: Error adding message to provider: $e');
+        debugPrint('Error adding message to provider: $e');
       }
 
       _messageController.clear();
@@ -853,7 +853,7 @@ class _MessageScreenState extends State<MessageScreen>
         }
       });
     } else {
-      debugPrint('❌ _postMessage: newMessage is null - API call failed');
+      debugPrint('newMessage is null - API call failed');
     }
   }
 
@@ -927,7 +927,7 @@ class _MessageScreenState extends State<MessageScreen>
                                       if (message.mediaType == 'video') {
                                         // Memory-safe: Only one video plays at a time
                                         debugPrint(
-                                          '🎬 Playing video inline (memory-safe): ${message.id}',
+                                          'Playing video inline (memory-safe): ${message.id}',
                                         );
                                         setState(() {
                                           _currentlyPlayingVideoId = message.id;
@@ -1016,13 +1016,13 @@ class _MessageScreenState extends State<MessageScreen>
   // Upload video in background and update message when complete
   void _uploadVideoInBackground(Message message, File videoFile) async {
     try {
-      debugPrint('🔄 Background upload starting for message ${message.id}');
+      debugPrint('Background upload starting for message ${message.id}');
 
       final apiService = context.read<ApiService>();
       final videoData = await apiService.uploadVideoWithThumbnail(videoFile);
 
       if (videoData['videoUrl'] != null && videoData['videoUrl']!.isNotEmpty) {
-        debugPrint('✅ Background upload complete: ${videoData['videoUrl']}');
+        debugPrint('${videoData['videoUrl']}');
 
         // Update the message with server URL (for other users and future loads)
         final updatedMessage = message.copyWith(
@@ -1040,16 +1040,16 @@ class _MessageScreenState extends State<MessageScreen>
         try {
           if (await videoFile.exists()) {
             await videoFile.delete();
-            debugPrint('🧹 Temporary video file cleaned up: ${videoFile.path}');
+            debugPrint('Temporary video file cleaned up: ${videoFile.path}');
           }
         } catch (cleanupError) {
           debugPrint(
-            '⚠️ Error cleaning up temporary video file: $cleanupError',
+            '$cleanupError',
           );
         }
       }
     } catch (e) {
-      debugPrint('❌ Background upload failed: $e');
+      debugPrint('$e');
       // Video will continue to play from local file
     } finally {
       // Additional memory cleanup after background upload
@@ -1080,10 +1080,10 @@ class _MessageScreenState extends State<MessageScreen>
 
       if (match != null) {
         timestamp = match.group(1)!;
-        debugPrint('📱 Using original video timestamp: $timestamp');
+        debugPrint('$timestamp');
       } else {
         timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-        debugPrint('⚠️ Could not extract timestamp, using current: $timestamp');
+        debugPrint('$timestamp');
       }
 
       final String fileName = 'video_$timestamp.mp4';
@@ -1102,11 +1102,11 @@ class _MessageScreenState extends State<MessageScreen>
       // Small delay to ensure Android file system has processed the file
       await Future.delayed(const Duration(milliseconds: 200));
 
-      debugPrint('✅ Video copied to persistent storage for instant playback');
+      debugPrint('Video copied to persistent storage for instant playback');
 
       return persistentFile.path;
     } catch (e) {
-      debugPrint('❌ Error copying video to persistent storage: $e');
+      debugPrint('$e');
       return null;
     }
   }

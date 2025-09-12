@@ -27,7 +27,7 @@ class ActivityLifecycleService {
     _lifecycleChannel.setMethodCallHandler(_handleLifecycleEvent);
     _isInitialized = true;
 
-    debugPrint('✅ ActivityLifecycleService: Initialized');
+    debugPrint('Initialized');
   }
 
   /// Handle lifecycle events from Android MainActivity

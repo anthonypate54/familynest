@@ -68,7 +68,7 @@ class _ThreadScreenState extends State<ThreadScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       // Reload comments when app comes back to foreground
-      debugPrint('🔄 ThreadScreen: App resumed, reloading comments...');
+      debugPrint('App resumed, reloading comments...');
       _loadComments(showLoading: false);
     }
   }
@@ -106,9 +106,9 @@ class _ThreadScreenState extends State<ThreadScreen>
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
       await apiService.markCommentsAsRead(_parentMessageId!);
-      debugPrint('✅ Marked comments as read for message $_parentMessageId');
+      debugPrint('Marked comments as read for message $_parentMessageId');
     } catch (e) {
-      debugPrint('❌ Failed to mark comments as read: $e');
+      debugPrint('$e');
       // Don't show user error - this is a background operation
     }
   }
@@ -166,7 +166,7 @@ class _ThreadScreenState extends State<ThreadScreen>
       // Check if this is a comment type message
       final messageType = data['type'] as String?;
       if (messageType != 'COMMENT') {
-        debugPrint('⚠️ COMMENT: Not a comment message, ignoring');
+        debugPrint('Not a comment message, ignoring');
         return;
       }
 
@@ -180,7 +180,7 @@ class _ThreadScreenState extends State<ThreadScreen>
         _scrollToBottom();
       });
     } catch (e, stackTrace) {
-      debugPrint('❌ COMMENT: Error handling WebSocket message: $e');
+      debugPrint('Error handling WebSocket message: $e');
       debugPrint('Stack trace: $stackTrace');
     }
   }
@@ -191,7 +191,7 @@ class _ThreadScreenState extends State<ThreadScreen>
       // Check if this is a reaction type
       final messageType = data['type'] as String?;
       if (messageType != 'REACTION') {
-        debugPrint('⚠️ REACTION: Not a reaction, ignoring');
+        debugPrint('Not a reaction, ignoring');
         return;
       }
 
@@ -202,7 +202,7 @@ class _ThreadScreenState extends State<ThreadScreen>
       final isLoved = data['is_loved'] as bool?;
 
       if (messageId == null) {
-        debugPrint('⚠️ REACTION: Missing message ID');
+        debugPrint('Missing message ID');
         return;
       }
 
@@ -215,10 +215,10 @@ class _ThreadScreenState extends State<ThreadScreen>
           isLiked: isLiked,
           isLoved: isLoved,
         );
-        debugPrint('✅ REACTION: Updated message $messageId reactions');
+        debugPrint('Updated message $messageId reactions');
       }
     } catch (e, stackTrace) {
-      debugPrint('❌ REACTION: Error handling WebSocket reaction: $e');
+      debugPrint('Error handling WebSocket reaction: $e');
       debugPrint('Stack trace: $stackTrace');
     }
   }
@@ -386,7 +386,7 @@ class _ThreadScreenState extends State<ThreadScreen>
   Future<void> _postComment(ApiService apiService) async {
     // Prevent duplicate sends
     if (_isSending) {
-      debugPrint('⚠️ _postComment: Already sending, ignoring duplicate tap');
+      debugPrint('Already sending, ignoring duplicate tap');
       return;
     }
 
@@ -423,7 +423,7 @@ class _ThreadScreenState extends State<ThreadScreen>
         } else if (_compositionService?.selectedMediaType == 'video') {
           // For videos: Copy to persistent storage for instant playback
           debugPrint(
-            '📱 Video Comment: Copying to persistent storage for local playback',
+            'Copying to persistent storage for local playback',
           );
           final String? persistentPath = await _copyVideoToPersistentStorage(
             _compositionService!.selectedMediaFile!.path,
@@ -785,13 +785,13 @@ class _ThreadScreenState extends State<ThreadScreen>
   // Upload video in background and update comment when complete
   void _uploadVideoInBackground(Message comment, File videoFile) async {
     try {
-      debugPrint('🔄 Background upload starting for comment ${comment.id}');
+      debugPrint('Background upload starting for comment ${comment.id}');
 
       final apiService = context.read<ApiService>();
       final videoData = await apiService.uploadVideoWithThumbnail(videoFile);
 
       if (videoData['videoUrl'] != null && videoData['videoUrl']!.isNotEmpty) {
-        debugPrint('✅ Background upload complete: ${videoData['videoUrl']}');
+        debugPrint('${videoData['videoUrl']}');
 
         // Update the comment with server URL (for other users and future loads)
         final updatedComment = comment.copyWith(
@@ -809,16 +809,16 @@ class _ThreadScreenState extends State<ThreadScreen>
         try {
           if (await videoFile.exists()) {
             await videoFile.delete();
-            debugPrint('🧹 Temporary video file cleaned up: ${videoFile.path}');
+            debugPrint('Temporary video file cleaned up: ${videoFile.path}');
           }
         } catch (cleanupError) {
           debugPrint(
-            '⚠️ Error cleaning up temporary video file: $cleanupError',
+            '$cleanupError',
           );
         }
       }
     } catch (e) {
-      debugPrint('❌ Background upload failed: $e');
+      debugPrint('$e');
       // Video will continue to play from local file
     } finally {
       // Additional memory cleanup after background upload
@@ -847,10 +847,10 @@ class _ThreadScreenState extends State<ThreadScreen>
 
       if (match != null) {
         timestamp = match.group(1)!;
-        debugPrint('📱 Using original video timestamp: $timestamp');
+        debugPrint('$timestamp');
       } else {
         timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-        debugPrint('⚠️ Could not extract timestamp, using current: $timestamp');
+        debugPrint('$timestamp');
       }
 
       final String fileName = 'video_$timestamp.mp4';
@@ -869,11 +869,11 @@ class _ThreadScreenState extends State<ThreadScreen>
       // Small delay to ensure Android file system has processed the file
       await Future.delayed(const Duration(milliseconds: 200));
 
-      debugPrint('✅ Video copied to persistent storage for instant playback');
+      debugPrint('Video copied to persistent storage for instant playback');
 
       return persistentFile.path;
     } catch (e) {
-      debugPrint('❌ Error copying video to persistent storage: $e');
+      debugPrint('$e');
       return null;
     }
   }

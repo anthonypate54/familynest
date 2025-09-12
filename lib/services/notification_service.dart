@@ -27,7 +27,7 @@ class NotificationService {
     // For iOS, we might need to request permissions first to get APNS token
     if (Platform.isIOS) {
       debugPrint(
-        '📱 iOS detected - checking if we should request permissions first...',
+        'iOS detected - checking if we should request permissions first...',
       );
 
       // Check current permission status
@@ -35,7 +35,7 @@ class NotificationService {
           await _firebaseMessaging.getNotificationSettings();
       if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
         debugPrint(
-          '📱 iOS permissions not determined - requesting now for APNS token...',
+          'iOS permissions not determined - requesting now for APNS token...',
         );
         await _requestPermissions();
       }
@@ -47,7 +47,7 @@ class NotificationService {
     // Set up message handlers
     _setupMessageHandlers();
 
-    debugPrint('✅ NotificationService basic setup complete');
+    debugPrint('NotificationService basic setup complete');
   }
 
   /// Request permissions and fully enable notifications
@@ -58,9 +58,9 @@ class NotificationService {
     bool granted = await _requestPermissions();
 
     if (granted) {
-      debugPrint('✅ Notifications fully enabled');
+      debugPrint('Notifications fully enabled');
     } else {
-      debugPrint('❌ Notification permissions denied');
+      debugPrint('Notification permissions denied');
     }
 
     return granted;
@@ -75,74 +75,74 @@ class NotificationService {
 
   /// Check current notification permission status (for debugging)
   static Future<void> checkPermissionStatus() async {
-    debugPrint('🔍 Checking current notification permission status...');
+    debugPrint('Checking current notification permission status...');
 
     try {
       NotificationSettings settings =
           await _firebaseMessaging.getNotificationSettings();
-      debugPrint('🔍 Authorization Status: ${settings.authorizationStatus}');
-      debugPrint('🔍 Alert: ${settings.alert}');
-      debugPrint('🔍 Badge: ${settings.badge}');
-      debugPrint('🔍 Sound: ${settings.sound}');
-      debugPrint('🔍 Announcement: ${settings.announcement}');
-      debugPrint('🔍 CarPlay: ${settings.carPlay}');
-      debugPrint('🔍 Critical Alert: ${settings.criticalAlert}');
+      debugPrint('${settings.authorizationStatus}');
+      debugPrint('${settings.alert}');
+      debugPrint('${settings.badge}');
+      debugPrint('${settings.sound}');
+      debugPrint('${settings.announcement}');
+      debugPrint('${settings.carPlay}');
+      debugPrint('${settings.criticalAlert}');
 
       // Friendly explanation
       switch (settings.authorizationStatus) {
         case AuthorizationStatus.authorized:
-          debugPrint('✅ Status: Fully authorized');
+          debugPrint('Fully authorized');
           break;
         case AuthorizationStatus.provisional:
-          debugPrint('⚠️ Status: Provisional (quiet notifications)');
+          debugPrint('Provisional (quiet notifications)');
           break;
         case AuthorizationStatus.denied:
-          debugPrint('❌ Status: Denied - must enable in device settings');
+          debugPrint('Denied - must enable in device settings');
           break;
         case AuthorizationStatus.notDetermined:
           debugPrint('❓ Status: Not determined - permission dialog will show');
           break;
       }
     } catch (e) {
-      debugPrint('❌ Error checking permission status: $e');
+      debugPrint('$e');
     }
   }
 
   /// Request notification permissions from the user
   static Future<bool> _requestPermissions() async {
-    debugPrint('📱 Requesting notification permissions...');
-    debugPrint('📱 Platform: ${Platform.operatingSystem}');
+    debugPrint('Requesting notification permissions...');
+    debugPrint('${Platform.operatingSystem}');
 
     try {
       // Check current status before requesting
       NotificationSettings currentSettings =
           await _firebaseMessaging.getNotificationSettings();
       debugPrint(
-        '📱 BEFORE REQUEST - Current status: ${currentSettings.authorizationStatus}',
+        '${currentSettings.authorizationStatus}',
       );
-      debugPrint('📱 BEFORE REQUEST - Alert: ${currentSettings.alert}');
-      debugPrint('📱 BEFORE REQUEST - Badge: ${currentSettings.badge}');
-      debugPrint('📱 BEFORE REQUEST - Sound: ${currentSettings.sound}');
+      debugPrint('${currentSettings.alert}');
+      debugPrint('${currentSettings.badge}');
+      debugPrint('${currentSettings.sound}');
 
       // Special check for iOS - if already determined, explain why no dialog shows
       if (Platform.isIOS) {
         if (currentSettings.authorizationStatus == AuthorizationStatus.denied) {
           debugPrint(
-            '⚠️ iOS: Permissions previously denied - no dialog will show',
+            'Permissions previously denied - no dialog will show',
           );
           debugPrint(
-            '⚠️ iOS: User must enable manually in Settings > Notifications > FamilyNest',
+            'User must enable manually in Settings > Notifications > FamilyNest',
           );
           return false;
         }
         if (currentSettings.authorizationStatus ==
             AuthorizationStatus.authorized) {
-          debugPrint('✅ iOS: Permissions already granted - no dialog needed');
+          debugPrint('Permissions already granted - no dialog needed');
           return true;
         }
       }
 
-      debugPrint('📱 About to call Firebase requestPermission()...');
+      debugPrint('About to call Firebase requestPermission()...');
 
       // Add a small delay to ensure the dialog context is ready
       await Future.delayed(const Duration(milliseconds: 100));
@@ -157,40 +157,40 @@ class NotificationService {
             provisional: false,
             sound: true,
           );
-      debugPrint('📱 Firebase requestPermission() completed');
+      debugPrint('Firebase requestPermission() completed');
       debugPrint(
-        '📱 AFTER REQUEST - New status: ${settings.authorizationStatus}',
+        '${settings.authorizationStatus}',
       );
-      debugPrint('📱 AFTER REQUEST - Alert: ${settings.alert}');
-      debugPrint('📱 AFTER REQUEST - Badge: ${settings.badge}');
-      debugPrint('📱 AFTER REQUEST - Sound: ${settings.sound}');
+      debugPrint('${settings.alert}');
+      debugPrint('${settings.badge}');
+      debugPrint('${settings.sound}');
 
       // iOS Simulator warning
       if (Platform.isIOS) {
         debugPrint(
-          '📱 iOS NOTE: If running on Simulator, permission dialogs may not appear',
+          'If running on Simulator, permission dialogs may not appear',
         );
         debugPrint(
-          '📱 iOS NOTE: Try on a physical device for full permission dialog experience',
+          'Try on a physical device for full permission dialog experience',
         );
       }
 
       switch (settings.authorizationStatus) {
         case AuthorizationStatus.authorized:
-          debugPrint('✅ Notification permissions granted');
+          debugPrint('Notification permissions granted');
           return true;
         case AuthorizationStatus.provisional:
-          debugPrint('⚠️ Provisional notification permissions granted');
+          debugPrint('Provisional notification permissions granted');
           return true;
         case AuthorizationStatus.denied:
-          debugPrint('❌ Notification permissions denied');
+          debugPrint('Notification permissions denied');
           return false;
         case AuthorizationStatus.notDetermined:
           debugPrint('❓ Notification permissions not determined');
           return false;
       }
     } catch (e) {
-      debugPrint('❌ Error requesting permissions: $e');
+      debugPrint('$e');
       return false;
     }
   }
@@ -219,43 +219,43 @@ class NotificationService {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
-    debugPrint('✅ Local notifications initialized');
+    debugPrint('Local notifications initialized');
   }
 
   /// Get and store the FCM token
   static Future<void> _getFcmToken() async {
     try {
-      debugPrint('🔑 Getting FCM token for device...');
+      debugPrint('Getting FCM token for device...');
 
       // For iOS, use the improved APNS handling approach
       if (Platform.isIOS) {
-        debugPrint('📱 iOS detected - using improved APNS handling...');
+        debugPrint('iOS detected - using improved APNS handling...');
 
         // Check if running on simulator
         try {
           final deviceInfo = DeviceInfoPlugin();
           final iosInfo = await deviceInfo.iosInfo;
-          debugPrint('📱 Device name: ${iosInfo.name}');
-          debugPrint('📱 Device model: ${iosInfo.model}');
+          debugPrint('${iosInfo.name}');
+          debugPrint('${iosInfo.model}');
           debugPrint(
-            '📱 Is simulator: ${iosInfo.isPhysicalDevice ? "NO (Real Device)" : "YES (Simulator)"}',
+            '${iosInfo.isPhysicalDevice ? "NO (Real Device)" : "YES (Simulator)"}',
           );
 
           if (!iosInfo.isPhysicalDevice) {
             debugPrint(
-              '⚠️ SIMULATOR DETECTED: APNS tokens do NOT work on iOS Simulator!',
+              'APNS tokens do NOT work on iOS Simulator!',
             );
             debugPrint(
-              '⚠️ You must use a real physical iPhone for push notifications to work.',
+              'You must use a real physical iPhone for push notifications to work.',
             );
             return;
           }
         } catch (e) {
-          debugPrint('❌ Error checking device info: $e');
+          debugPrint('$e');
         }
 
         // Step 1: Request permissions
-        debugPrint('📱 Requesting notification permissions...');
+        debugPrint('Requesting notification permissions...');
         NotificationSettings settings = await _firebaseMessaging
             .requestPermission(
               alert: true,
@@ -264,17 +264,17 @@ class NotificationService {
               provisional: true,
             );
 
-        debugPrint('📱 Permission status: ${settings.authorizationStatus}');
+        debugPrint('${settings.authorizationStatus}');
 
         if (settings.authorizationStatus != AuthorizationStatus.authorized) {
-          debugPrint('❌ Permissions denied. User needs to enable in Settings.');
+          debugPrint('Permissions denied. User needs to enable in Settings.');
           if (settings.authorizationStatus == AuthorizationStatus.denied) {
             debugPrint(
-              '⚠️ User denied permissions - notifications will not work',
+              'User denied permissions - notifications will not work',
             );
           } else if (settings.authorizationStatus ==
               AuthorizationStatus.notDetermined) {
-            debugPrint('⚠️ Permissions not determined - retry needed');
+            debugPrint('Permissions not determined - retry needed');
           }
 
           try {
@@ -289,7 +289,7 @@ class NotificationService {
         }
 
         // Step 2: Configure foreground notification presentation (triggers APNS registration)
-        debugPrint('📱 Configuring foreground notification presentation...');
+        debugPrint('Configuring foreground notification presentation...');
         await _firebaseMessaging.setForegroundNotificationPresentationOptions(
           alert: true,
           badge: true,
@@ -297,13 +297,13 @@ class NotificationService {
         );
 
         // Step 3: Retry fetching APNS token with delay (up to 10 seconds)
-        debugPrint('📱 Attempting to get APNS token with retries...');
+        debugPrint('Attempting to get APNS token with retries...');
         String? apnsToken;
         for (int i = 0; i < 5; i++) {
           apnsToken = await _firebaseMessaging.getAPNSToken();
           if (apnsToken != null) {
             debugPrint(
-              '✅ APNS token obtained on attempt ${i + 1}: ${apnsToken.substring(0, 10)}...',
+              '${apnsToken.substring(0, 10)}...',
             );
             try {
               final apiService = ApiService();
@@ -325,7 +325,7 @@ class NotificationService {
         }
 
         if (apnsToken == null) {
-          debugPrint('❌ Failed to get APNS token after 5 retries.');
+          debugPrint('Failed to get APNS token after 5 retries.');
           debugPrint('💡 This could mean:');
           debugPrint('   1. Network connectivity issues');
           debugPrint('   2. Apple APNS servers temporarily unavailable');
@@ -343,25 +343,25 @@ class NotificationService {
 
           // Still try to get FCM token - sometimes it works despite APNS issues
           debugPrint(
-            '📱 Attempting FCM token generation despite APNS failure...',
+            'Attempting FCM token generation despite APNS failure...',
           );
         } else {
           debugPrint(
-            '✅ APNS token successfully obtained, proceeding with FCM token...',
+            'APNS token successfully obtained, proceeding with FCM token...',
           );
         }
       }
 
       // Step 4: Now get FCM token (should work for both platforms)
       try {
-        debugPrint('🔑 Attempting FCM token generation...');
+        debugPrint('Attempting FCM token generation...');
         _fcmToken = await _firebaseMessaging.getToken();
 
         if (_fcmToken != null) {
           debugPrint(
-            '🔑 FCM Token obtained successfully: ${_fcmToken?.substring(0, 20)}...',
+            'FCM Token obtained successfully: ${_fcmToken?.substring(0, 20)}...',
           );
-          debugPrint('🔑 FCM Token length: ${_fcmToken?.length ?? 0}');
+          debugPrint('FCM Token length: ${_fcmToken?.length ?? 0}');
 
           // DEBUG: Log success to backend
           try {
@@ -378,7 +378,7 @@ class NotificationService {
             debugPrint('Debug logging failed: $e');
           }
         } else {
-          debugPrint('❌ FCM token is null - generation failed');
+          debugPrint('FCM token is null - generation failed');
           try {
             final apiService = ApiService();
             await apiService.backendDebugPrint('FCM_TOKEN_NULL');
@@ -387,9 +387,9 @@ class NotificationService {
           }
         }
       } catch (e) {
-        debugPrint('❌ Error getting FCM token: $e');
+        debugPrint('$e');
         debugPrint(
-          '⚠️ FCM token generation failed - notifications will not work',
+          'FCM token generation failed - notifications will not work',
         );
 
         // DEBUG: Send the error to backend logs for real device debugging
@@ -403,14 +403,14 @@ class NotificationService {
             'ERROR_TYPE: FCM_GENERATION_ERROR',
           );
         } catch (debugError) {
-          debugPrint('❌ Debug logging failed: $debugError');
+          debugPrint('$debugError');
         }
         return;
       }
 
       // Listen for token refresh
       _firebaseMessaging.onTokenRefresh.listen((token) async {
-        debugPrint('🔄 FCM Token refreshed: ${token.substring(0, 20)}...');
+        debugPrint('${token.substring(0, 20)}...');
         _fcmToken = token;
 
         // Send updated token to backend
@@ -423,19 +423,19 @@ class NotificationService {
               token,
             );
             if (success) {
-              debugPrint('✅ Updated FCM token sent to backend successfully');
+              debugPrint('Updated FCM token sent to backend successfully');
             } else {
-              debugPrint('⚠️ Failed to send updated FCM token to backend');
+              debugPrint('Failed to send updated FCM token to backend');
             }
           } else {
-            debugPrint('⚠️ No current user ID available for token update');
+            debugPrint('No current user ID available for token update');
           }
         } catch (e) {
-          debugPrint('❌ Error sending updated FCM token to backend: $e');
+          debugPrint('$e');
         }
       });
     } catch (e) {
-      debugPrint('❌ Error in _getFcmToken: $e');
+      debugPrint('$e');
     }
   }
 
@@ -457,7 +457,7 @@ class NotificationService {
       }
     });
 
-    debugPrint('✅ Message handlers set up');
+    debugPrint('Message handlers set up');
   }
 
   /// Handle messages when app is in foreground
@@ -468,28 +468,28 @@ class NotificationService {
     final title = message.notification?.title ?? message.data['title'];
     final body = message.notification?.body ?? message.data['body'];
 
-    debugPrint('📱 Title: $title');
+    debugPrint('$title');
     debugPrint('📝 Body: $body');
-    debugPrint('📊 Data: ${message.data}');
+    debugPrint('${message.data}');
 
     // Check if current user is the sender - don't show notification to sender
     final senderId = message.data['senderId'];
     final currentUserId = await _getCurrentUserIdFromAPI();
 
     debugPrint(
-      '🔍 DEBUG: senderId from message: "$senderId" (${senderId.runtimeType})',
+      'senderId from message: "$senderId" (${senderId.runtimeType})',
     );
     debugPrint(
-      '🔍 DEBUG: currentUserId from API: "$currentUserId" (${currentUserId.runtimeType})',
+      'currentUserId from API: "$currentUserId" (${currentUserId.runtimeType})',
     );
     debugPrint(
-      '🔍 DEBUG: String comparison: "${senderId.toString()}" == "${currentUserId.toString()}" = ${senderId.toString() == currentUserId.toString()}',
+      'String comparison: "${senderId.toString()}" == "${currentUserId.toString()}" = ${senderId.toString() == currentUserId.toString()}',
     );
 
     if (senderId != null &&
         currentUserId != null &&
         senderId.toString() == currentUserId.toString()) {
-      debugPrint('🚫 Skipping notification - current user is the sender');
+      debugPrint('Skipping notification - current user is the sender');
       return;
     }
 
@@ -505,8 +505,8 @@ class NotificationService {
 
   /// Handle messages when app is opened from background/terminated
   static void _handleMessageOpenedApp(RemoteMessage message) {
-    debugPrint('🚪 App opened by notification: ${message.messageId}');
-    debugPrint('📊 Data: ${message.data}');
+    debugPrint('${message.messageId}');
+    debugPrint('${message.data}');
 
     // TODO: Navigate to specific screen based on message data
     // For example, if it's a family message, navigate to that family's thread
@@ -556,9 +556,9 @@ class NotificationService {
         payload: data.toString(),
       );
 
-      debugPrint('✅ Local notification shown: $title');
+      debugPrint('$title');
     } catch (e) {
-      debugPrint('❌ Error showing local notification: $e');
+      debugPrint('$e');
     }
   }
 
@@ -594,9 +594,9 @@ class NotificationService {
         payload: message.data.toString(),
       );
 
-      debugPrint('✅ Local notification shown');
+      debugPrint('Local notification shown');
     } catch (e) {
-      debugPrint('❌ Error showing local notification: $e');
+      debugPrint('$e');
     }
   }
 
@@ -607,7 +607,7 @@ class NotificationService {
     // TODO: Parse payload and navigate to appropriate screen
     if (response.payload != null) {
       // Parse the data and navigate accordingly
-      debugPrint('📊 Payload: ${response.payload}');
+      debugPrint('${response.payload}');
     }
   }
 
@@ -647,18 +647,18 @@ class NotificationService {
 
     if (_fcmToken == null) {
       debugPrint(
-        '⚠️ SEND_TOKEN_TO_BACKEND: No FCM token available to send to backend',
+        'No FCM token available to send to backend',
       );
-      debugPrint('🔄 SEND_TOKEN_TO_BACKEND: Attempting to get fresh token...');
+      debugPrint('Attempting to get fresh token...');
 
       // Try to get token again
       try {
         _fcmToken = await _firebaseMessaging.getToken();
         debugPrint(
-          '🔑 SEND_TOKEN_TO_BACKEND: Fresh token obtained: $_fcmToken',
+          'SEND_TOKEN_TO_BACKEND: Fresh token obtained: $_fcmToken',
         );
       } catch (e) {
-        debugPrint('❌ SEND_TOKEN_TO_BACKEND: Failed to get fresh token: $e');
+        debugPrint('Failed to get fresh token: $e');
         await apiService.backendDebugPrint('###EXCEPTION $e');
 
         return;
@@ -666,7 +666,7 @@ class NotificationService {
 
       if (_fcmToken == null) {
         debugPrint(
-          '❌ SEND_TOKEN_TO_BACKEND: Still no token after refresh attempt',
+          'Still no token after refresh attempt',
         );
         await apiService.backendDebugPrint(
           '###SEND_TOKEN_TO_BACKEND:_fcmToken is null returning',
@@ -683,7 +683,7 @@ class NotificationService {
 
     try {
       // First print the token to backend logs
-      debugPrint('🔍 SEND_TOKEN_TO_BACKEND: Sending token to backend logs...');
+      debugPrint('Sending token to backend logs...');
       await apiService.backendDebugPrint(
         'FCM_TOKEN_FOR_USER_$userId: $_fcmToken',
       );
@@ -702,16 +702,16 @@ class NotificationService {
       final success = await apiService.registerFcmToken(userId, _fcmToken!);
       if (success) {
         debugPrint(
-          '✅ SEND_TOKEN_TO_BACKEND: FCM token sent to backend successfully',
+          'FCM token sent to backend successfully',
         );
       } else {
         debugPrint(
-          '⚠️ SEND_TOKEN_TO_BACKEND: Failed to send FCM token to backend',
+          'Failed to send FCM token to backend',
         );
       }
     } catch (e) {
       debugPrint(
-        '❌ SEND_TOKEN_TO_BACKEND: Error sending FCM token to backend: $e',
+        'Error sending FCM token to backend: $e',
       );
       rethrow; // Let caller handle the error
     }
@@ -720,47 +720,47 @@ class NotificationService {
   /// Check current notification permission status
   static Future<bool> hasNotificationPermission() async {
     debugPrint(
-      '🔍 NOTIFICATION: Checking current notification permission status...',
+      'Checking current notification permission status...',
     );
 
     // Add platform-specific debugging
-    debugPrint('🔍 NOTIFICATION: Platform: ${Platform.operatingSystem}');
+    debugPrint('Platform: ${Platform.operatingSystem}');
     if (Platform.isAndroid) {
       try {
         final deviceInfo = DeviceInfoPlugin();
         final androidInfo = await deviceInfo.androidInfo;
         debugPrint(
-          '🔍 NOTIFICATION: Android API Level: ${androidInfo.version.sdkInt}',
+          'Android API Level: ${androidInfo.version.sdkInt}',
         );
         debugPrint(
-          '🔍 NOTIFICATION: Android Version: ${androidInfo.version.release}',
+          'Android Version: ${androidInfo.version.release}',
         );
       } catch (e) {
-        debugPrint('🔍 NOTIFICATION: Could not get Android info: $e');
+        debugPrint('Could not get Android info: $e');
       }
     }
 
     NotificationSettings settings =
         await _firebaseMessaging.getNotificationSettings();
 
-    debugPrint('🔍 NOTIFICATION: Raw settings object: $settings');
+    debugPrint('Raw settings object: $settings');
     debugPrint(
-      '🔍 NOTIFICATION: Authorization status: ${settings.authorizationStatus}',
+      'Authorization status: ${settings.authorizationStatus}',
     );
-    debugPrint('🔍 NOTIFICATION: Alert setting: ${settings.alert}');
-    debugPrint('🔍 NOTIFICATION: Badge setting: ${settings.badge}');
-    debugPrint('🔍 NOTIFICATION: Sound setting: ${settings.sound}');
+    debugPrint('Alert setting: ${settings.alert}');
+    debugPrint('Badge setting: ${settings.badge}');
+    debugPrint('Sound setting: ${settings.sound}');
     debugPrint(
-      '🔍 NOTIFICATION: Announcement setting: ${settings.announcement}',
+      'Announcement setting: ${settings.announcement}',
     );
     debugPrint(
-      '🔍 NOTIFICATION: Critical alert setting: ${settings.criticalAlert}',
+      'Critical alert setting: ${settings.criticalAlert}',
     );
 
     final bool hasPermission =
         settings.authorizationStatus == AuthorizationStatus.authorized ||
         settings.authorizationStatus == AuthorizationStatus.provisional;
-    debugPrint('🔍 NOTIFICATION: hasPermission result: $hasPermission');
+    debugPrint('hasPermission result: $hasPermission');
 
     return hasPermission;
   }
@@ -801,16 +801,16 @@ class NotificationService {
 
       // Debug: Print all auth-related SharedPreferences
       final allKeys = prefs.getKeys();
-      debugPrint('🔍 DEBUG: All SharedPreferences keys: $allKeys');
-      debugPrint('🔍 DEBUG: user_id = "${prefs.getString('user_id')}"');
+      debugPrint('All SharedPreferences keys: $allKeys');
+      debugPrint('user_id = "${prefs.getString('user_id')}"');
       debugPrint(
-        '🔍 DEBUG: auth_token exists = ${prefs.containsKey('auth_token')}',
+        'auth_token exists = ${prefs.containsKey('auth_token')}',
       );
-      debugPrint('🔍 DEBUG: is_logged_in = ${prefs.getBool('is_logged_in')}');
+      debugPrint('is_logged_in = ${prefs.getBool('is_logged_in')}');
 
       return userId;
     } catch (e) {
-      debugPrint('❌ Error getting current user ID: $e');
+      debugPrint('$e');
       return null;
     }
   }
@@ -820,62 +820,62 @@ class NotificationService {
     try {
       final apiService = ApiService();
       final userId = await apiService.getCurrentUserId();
-      debugPrint('🔑 FCM Token: $_fcmToken, Current User ID from API: $userId');
+      debugPrint('FCM Token: $_fcmToken, Current User ID from API: $userId');
       return userId;
     } catch (e) {
-      debugPrint('❌ Error getting current user ID from API: $e');
+      debugPrint('$e');
       return null;
     }
   }
 
   /// Force refresh FCM token and send to backend (useful for testing)
   static Future<bool> forceRefreshToken() async {
-    debugPrint('🔄 Force refreshing FCM token...');
+    debugPrint('Force refreshing FCM token...');
 
     try {
       // First, let's check what APNS token returns directly
       if (Platform.isIOS) {
-        debugPrint('🔍 DEBUG: Checking APNS token directly...');
+        debugPrint('Checking APNS token directly...');
 
         // Check if running on simulator
         try {
           final deviceInfo = DeviceInfoPlugin();
           final iosInfo = await deviceInfo.iosInfo;
-          debugPrint('📱 Device name: ${iosInfo.name}');
-          debugPrint('📱 Device model: ${iosInfo.model}');
+          debugPrint('${iosInfo.name}');
+          debugPrint('${iosInfo.model}');
           debugPrint(
-            '📱 Is simulator: ${iosInfo.isPhysicalDevice ? "NO (Real Device)" : "YES (Simulator)"}',
+            '${iosInfo.isPhysicalDevice ? "NO (Real Device)" : "YES (Simulator)"}',
           );
 
           if (!iosInfo.isPhysicalDevice) {
             debugPrint(
-              '⚠️ SIMULATOR DETECTED: APNS tokens do NOT work on iOS Simulator!',
+              'APNS tokens do NOT work on iOS Simulator!',
             );
             debugPrint(
-              '⚠️ You must use a real physical iPhone for push notifications to work.',
+              'You must use a real physical iPhone for push notifications to work.',
             );
           }
         } catch (e) {
-          debugPrint('❌ Error checking device info: $e');
+          debugPrint('$e');
         }
 
         try {
           String? apnsToken = await _firebaseMessaging.getAPNSToken();
           if (apnsToken == null) {
-            debugPrint('❌ DEBUG: getAPNSToken() returned NULL');
+            debugPrint('getAPNSToken() returned NULL');
           } else {
             debugPrint(
-              '✅ DEBUG: getAPNSToken() returned: ${apnsToken.substring(0, 10)}...',
+              'getAPNSToken() returned: ${apnsToken.substring(0, 10)}...',
             );
           }
         } catch (e) {
-          debugPrint('❌ DEBUG: getAPNSToken() threw error: $e');
+          debugPrint('getAPNSToken() threw error: $e');
         }
       }
 
       // Delete the current token to force Firebase to generate a new one
       await _firebaseMessaging.deleteToken();
-      debugPrint('🗑️ Deleted old FCM token');
+      debugPrint('Deleted old FCM token');
 
       // Use our improved FCM token generation logic
       await _getFcmToken();
@@ -883,7 +883,7 @@ class NotificationService {
       // Check if we got a new token
       if (_fcmToken != null) {
         debugPrint(
-          '🔑 New FCM Token obtained: ${_fcmToken!.substring(0, 20)}...',
+          'New FCM Token obtained: ${_fcmToken!.substring(0, 20)}...',
         );
 
         // Send to backend
@@ -896,25 +896,25 @@ class NotificationService {
           );
           if (success) {
             debugPrint(
-              '✅ Force refreshed FCM token sent to backend successfully',
+              'Force refreshed FCM token sent to backend successfully',
             );
             return true;
           } else {
             debugPrint(
-              '⚠️ Failed to send force refreshed FCM token to backend',
+              'Failed to send force refreshed FCM token to backend',
             );
             return false;
           }
         } else {
-          debugPrint('⚠️ No current user ID available for force refresh');
+          debugPrint('No current user ID available for force refresh');
           return false;
         }
       } else {
-        debugPrint('❌ Failed to obtain new FCM token');
+        debugPrint('Failed to obtain new FCM token');
         return false;
       }
     } catch (e) {
-      debugPrint('❌ Error force refreshing FCM token: $e');
+      debugPrint('$e');
       return false;
     }
   }

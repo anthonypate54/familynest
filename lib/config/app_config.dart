@@ -24,22 +24,22 @@ class AppConfig {
     try {
       if (!dotenv.isInitialized) {
         debugPrint(
-          '⚠️ dotenv not initialized, using platform-specific default for direct IDE run',
+          'dotenv not initialized, using platform-specific default for direct IDE run',
         );
         return _getPlatformDefaultUrl();
       }
       final url = dotenv.env['API_URL'];
       if (url == null || url.isEmpty) {
         debugPrint(
-          '⚠️ API_URL not found in .env (direct IDE run), using platform default',
+          'API_URL not found in .env (direct IDE run), using platform default',
         );
         return _getPlatformDefaultUrl();
       }
-      debugPrint('✅ Using API_URL from .env: $url (run.sh mode)');
+      debugPrint('$url (run.sh mode)');
       return url;
     } catch (e) {
       debugPrint(
-        '⚠️ Error reading API_URL from environment, using platform default: $e',
+        '$e',
       );
       return _getPlatformDefaultUrl();
     }
@@ -55,7 +55,7 @@ class AppConfig {
       // For now, always try localhost first (works for physical devices with port forwarding)
       // If that fails, the app will handle the error gracefully
       debugPrint(
-        '📱 Android detected - using localhost with port forwarding: http://localhost:8080',
+        'http://localhost:8080',
       );
       debugPrint(
         '💡 Make sure adb reverse tcp:8080 tcp:8080 is set up for physical devices',
@@ -66,7 +66,7 @@ class AppConfig {
       return 'http://localhost:8080';
     } else if (Platform.isIOS) {
       // iOS - use network IP for real devices, localhost for simulator
-      debugPrint('📱 iOS detected - using network IP: http://10.0.0.9:8080');
+      debugPrint('http://10.0.0.9:8080');
       return 'http://10.0.0.9:8080';
     } else {
       // Web/Desktop default
@@ -94,8 +94,8 @@ class AppConfig {
   /// Initialize the configuration
   Future<void> initialize() async {
     // Environment is already set, just print the current configuration
-    debugPrint('✅ AppConfig initialized');
-    debugPrint('📡 API URL: ${baseUrl}');
+    debugPrint('AppConfig initialized');
+    debugPrint('API URL: ${baseUrl}');
     debugPrint(
       '🌍 Environment: ${isDevelopment
           ? "development"
@@ -119,7 +119,7 @@ class AppConfig {
   /// Get the base URL for API requests based on platform and environment
   String get baseUrl {
     debugPrint(
-      '🔍 AppConfig.baseUrl called - Current environment: $_environment',
+      '$_environment',
     );
 
     // If a custom URL was provided, use it
@@ -140,7 +140,7 @@ class AppConfig {
           if (apiUrl.contains('54.189.190.245')) {
             if (_environment != Environment.staging) {
               debugPrint(
-                '🔄 Auto-detected staging environment from API_URL: $apiUrl',
+                '$apiUrl',
               );
               _environment = Environment.staging;
             }
@@ -149,7 +149,7 @@ class AppConfig {
               apiUrl.contains('10.0.2.2')) {
             if (_environment != Environment.development) {
               debugPrint(
-                '🔄 Auto-detected development environment from API_URL: $apiUrl',
+                '$apiUrl',
               );
               _environment = Environment.development;
             }
@@ -157,11 +157,11 @@ class AppConfig {
         }
       }
     } catch (e) {
-      debugPrint('⚠️ Error during environment auto-detection: $e');
+      debugPrint('$e');
     }
 
     // Otherwise, choose based on environment and platform
-    debugPrint('🎯 Switching on environment: $_environment');
+    debugPrint('Switching on environment: $_environment');
     switch (_environment) {
       case Environment.production:
         return _prodBaseUrl;
@@ -198,7 +198,7 @@ class AppConfig {
             }
           }
         } catch (e) {
-          debugPrint('⚠️ Error reading MEDIA_URL from environment: $e');
+          debugPrint('$e');
         }
         // Fallback to same URL as API
         debugPrint('🔧 Using API base URL for media (no MEDIA_URL in .env)');
@@ -211,21 +211,21 @@ class AppConfig {
     try {
       if (!dotenv.isInitialized) {
         debugPrint(
-          '⚠️ dotenv not initialized for ngrok URL, using platform default',
+          'dotenv not initialized for ngrok URL, using platform default',
         );
         return _getPlatformDefaultUrl();
       }
       final url = dotenv.env['MEDIA_URL'];
       if (url == null || url.isEmpty) {
         debugPrint(
-          '⚠️ MEDIA_URL not found in environment variables, using platform default',
+          'MEDIA_URL not found in environment variables, using platform default',
         );
         return _getPlatformDefaultUrl();
       }
       return url;
     } catch (e) {
       debugPrint(
-        '⚠️ Error reading MEDIA_URL from environment, using platform default: $e',
+        '$e',
       );
       return _getPlatformDefaultUrl();
     }

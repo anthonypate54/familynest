@@ -203,10 +203,10 @@ class LoginScreenState extends State<LoginScreen> {
               apiService,
             );
             debugPrint(
-              '✅ FCM token registered with backend for auto-login user $userId',
+              'FCM token registered with backend for auto-login user $userId',
             );
           } catch (e) {
-            debugPrint('⚠️ Failed to register FCM token for auto-login: $e');
+            debugPrint('$e');
             // Don't block auto-login flow if FCM token registration fails
           }
 
@@ -373,9 +373,9 @@ class LoginScreenState extends State<LoginScreen> {
               userId.toString(),
               apiService,
             );
-            debugPrint('✅ FCM token registered with backend for user $userId');
+            debugPrint('FCM token registered with backend for user $userId');
           } catch (e) {
-            debugPrint('⚠️ Failed to register FCM token: $e');
+            debugPrint('$e');
             // Don't block login flow if FCM token registration fails
           }
 
@@ -399,10 +399,10 @@ class LoginScreenState extends State<LoginScreen> {
               apiService,
             );
             debugPrint(
-              '✅ FCM token registered with backend for user $userId (fallback)',
+              'FCM token registered with backend for user $userId (fallback)',
             );
           } catch (e) {
-            debugPrint('⚠️ Failed to register FCM token in fallback: $e');
+            debugPrint('$e');
           }
 
           if (mounted) {

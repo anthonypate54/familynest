@@ -111,7 +111,7 @@ class WebSocketService extends ChangeNotifier {
 
       _stompClient!.activate();
     } catch (e) {
-      debugPrint('❌ WebSocket: Error initializing: $e');
+      debugPrint('Error initializing: $e');
       _handleConnectionFailure();
     }
   }
@@ -128,7 +128,7 @@ class WebSocketService extends ChangeNotifier {
   void _onConnect(StompFrame frame) {
     final now = DateTime.now();
     debugPrint(
-      '✅ WebSocket: Connected successfully at ${now.toIso8601String()}',
+      'Connected successfully at ${now.toIso8601String()}',
     );
     _isConnected = true;
     _isConnecting = false;
@@ -158,7 +158,7 @@ class WebSocketService extends ChangeNotifier {
 
   /// Enhanced error handler
   void _onError(dynamic error) {
-    debugPrint('❌ WebSocket: Connection error: $error');
+    debugPrint('Connection error: $error');
 
     // If we're in a graceful disconnect, ignore the error - it's expected
     if (_isGracefulDisconnect) {
@@ -197,7 +197,7 @@ class WebSocketService extends ChangeNotifier {
 
     // Only attempt to reconnect if this wasn't a graceful manual disconnect
     if (!_isGracefulDisconnect) {
-      debugPrint('🔄 WebSocket: Unexpected disconnect - scheduling reconnect');
+      debugPrint('Unexpected disconnect - scheduling reconnect');
       _scheduleReconnectWithBackoff();
     } else {
       debugPrint('🔌 WebSocket: Graceful disconnect - no auto-reconnect');
@@ -216,7 +216,7 @@ class WebSocketService extends ChangeNotifier {
     if (_retryCount < _maxRetries) {
       _scheduleReconnectWithBackoff();
     } else {
-      debugPrint('❌ WebSocket: Max retry attempts reached');
+      debugPrint('Max retry attempts reached');
     }
   }
 
@@ -241,7 +241,7 @@ class WebSocketService extends ChangeNotifier {
       });
     } else {
       debugPrint(
-        '❌ WebSocket: Max retry attempts reached for mobile network failures',
+        'Max retry attempts reached for mobile network failures',
       );
     }
   }
@@ -262,7 +262,7 @@ class WebSocketService extends ChangeNotifier {
     );
 
     debugPrint(
-      '🔄 WebSocket: Scheduling reconnect attempt $_retryCount/$_maxRetries in ${finalDelay.inSeconds}s',
+      'Scheduling reconnect attempt $_retryCount/$_maxRetries in ${finalDelay.inSeconds}s',
     );
 
     // Cancel any existing timer
@@ -373,14 +373,14 @@ class WebSocketService extends ChangeNotifier {
       _lastSuccessfulPing = DateTime.now();
       debugPrint('🏓 WebSocket: Sent ping message');
     } catch (e) {
-      debugPrint('❌ WebSocket: Error sending ping: $e');
+      debugPrint('Error sending ping: $e');
       _pingFailures++;
     }
   }
 
   /// Subscribe to a topic with a message handler
   void subscribe(String topic, WebSocketMessageHandler handler) {
-    debugPrint('📡 WebSocket: Subscribing to $topic');
+    debugPrint('WebSocket: Subscribing to $topic');
 
     // Add handler to subscriptions (prevent duplicates)
     if (!_subscriptions.containsKey(topic)) {
@@ -391,11 +391,11 @@ class WebSocketService extends ChangeNotifier {
     if (!_subscriptions[topic]!.contains(handler)) {
       _subscriptions[topic]!.add(handler);
       debugPrint(
-        '✅ WebSocket: Added new handler for $topic (total: ${_subscriptions[topic]!.length})',
+        'Added new handler for $topic (total: ${_subscriptions[topic]!.length})',
       );
     } else {
       debugPrint(
-        '⚠️ WebSocket: Handler already exists for $topic, skipping duplicate',
+        'Handler already exists for $topic, skipping duplicate',
       );
       return;
     }
@@ -407,7 +407,7 @@ class WebSocketService extends ChangeNotifier {
         _subscribeToTopic(topic);
       } else {
         debugPrint(
-          '📡 WebSocket: Already subscribed to $topic, reusing existing subscription',
+          'WebSocket: Already subscribed to $topic, reusing existing subscription',
         );
       }
     }
@@ -415,7 +415,7 @@ class WebSocketService extends ChangeNotifier {
 
   /// Unsubscribe from a topic
   void unsubscribe(String topic, WebSocketMessageHandler handler) {
-    debugPrint('📡 WebSocket: Unsubscribing from $topic');
+    debugPrint('WebSocket: Unsubscribing from $topic');
 
     if (_subscriptions.containsKey(topic)) {
       _subscriptions[topic]!.remove(handler);
@@ -428,7 +428,7 @@ class WebSocketService extends ChangeNotifier {
   /// Subscribe to a specific topic on the WebSocket
   void _subscribeToTopic(String topic) {
     if (_stompClient == null || !_isConnected) {
-      debugPrint('⚠️ WebSocket: Cannot subscribe to $topic - not connected');
+      debugPrint('Cannot subscribe to $topic - not connected');
       return;
     }
 
@@ -446,9 +446,9 @@ class WebSocketService extends ChangeNotifier {
         },
       );
 
-      debugPrint('✅ WebSocket: Subscribed to $topic');
+      debugPrint('Subscribed to $topic');
     } catch (e) {
-      debugPrint('❌ WebSocket: Failed to subscribe to $topic: $e');
+      debugPrint('Failed to subscribe to $topic: $e');
       // Don't rethrow - this is expected during reconnection race conditions
       // The subscription will be retried on the next connection cycle
     }
@@ -488,7 +488,7 @@ class WebSocketService extends ChangeNotifier {
             'timestamp': DateTime.now().toIso8601String(),
           });
         } catch (e) {
-          debugPrint('❌ WebSocket: Error in debug message listener: $e');
+          debugPrint('Error in debug message listener: $e');
         }
       }
 
@@ -498,12 +498,12 @@ class WebSocketService extends ChangeNotifier {
           try {
             handler(jsonData);
           } catch (e) {
-            debugPrint('❌ WebSocket: Error in message handler for $topic: $e');
+            debugPrint('Error in message handler for $topic: $e');
           }
         }
       }
     } catch (e) {
-      debugPrint('❌ WebSocket: Error parsing message from $topic: $e');
+      debugPrint('Error parsing message from $topic: $e');
       debugPrint('Raw message: $body');
     }
   }
@@ -517,7 +517,7 @@ class WebSocketService extends ChangeNotifier {
     try {
       listener(_isConnected);
     } catch (e) {
-      debugPrint('❌ WebSocket: Error notifying new connection listener: $e');
+      debugPrint('Error notifying new connection listener: $e');
     }
   }
 
@@ -529,13 +529,13 @@ class WebSocketService extends ChangeNotifier {
   /// Add debug message listener (for test screen)
   void addDebugMessageListener(WebSocketMessageHandler listener) {
     _debugMessageListeners.add(listener);
-    debugPrint('🔍 WebSocket: Added debug message listener');
+    debugPrint('Added debug message listener');
   }
 
   /// Remove debug message listener
   void removeDebugMessageListener(WebSocketMessageHandler listener) {
     _debugMessageListeners.remove(listener);
-    debugPrint('🔍 WebSocket: Removed debug message listener');
+    debugPrint('Removed debug message listener');
   }
 
   /// Notify all connection listeners
@@ -544,7 +544,7 @@ class WebSocketService extends ChangeNotifier {
       try {
         listener(isConnected);
       } catch (e) {
-        debugPrint('❌ WebSocket: Error in connection listener: $e');
+        debugPrint('Error in connection listener: $e');
       }
     }
   }
@@ -552,7 +552,7 @@ class WebSocketService extends ChangeNotifier {
   /// Enhanced message sending with metrics
   void sendMessage(String destination, Map<String, dynamic> message) {
     if (!_isConnected || _stompClient == null) {
-      debugPrint('❌ WebSocket: Cannot send message - not connected');
+      debugPrint('Cannot send message - not connected');
       return;
     }
 
@@ -563,7 +563,7 @@ class WebSocketService extends ChangeNotifier {
       _messagesSent++;
       debugPrint('📤 WebSocket: Sent message to $destination: $messageBody');
     } catch (e) {
-      debugPrint('❌ WebSocket: Error sending message: $e');
+      debugPrint('Error sending message: $e');
     }
   }
 
@@ -665,7 +665,7 @@ class WebSocketService extends ChangeNotifier {
 
   /// Force reconnection (for manual retry)
   Future<void> forceReconnect() async {
-    debugPrint('🔄 WebSocket: Force reconnecting...');
+    debugPrint('Force reconnecting...');
 
     // Stop current connection
     _stompClient?.deactivate();
@@ -692,7 +692,7 @@ class WebSocketService extends ChangeNotifier {
         final message = Message.fromJson(data);
         listener(message);
       } catch (e) {
-        debugPrint('❌ WebSocket: Error parsing DM message: $e');
+        debugPrint('Error parsing DM message: $e');
       }
     });
 
@@ -703,7 +703,7 @@ class WebSocketService extends ChangeNotifier {
         final message = Message.fromJson(data);
         listener(message);
       } catch (e) {
-        debugPrint('❌ WebSocket: Error parsing new message: $e');
+        debugPrint('Error parsing new message: $e');
       }
     });
 
@@ -713,7 +713,7 @@ class WebSocketService extends ChangeNotifier {
         final message = Message.fromJson(data);
         listener(message);
       } catch (e) {
-        debugPrint('❌ WebSocket: Error parsing test message: $e');
+        debugPrint('Error parsing test message: $e');
       }
     });
   }
@@ -732,7 +732,7 @@ class WebSocketService extends ChangeNotifier {
         final message = Message.fromJson(data);
         listener(message);
       } catch (e) {
-        debugPrint('❌ WebSocket: Error parsing DM message: $e');
+        debugPrint('Error parsing DM message: $e');
       }
     });
 
@@ -744,7 +744,7 @@ class WebSocketService extends ChangeNotifier {
           final message = Message.fromJson(data);
           listener(message);
         } catch (e) {
-          debugPrint('❌ WebSocket: Error parsing family message: $e');
+          debugPrint('Error parsing family message: $e');
         }
       });
     }
@@ -755,7 +755,7 @@ class WebSocketService extends ChangeNotifier {
         final message = Message.fromJson(data);
         listener(message);
       } catch (e) {
-        debugPrint('❌ WebSocket: Error parsing test message: $e');
+        debugPrint('Error parsing test message: $e');
       }
     });
   }
@@ -768,7 +768,7 @@ class WebSocketService extends ChangeNotifier {
         final message = Message.fromJson(data);
         listener(message);
       } catch (e) {
-        debugPrint('❌ WebSocket: Error parsing test message: $e');
+        debugPrint('Error parsing test message: $e');
       }
     });
   }
@@ -776,13 +776,13 @@ class WebSocketService extends ChangeNotifier {
   /// Subscribe to family messages for a specific family
   void subscribeToFamilyMessages(int familyId, MessageHandler handler) {
     final topic = '/family/$familyId';
-    debugPrint('📡 WebSocket: Subscribing to family messages: $topic');
+    debugPrint('WebSocket: Subscribing to family messages: $topic');
     subscribe(topic, (data) {
       try {
         final message = Message.fromJson(data);
         handler(message);
       } catch (e) {
-        debugPrint('❌ WebSocket: Error parsing family message: $e');
+        debugPrint('Error parsing family message: $e');
       }
     });
   }
@@ -790,13 +790,13 @@ class WebSocketService extends ChangeNotifier {
   /// Subscribe to DM messages for a specific user
   void subscribeToDMMessages(int userId, MessageHandler handler) {
     final topic = '/topic/dm/$userId';
-    debugPrint('📡 WebSocket: Subscribing to DM messages: $topic');
+    debugPrint('WebSocket: Subscribing to DM messages: $topic');
     subscribe(topic, (data) {
       try {
         final message = Message.fromJson(data);
         handler(message);
       } catch (e) {
-        debugPrint('❌ WebSocket: Error parsing DM message: $e');
+        debugPrint('Error parsing DM message: $e');
       }
     });
   }

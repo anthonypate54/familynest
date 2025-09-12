@@ -104,7 +104,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     // If we've navigated away and come back, refresh the conversations
     if (_hasNavigatedAway && !_isLoading) {
       debugPrint(
-        '🔄 Returned to MessagesHomeScreen, refreshing conversations...',
+        'Returned to MessagesHomeScreen, refreshing conversations...',
       );
       _hasNavigatedAway = false;
       _loadConversations();
@@ -116,14 +116,14 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       debugPrint(
-        '🔄 App resumed, checking WebSocket and refreshing conversations on MessagesHomeScreen...',
+        'App resumed, checking WebSocket and refreshing conversations on MessagesHomeScreen...',
       );
 
       // Ensure WebSocket is connected and subscriptions are active
       if (_webSocketService != null) {
         if (!_webSocketService!.isConnected) {
           debugPrint(
-            '🔄 MessagesHomeScreen: WebSocket not connected, reconnecting...',
+            'WebSocket not connected, reconnecting...',
           );
           _webSocketService!.initialize().then((_) {
             // Re-establish subscription after connection
@@ -151,12 +151,12 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
 
       // Debug logging to see what we're getting
       debugPrint(
-        '📱 MessagesHomeScreen: Loaded ${conversations.length} conversations',
+        'Loaded ${conversations.length} conversations',
       );
       for (int i = 0; i < conversations.length; i++) {
         final conv = conversations[i];
         debugPrint(
-          '📱 Conversation $i: ${conv.otherUserName} - "${conv.lastMessageContent}" - ${conv.lastMessageTime}',
+          '${conv.otherUserName} - "${conv.lastMessageContent}" - ${conv.lastMessageTime}',
         );
       }
 
@@ -168,7 +168,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         });
       }
     } catch (e) {
-      debugPrint('❌ MessagesHomeScreen: Error loading conversations: $e');
+      debugPrint('Error loading conversations: $e');
 
       // Check if it's an authentication error
       if (e.toString().contains('403') ||
@@ -202,11 +202,11 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
   }
 
   void _filterConversations(String query) async {
-    debugPrint('🔍 FILTER: _filterConversations called with query: "$query"');
+    debugPrint('_filterConversations called with query: "$query"');
     final lowercaseQuery = query.toLowerCase();
 
     if (query.isEmpty) {
-      debugPrint('🔍 FILTER: Query is empty, showing all conversations');
+      debugPrint('Query is empty, showing all conversations');
       setState(() {
         _filteredConversations =
             _conversations; // Show all conversations when query is empty
@@ -214,11 +214,11 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       return;
     }
 
-    debugPrint('🔍 FILTER: About to call backend search...');
+    debugPrint('About to call backend search...');
     try {
       // Use backend search for comprehensive results
       final apiService = Provider.of<ApiService>(context, listen: false);
-      debugPrint('🔍 FILTER: Got apiService, calling searchDMConversations...');
+      debugPrint('Got apiService, calling searchDMConversations...');
       final searchResults = await apiService.searchDMConversations(query);
 
       setState(() {
@@ -226,10 +226,10 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       });
 
       debugPrint(
-        '🔍 Search completed: found ${searchResults.length} results for "$query"',
+        'found ${searchResults.length} results for "$query"',
       );
     } catch (e) {
-      debugPrint('❌ Search error: $e');
+      debugPrint('$e');
       // Fallback to local search if backend search fails
       final filtered =
           _conversations.where((conversation) {
@@ -490,7 +490,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     });
 
     debugPrint(
-      '✅ MESSAGES_HOME: Marked conversation $conversationId as read locally',
+      'Marked conversation $conversationId as read locally',
     );
   }
 
@@ -739,7 +739,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       displayName = conversation.name ?? 'Group Chat';
 
       // 🐛 DEBUG: Check participant data for group avatars
-      debugPrint('🎨 GROUP AVATAR DEBUG for "${displayName}":');
+      debugPrint('GROUP AVATAR DEBUG for "${displayName}":');
       debugPrint(
         '  - Participants count: ${conversation.participants?.length ?? 0}',
       );
@@ -900,7 +900,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
   ) {
     // 🐛 DEBUG: Log what name Messages screen uses for color hashing
     debugPrint(
-      '🎨 MessagesScreen avatar - firstName: "$firstName", lastName: "$lastName"',
+      'MessagesScreen avatar - firstName: "$firstName", lastName: "$lastName"',
     );
 
     return AvatarUtils.buildUserAvatar(
@@ -951,7 +951,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     if (_webSocketService == null || _dmMessageHandler == null) return;
 
     debugPrint(
-      '🔄 MessagesHomeScreen: Ensuring WebSocket subscription for user ${widget.userId}',
+      'Ensuring WebSocket subscription for user ${widget.userId}',
     );
 
     // Subscribe to DM messages for this user (WebSocketService handles duplicates)
@@ -978,7 +978,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         return;
       } else if (messageType != null && messageType != 'DM_MESSAGE') {
         debugPrint(
-          '⚠️ MESSAGES_HOME: Unknown message type: $messageType, ignoring',
+          'Unknown message type: $messageType, ignoring',
         );
         return;
       }
@@ -1001,7 +1001,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       // Update the conversation list with the new message and unread count
       _updateConversationWithNewMessage(message, unreadCount: unreadCount);
     } catch (e, stackTrace) {
-      debugPrint('❌ MESSAGES_HOME: Error handling WebSocket message: $e');
+      debugPrint('Error handling WebSocket message: $e');
       debugPrint('Stack trace: $stackTrace');
     }
   }
@@ -1046,7 +1046,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     });
 
     debugPrint(
-      '✅ MESSAGES_HOME: Cleared unread count for conversation $conversationId',
+      'Cleared unread count for conversation $conversationId',
     );
   }
 
@@ -1104,11 +1104,11 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         }
 
         debugPrint(
-          '✅ MESSAGES_HOME: Updated conversation ${message.conversationId} with unread count: $unreadCount',
+          'Updated conversation ${message.conversationId} with unread count: $unreadCount',
         );
       } else {
         debugPrint(
-          '⚠️ MESSAGES_HOME: Conversation ${message.conversationId} not found, refreshing list',
+          'Conversation ${message.conversationId} not found, refreshing list',
         );
         // If conversation not found, refresh the entire list
         _loadConversations();
@@ -1130,7 +1130,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
               participants: conversation.participants ?? [],
               onParticipantsChanged: () {
                 debugPrint(
-                  '🔄 Group participants changed, refreshing conversation list',
+                  'Group participants changed, refreshing conversation list',
                 );
                 _loadConversations();
               },

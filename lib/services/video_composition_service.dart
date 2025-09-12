@@ -29,13 +29,13 @@ class VideoCompositionService extends ChangeNotifier {
     // Prevent multiple simultaneous processing
     if (_isProcessingMedia) {
       debugPrint(
-        '⚠️ VideoCompositionService: Already processing media, ignoring duplicate request',
+        'Already processing media, ignoring duplicate request',
       );
       return false;
     }
 
     debugPrint(
-      '🔄 VideoCompositionService: Starting media processing for $type',
+      'Starting media processing for $type',
     );
     _isProcessingMedia = true;
     notifyListeners();
@@ -47,7 +47,7 @@ class VideoCompositionService extends ChangeNotifier {
       if (type == 'video') {
         // Generate thumbnail with memory management
         debugPrint(
-          '🎯 VideoCompositionService: Generating thumbnail for video: ${file.path}',
+          'VideoCompositionService: Generating thumbnail for video: ${file.path}',
         );
 
         try {
@@ -55,25 +55,25 @@ class VideoCompositionService extends ChangeNotifier {
               await VideoThumbnailUtil.generateThumbnail('file://${file.path}');
           _selectedVideoThumbnail = thumbnailFile;
           debugPrint(
-            '✅ VideoCompositionService: Thumbnail generated successfully',
+            'Thumbnail generated successfully',
           );
         } catch (e) {
           debugPrint(
-            '❌ VideoCompositionService: Thumbnail generation failed: $e',
+            'Thumbnail generation failed: $e',
           );
           _selectedVideoThumbnail = null;
         }
 
         // MEMORY-SAFE: Skip video controller initialization to prevent OOM crashes
         debugPrint(
-          '🚫 VideoCompositionService: Skipping video player initialization to prevent OOM crash',
+          'VideoCompositionService: Skipping video player initialization to prevent OOM crash',
         );
         debugPrint(
           '📸 VideoCompositionService: Will show thumbnail-only preview',
         );
 
         debugPrint(
-          '✅ VideoCompositionService: Video ready for upload (thumbnail-only preview)',
+          'Video ready for upload (thumbnail-only preview)',
         );
       }
 
@@ -104,7 +104,7 @@ class VideoCompositionService extends ChangeNotifier {
     _isProcessingMedia = false; // Ensure processing state is reset
 
     debugPrint(
-      '🧹 VideoCompositionService: Cleared composition, isProcessingMedia = false',
+      'VideoCompositionService: Cleared composition, isProcessingMedia = false',
     );
     notifyListeners();
   }
@@ -127,7 +127,7 @@ class VideoCompositionService extends ChangeNotifier {
   bool validateFile(File file, String type) {
     if (!file.existsSync()) {
       debugPrint(
-        '❌ VideoCompositionService: File does not exist: ${file.path}',
+        'File does not exist: ${file.path}',
       );
       return false;
     }
@@ -138,7 +138,7 @@ class VideoCompositionService extends ChangeNotifier {
       if (sizeInMB > 100) {
         // 100MB limit for videos
         debugPrint(
-          '❌ VideoCompositionService: Video file too large: ${sizeInMB.toStringAsFixed(1)}MB',
+          'Video file too large: ${sizeInMB.toStringAsFixed(1)}MB',
         );
         return false;
       }
@@ -146,14 +146,14 @@ class VideoCompositionService extends ChangeNotifier {
       if (sizeInMB > 50) {
         // 50MB limit for photos
         debugPrint(
-          '❌ VideoCompositionService: Photo file too large: ${sizeInMB.toStringAsFixed(1)}MB',
+          'Photo file too large: ${sizeInMB.toStringAsFixed(1)}MB',
         );
         return false;
       }
     }
 
     debugPrint(
-      '✅ VideoCompositionService: File validated - ${sizeInMB.toStringAsFixed(1)}MB',
+      'File validated - ${sizeInMB.toStringAsFixed(1)}MB',
     );
     return true;
   }

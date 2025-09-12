@@ -76,9 +76,9 @@ class AuthUtils {
             listen: false,
           );
           messageProvider.clear();
-          debugPrint('✅ Cleared MessageProvider cache');
+          debugPrint('Cleared MessageProvider cache');
         } catch (e) {
-          debugPrint('⚠️ Could not clear MessageProvider: $e');
+          debugPrint('$e');
         }
       }
 
@@ -89,7 +89,7 @@ class AuthUtils {
 
       if (hasToken || hasUserId) {
         debugPrint(
-          '⚠️ WARNING: Some auth data still exists after logout, forcing cleanup',
+          'Some auth data still exists after logout, forcing cleanup',
         );
         // Force manual cleanup if needed
         await prefs.remove('auth_token');

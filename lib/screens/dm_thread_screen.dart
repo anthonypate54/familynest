@@ -117,14 +117,14 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed && mounted) {
       debugPrint(
-        '🔄 DMThreadScreen: App resumed, checking WebSocket and reloading messages...',
+        'App resumed, checking WebSocket and reloading messages...',
       );
 
       // Ensure WebSocket is connected and subscriptions are active
       if (_webSocketService != null) {
         if (!_webSocketService!.isConnected) {
           debugPrint(
-            '🔄 DMThreadScreen: WebSocket not connected, reconnecting...',
+            'WebSocket not connected, reconnecting...',
           );
           _webSocketService!.initialize().then((_) {
             // Re-establish subscription after connection
@@ -142,7 +142,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
   // Load real messages from the API
   Future<void> _loadMessages({bool showLoading = true}) async {
-    debugPrint('🔄 DM: _loadMessages called (showLoading: $showLoading)');
+    debugPrint('_loadMessages called (showLoading: $showLoading)');
     if (showLoading) {
       setState(() {
         _isLoading = true;
@@ -272,16 +272,16 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         if (mediaType == 'video') {
           // For videos: Copy to persistent storage for instant playback
           debugPrint(
-            '📱 Video DM: Copying to persistent storage for local playback',
+            'Copying to persistent storage for local playback',
           );
           final String? persistentPath = await _copyVideoToPersistentStorage(
             _compositionService!.selectedMediaFile!.path,
           );
 
-          // 🔍 DEBUG: Check what persistentPath we're sending
-          debugPrint('📱 DM SEND - persistentPath: $persistentPath');
+          // Check what persistentPath we're sending
+          debugPrint('$persistentPath');
           debugPrint(
-            '📱 DM SEND - original media path: ${_compositionService!.selectedMediaFile!.path}',
+            '${_compositionService!.selectedMediaFile!.path}',
           );
 
           result = await apiService.sendDMMessage(
@@ -516,7 +516,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     if (_webSocketService == null || _dmMessageHandler == null) return;
 
     debugPrint(
-      '🔄 DMThreadScreen: Ensuring WebSocket subscription for user ${widget.currentUserId}',
+      'Ensuring WebSocket subscription for user ${widget.currentUserId}',
     );
 
     // Subscribe to DM messages for this user (WebSocketService handles duplicates)
@@ -534,7 +534,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       // Check if this is a DM message type
       final messageType = data['type'] as String?;
       if (messageType != null && messageType != 'DM_MESSAGE') {
-        debugPrint('⚠️ DM: Not a DM message, ignoring');
+        debugPrint('Not a DM message, ignoring');
         return;
       }
 
@@ -547,7 +547,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         _dmMessageProvider?.addMessage(widget.conversationId, message);
 
         debugPrint(
-          '✅ DM: Added new message to conversation ${widget.conversationId}',
+          'Added new message to conversation ${widget.conversationId}',
         );
 
         // Auto-scroll to show new message
@@ -559,11 +559,11 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         _markConversationAsRead();
       } else {
         debugPrint(
-          '⚠️ DM: Message for different conversation: ${message.conversationId} vs ${widget.conversationId}',
+          'Message for different conversation: ${message.conversationId} vs ${widget.conversationId}',
         );
       }
     } catch (e, stackTrace) {
-      debugPrint('❌ DM: Error handling WebSocket message: $e');
+      debugPrint('Error handling WebSocket message: $e');
       debugPrint('Stack trace: $stackTrace');
     }
   }
@@ -573,7 +573,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
       await apiService.markDMConversationAsRead(widget.conversationId);
-      debugPrint('✅ DM: Marked conversation ${widget.conversationId} as read');
+      debugPrint('Marked conversation ${widget.conversationId} as read');
 
       // Update local message provider to mark other users' messages as read
       _dmMessageProvider?.markOtherUsersMessagesAsRead(
@@ -581,14 +581,14 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         widget.currentUserId,
       );
       debugPrint(
-        '✅ DM: Updated local messages - marked other users\' messages as read',
+        'Updated local messages - marked other users\' messages as read',
       );
 
       // Use callback to update parent screen
       widget.onMarkAsRead?.call();
-      debugPrint('✅ DM: Called onMarkAsRead callback');
+      debugPrint('Called onMarkAsRead callback');
     } catch (e) {
-      debugPrint('❌ DM: Error marking conversation as read: $e');
+      debugPrint('Error marking conversation as read: $e');
     }
   }
 
@@ -1222,14 +1222,14 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   void _uploadVideoInBackground(DMMessage dmMessage, File videoFile) async {
     try {
       debugPrint(
-        '🔄 Background upload starting for DM message ${dmMessage.id}',
+        'Background upload starting for DM message ${dmMessage.id}',
       );
 
       final apiService = context.read<ApiService>();
       final videoData = await apiService.uploadVideoWithThumbnail(videoFile);
 
       if (videoData['videoUrl'] != null && videoData['videoUrl']!.isNotEmpty) {
-        debugPrint('✅ Background upload complete: ${videoData['videoUrl']}');
+        debugPrint('${videoData['videoUrl']}');
 
         // Update the DM message with server URL (for other users and future loads)
         final updatedMessage = dmMessage.copyWith(
@@ -1250,16 +1250,16 @@ class _DMThreadScreenState extends State<DMThreadScreen>
         try {
           if (await videoFile.exists()) {
             await videoFile.delete();
-            debugPrint('🧹 Temporary video file cleaned up: ${videoFile.path}');
+            debugPrint('Temporary video file cleaned up: ${videoFile.path}');
           }
         } catch (cleanupError) {
           debugPrint(
-            '⚠️ Error cleaning up temporary video file: $cleanupError',
+            '$cleanupError',
           );
         }
       }
     } catch (e) {
-      debugPrint('❌ Background upload failed: $e');
+      debugPrint('$e');
       // Video will continue to play from local file
     } finally {
       // Additional memory cleanup after background upload
@@ -1288,10 +1288,10 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
       if (match != null) {
         timestamp = match.group(1)!;
-        debugPrint('📱 Using original video timestamp: $timestamp');
+        debugPrint('$timestamp');
       } else {
         timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-        debugPrint('⚠️ Could not extract timestamp, using current: $timestamp');
+        debugPrint('$timestamp');
       }
 
       final String fileName = 'video_$timestamp.mp4';
@@ -1310,11 +1310,11 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       // Small delay to ensure Android file system has processed the file
       await Future.delayed(const Duration(milliseconds: 200));
 
-      debugPrint('✅ Video copied to persistent storage for instant playback');
+      debugPrint('Video copied to persistent storage for instant playback');
 
       return persistentFile.path;
     } catch (e) {
-      debugPrint('❌ Error copying video to persistent storage: $e');
+      debugPrint('$e');
       return null;
     }
   }

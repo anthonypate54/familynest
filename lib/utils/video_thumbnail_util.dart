@@ -76,7 +76,7 @@ class VideoThumbnailUtil {
         // More aggressive cache management for memory safety
         if (_thumbnailCache.length > 2) {
           debugPrint(
-            '🧹 Clearing thumbnail cache aggressively (${_thumbnailCache.length} items)',
+            'Clearing thumbnail cache aggressively (${_thumbnailCache.length} items)',
           );
           _thumbnailCache.clear();
         }
@@ -303,12 +303,12 @@ class VideoThumbnailUtil {
   /// Clears all cached thumbnails from memory (not from storage)
   static void clearCache() {
     final cacheSize = _thumbnailCache.length;
-    debugPrint('🧹 Clearing thumbnail cache (${cacheSize} items)');
+    debugPrint('Clearing thumbnail cache (${cacheSize} items)');
     _printMemoryUsage('Before cache clear');
 
     _thumbnailCache.clear();
 
-    debugPrint('🧹 Video thumbnail cache cleared');
+    debugPrint('Video thumbnail cache cleared');
     _printMemoryUsage('After cache clear');
   }
 
@@ -320,10 +320,10 @@ class VideoThumbnailUtil {
       final timestamp = DateTime.now().toIso8601String();
       final cacheSize = _thumbnailCache.length;
       debugPrint(
-        '📊 Thumbnail Memory [$context] at $timestamp: Cache size: $cacheSize items',
+        'Cache size: $cacheSize items',
       );
     } catch (e) {
-      debugPrint('📊 Thumbnail Memory [$context]: Error - $e');
+      debugPrint('Error - $e');
     }
   }
 
