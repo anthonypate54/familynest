@@ -60,8 +60,8 @@ platforms:
   # Staging platforms for release builds
   android_staging_aws:
     device_id: ""
-    api_url: "http://54.189.190.245:8080"
-    description: "Android Staging Release (AWS)"
+    api_url: "https://infamilynest.com"
+    description: "Android Staging Release (AWS HTTPS)"
     media_url: "https://familynest-staging-media.s3.amazonaws.com"
     build_mode: "release"
     
