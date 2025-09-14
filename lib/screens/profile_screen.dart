@@ -1038,8 +1038,8 @@ class ProfileScreenState extends State<ProfileScreen>
             photoUrl:
                 user.photo != null
                     ? (user.photo!.startsWith('http')
-                        ? '${user.photo}?t=${DateTime.now().millisecondsSinceEpoch}'
-                        : '${Provider.of<ApiService>(context, listen: false).mediaBaseUrl}${user.photo}?t=${DateTime.now().millisecondsSinceEpoch}')
+                        ? user.photo!
+                        : '${Provider.of<ApiService>(context, listen: false).mediaBaseUrl}${user.photo}')
                     : null,
             onEditPhoto: _pickPhoto,
           ),
@@ -1634,7 +1634,6 @@ class ProfilePhoto extends StatelessWidget {
                       fit: BoxFit.cover,
                       cacheWidth: (size * 2).toInt(),
                       cacheHeight: (size * 2).toInt(),
-                      headers: const {'Cache-Control': 'no-cache'},
                       key: ValueKey(photoUrl),
                       errorBuilder: (context, error, stackTrace) {
                         return Icon(
