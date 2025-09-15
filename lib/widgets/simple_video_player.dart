@@ -509,8 +509,74 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
                           aspectRatio: _controller!.value.aspectRatio,
                           child: Chewie(controller: _chewieController!),
                         )
-                        : const Center(
-                          child: CircularProgressIndicator(color: Colors.white),
+                        : Stack(
+                          children: [
+                            // Show thumbnail as background while loading
+                            if (widget.thumbnailUrl != null)
+                              CachedNetworkImage(
+                                imageUrl: widget.thumbnailUrl!,
+                                width: double.infinity,
+                                height: double.infinity,
+                                fit: BoxFit.contain,
+                                alignment: Alignment.center,
+                                placeholder:
+                                    (context, url) => Container(
+                                      color: Colors.black,
+                                      child: const Center(
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                errorWidget:
+                                    (context, url, error) => Container(
+                                      color: Colors.black,
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.video_library,
+                                          color: Colors.white,
+                                          size: 48,
+                                        ),
+                                      ),
+                                    ),
+                              )
+                            else
+                              Container(
+                                color: Colors.black,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.video_library,
+                                    color: Colors.white,
+                                    size: 48,
+                                  ),
+                                ),
+                              ),
+
+                            // Loading overlay with play icon
+                            Container(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              child: const Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 3,
+                                    ),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'Loading video...',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
               ),
             ),
