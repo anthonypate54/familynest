@@ -461,8 +461,18 @@ class FreshUserOnboardingScreenState extends State<FreshUserOnboardingScreen> {
   void _createFamily() {
     debugPrint('🆕 FRESH_USER_ONBOARDING: User wants to create family');
 
-    // Return 'create_family' result to let CleanOnboardingService handle routing
-    Navigator.of(context).pop('create_family');
+    // Navigate directly to main app instead of popping back to login screen
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder:
+            (context) => MainAppContainer(
+              userId: widget.userId,
+              userRole: widget.userRole,
+              initialTabIndex: 3, // Family tab
+            ),
+      ),
+      (route) => false, // Remove all previous routes
+    );
   }
 
   void _checkInvitations() {
