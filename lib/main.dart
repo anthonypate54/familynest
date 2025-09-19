@@ -362,12 +362,14 @@ class MainAppContainer extends StatefulWidget {
   final int userId;
   final String userRole;
   final int? initialTabIndex; // Add optional initial tab parameter
+  final int? initialProfileSubTab; // Add optional profile sub-tab parameter
 
   const MainAppContainer({
     super.key,
     required this.userId,
     required this.userRole,
     this.initialTabIndex, // Optional parameter to set initial tab
+    this.initialProfileSubTab, // Optional parameter for profile sub-tab
   });
 
   @override
@@ -410,6 +412,7 @@ class MainAppContainerState extends State<MainAppContainer>
         userId: widget.userId,
         userRole: widget.userRole,
         navigationController: _navigationController,
+        initialTabIndex: widget.initialProfileSubTab,
       ),
       FamilyManagementScreen(
         userId: widget.userId,
@@ -426,6 +429,7 @@ class MainAppContainerState extends State<MainAppContainer>
       debugPrint(
         'MAIN: Using provided initial tab index: ${widget.initialTabIndex}',
       );
+      
       setState(() {
         _currentIndex = widget.initialTabIndex!;
         _isCheckingInitialScreen = false;

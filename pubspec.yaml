@@ -52,6 +52,10 @@ dependencies:
   sticky_headers: ^0.2.0
   emoji_picker_flutter: ^3.1.0
   permission_handler: ^11.3.1
+  # In-app purchase dependencies
+  in_app_purchase: ^3.1.13
+  in_app_purchase_android: ^0.3.0+17
+  in_app_purchase_storekit: ^0.3.6+7
   # Google Drive API dependencies
   googleapis: ^13.2.0
   google_sign_in: ^6.2.1

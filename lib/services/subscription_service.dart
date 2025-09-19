@@ -1,12 +1,102 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../models/subscription.dart';
 import '../models/user.dart';
 import 'api_service.dart';
+import 'subscription_api_service.dart';
 
 class SubscriptionService {
-  final ApiService _apiService;
+  static const String _logTag = '🔒 SubscriptionService';
 
-  SubscriptionService(this._apiService);
+  final ApiService _apiService;
+  late final SubscriptionApiService _subscriptionApi;
+
+  SubscriptionService(this._apiService) {
+    _subscriptionApi = SubscriptionApiService(_apiService);
+  }
+
+  /// CRITICAL: Main method to check if user has access to the app
+  /// Returns true if user can use the app, false if they need to subscribe
+  Future<bool> validateUserAccess(User? user) async {
+    if (user == null) {
+      debugPrint('$_logTag: No user provided - denying access');
+      return false;
+    }
+
+    debugPrint('$_logTag: Validating access for user ${user.username}');
+
+    // First check: Do we have recent subscription data?
+    if (user.subscription != null) {
+      final localAccess = user.subscription!.shouldHaveAccess;
+      debugPrint('$_logTag: Local subscription check: $localAccess');
+
+      // If local data says they have access, trust it (avoid unnecessary API calls)
+      if (localAccess) {
+        debugPrint('$_logTag: ✅ Local validation passed - granting access');
+        return true;
+      }
+    }
+
+    // Second check: Query backend for authoritative answer
+    debugPrint('$_logTag: Local check failed or no data - querying backend...');
+    try {
+      final subscriptionData = await _subscriptionApi.getSubscriptionStatus();
+
+      if (subscriptionData == null) {
+        debugPrint('$_logTag: ❌ Backend returned null - denying access');
+        return false;
+      }
+
+      final hasAccess = subscriptionData['has_active_access'] ?? false;
+      debugPrint('$_logTag: Backend says has_active_access: $hasAccess');
+
+      // Log the full subscription state for debugging
+      debugPrint('$_logTag: Backend subscription state:');
+      debugPrint('  - Status: ${subscriptionData['subscription_status']}');
+      debugPrint('  - Trial End: ${subscriptionData['trial_end_date']}');
+      debugPrint(
+        '  - Subscription End: ${subscriptionData['subscription_end_date']}',
+      );
+      debugPrint('  - Has Active Access: $hasAccess');
+
+      return hasAccess;
+    } catch (e) {
+      debugPrint('$_logTag: ❌ Error checking backend subscription: $e');
+
+      // IMPORTANT: On network error, be conservative
+      // If we can't verify subscription, deny access rather than risk giving free access
+      return false;
+    }
+  }
+
+  /// Log subscription state for debugging purposes
+  void logSubscriptionState(User? user, String context) {
+    if (!kDebugMode) return; // Only log in debug builds
+
+    debugPrint('$_logTag: ==========================================');
+    debugPrint('$_logTag: Subscription State ($context)');
+    debugPrint('$_logTag: ==========================================');
+
+    if (user == null) {
+      debugPrint('$_logTag: User: NULL');
+      return;
+    }
+
+    debugPrint('$_logTag: User: ${user.username} (ID: ${user.id})');
+
+    if (user.subscription == null) {
+      debugPrint('$_logTag: Subscription: NULL');
+      return;
+    }
+
+    final sub = user.subscription!;
+    debugPrint('$_logTag: Subscription Status: ${sub.status.name}');
+    debugPrint('$_logTag: Trial End: ${sub.trialEndDate}');
+    debugPrint('$_logTag: Is In Trial: ${sub.isInTrial}');
+    debugPrint('$_logTag: Should Have Access: ${sub.shouldHaveAccess}');
+    debugPrint('$_logTag: Has Active Access: ${sub.hasActiveAccess}');
+    debugPrint('$_logTag: ==========================================');
+  }
 
   // Get user's subscription status
   Future<Subscription?> getUserSubscription(int userId) async {

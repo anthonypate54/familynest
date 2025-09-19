@@ -101,9 +101,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
 
         for (var invitation in invitations) {
           final invitationMap = invitation as Map<String, dynamic>;
-          debugPrint(
-            '$invitationMap',
-          );
+          debugPrint('$invitationMap');
 
           sentInvitations.add(invitationMap);
 
@@ -127,9 +125,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
           }
         }
 
-        debugPrint(
-          '$pendingCounts',
-        );
+        debugPrint('$pendingCounts');
 
         if (mounted) {
           setState(() {
@@ -214,9 +210,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
           activity = await apiService.getWeeklyActivity(selectedFamily.id);
       }
 
-      debugPrint(
-        '$activity',
-      );
+      debugPrint('$activity');
 
       if (mounted) {
         setState(() {
@@ -1483,7 +1477,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                               Icon(Icons.add, size: 16),
                               SizedBox(width: 4),
                               Text(
-                                'Create Your Family',
+                                'Create Family',
                                 style: TextStyle(fontSize: 11),
                               ),
                             ],
@@ -1505,18 +1499,24 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                             'DM your family owner "${owner.displayName}" to invite new members.',
                             style: TextStyle(
                               color: Colors.grey[600],
-                              fontSize: 10,
+                              fontSize: 9,
                             ),
                             textAlign: TextAlign.center,
+                            softWrap: true,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
                           );
                         } else {
                           return Text(
                             'Contact family admin to invite new members',
                             style: TextStyle(
                               color: Colors.grey[600],
-                              fontSize: 10,
+                              fontSize: 9,
                             ),
                             textAlign: TextAlign.center,
+                            softWrap: true,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           );
                         }
                       },

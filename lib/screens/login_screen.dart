@@ -3,10 +3,13 @@ import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/clean_onboarding_service.dart'; // Use clean service
 import '../services/notification_service.dart'; // Add notification service import
+import '../services/subscription_api_service.dart'; // Add subscription service
 import '../models/user.dart'; // Import User model
+import '../models/subscription.dart'; // Import Subscription model
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/gradient_background.dart';
 import '../utils/error_codes.dart'; // Add error codes import
+import 'subscription_required_screen.dart'; // Import subscription required screen
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -379,8 +382,29 @@ class LoginScreenState extends State<LoginScreen> {
             // Don't block login flow if FCM token registration fails
           }
 
-          // Use OnboardingService to route based on onboarding state bitmap
-          if (mounted) {
+          // Check subscription status first
+          final subscriptionApi = SubscriptionApiService(apiService);
+          final subscriptionData =
+              await subscriptionApi.getSubscriptionStatus();
+          final hasActiveAccess =
+              subscriptionData?['has_active_access'] ?? false;
+
+          if (!hasActiveAccess && mounted) {
+            // User doesn't have access - show subscription required screen
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder:
+                    (context) => SubscriptionRequiredScreen(
+                      username: user.username,
+                      subscription:
+                          subscriptionData != null
+                              ? Subscription.fromJson(subscriptionData)
+                              : null,
+                    ),
+              ),
+            );
+          } else if (mounted) {
+            // User has access - use normal onboarding flow
             await CleanOnboardingService.routeAfterLogin(
               context,
               userId,

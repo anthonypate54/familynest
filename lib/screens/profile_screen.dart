@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/api_service.dart';
+import '../services/subscription_api_service.dart';
 import 'family_management_screen.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
@@ -16,8 +17,8 @@ import '../utils/auth_utils.dart';
 import 'package:provider/provider.dart';
 import '../widgets/gradient_background.dart';
 import '../models/user.dart';
-import '../widgets/subscription_card.dart';
 import '../widgets/user_profile_card.dart';
+import 'subscription_tab.dart';
 import '../models/subscription.dart';
 import 'dart:async';
 
@@ -25,12 +26,14 @@ class ProfileScreen extends StatefulWidget {
   final int userId;
   final String userRole;
   final BottomNavigationController? navigationController;
+  final int? initialTabIndex; // Add parameter to set initial tab
 
   const ProfileScreen({
     super.key,
     required this.userId,
     required this.userRole,
     this.navigationController,
+    this.initialTabIndex, // Optional parameter for initial tab
   });
 
   @override
@@ -54,7 +57,16 @@ class ProfileScreenState extends State<ProfileScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    debugPrint(
+      '🔧 PROFILE: Initializing with tab index: ${widget.initialTabIndex}',
+    );
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex:
+          widget.initialTabIndex ??
+          0, // Use provided initial tab or default to 0
+    );
 
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 300),
@@ -115,9 +127,31 @@ class ProfileScreenState extends State<ProfileScreen>
       debugPrint('User data loaded: $userMap');
 
       final user = User.fromJson(userMap);
-      // For now, create a mock subscription for demo purposes
-      final mockSubscription = Subscription.createTrial(user.id);
-      return user.copyWith(subscription: mockSubscription);
+
+      // Fetch real subscription data from backend
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      debugPrint('🔧 PROFILE: Creating SubscriptionApiService...');
+      final subscriptionApi = SubscriptionApiService(apiService);
+      debugPrint('🔧 PROFILE: Calling getSubscriptionStatus...');
+      final subscriptionData = await subscriptionApi.getSubscriptionStatus();
+      debugPrint('🔧 PROFILE: Subscription data result: $subscriptionData');
+
+      Subscription? subscription;
+      if (subscriptionData != null) {
+        subscription = Subscription.fromJson(subscriptionData);
+        debugPrint('✅ Loaded subscription from backend:');
+        debugPrint('   Status: ${subscription.statusDisplayText}');
+        debugPrint('   Is Trial: ${subscription.isInTrial}');
+        debugPrint('   Price: \$${subscription.monthlyPrice}');
+        debugPrint('   Platform: ${subscription.platform}');
+        debugPrint('   Raw data: $subscriptionData');
+      } else {
+        // Fallback to mock trial if backend fails
+        subscription = Subscription.createTrial(user.id);
+        debugPrint('⚠️ Using mock subscription data');
+      }
+
+      return user.copyWith(subscription: subscription);
     } catch (e) {
       debugPrint('Error loading user: $e');
       return null;
@@ -939,6 +973,8 @@ class ProfileScreenState extends State<ProfileScreen>
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
+          automaticallyImplyLeading:
+              false, // Never show back button - this is a top-level tab
           title: const Text('Profile'),
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -1049,161 +1085,13 @@ class ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget _buildSubscriptionTab(User user) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        children: [
-          SubscriptionCard(
-            subscription: user.subscription,
-            onUpgrade: _showSubscriptionDialog,
-            onManagePayment: _showSubscriptionDialog,
-            onViewBilling: _showBillingDialog,
-            onCancel: _showCancelSubscriptionDialog,
-          ),
-          const SizedBox(height: 12),
-          Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Premium Features',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildFeatureItem(
-                    icon: Icons.cloud_upload,
-                    title: 'Unlimited Storage',
-                    description: 'Store unlimited photos and videos',
-                  ),
-                  _buildFeatureItem(
-                    icon: Icons.video_call,
-                    title: 'HD Video Messages',
-                    description: 'Send high-quality video messages',
-                  ),
-                  _buildFeatureItem(
-                    icon: Icons.group,
-                    title: 'Multiple Families',
-                    description: 'Join and manage multiple family groups',
-                  ),
-                  _buildFeatureItem(
-                    icon: Icons.block,
-                    title: 'Ad-Free Experience',
-                    description: 'Enjoy the app without advertisements',
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFeatureItem({
-    required IconData icon,
-    required String title,
-    required String description,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.green, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  description,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSubscriptionDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Subscription Management'),
-            content: const Text(
-              'Payment gateway integration will be added here.\n\nThis will include:\n• Stripe integration\n• Payment method management\n• Billing history\n• Plan upgrades',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  void _showBillingDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Billing History'),
-            content: const Text(
-              'Billing history and invoices will be displayed here.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  void _showCancelSubscriptionDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Cancel Subscription'),
-            content: const Text(
-              'Are you sure you want to cancel your subscription? You will lose access to premium features.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Keep Subscription'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Subscription cancelled successfully'),
-                    ),
-                  );
-                },
-                child: const Text('Cancel Subscription'),
-              ),
-            ],
-          ),
+    return SubscriptionTab(
+      user: user,
+      onUserDataRefresh: () {
+        setState(() {
+          _userDataFuture = _loadUser();
+        });
+      },
     );
   }
 

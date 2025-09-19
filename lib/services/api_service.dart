@@ -30,6 +30,9 @@ class ApiService {
     return url;
   }
 
+  // Expose token for other service classes
+  String? get token => _token;
+
   // Add isLoggedIn getter
   bool get isLoggedIn => _token != null && _token!.isNotEmpty;
 
@@ -70,9 +73,7 @@ class ApiService {
       final lastValidation = prefs.getString('last_token_validation');
 
       if (lastValidation == null) {
-        debugPrint(
-          'API: No previous token validation found, validating now',
-        );
+        debugPrint('API: No previous token validation found, validating now');
         try {
           final currentUser = await getCurrentUser();
           if (currentUser != null) {
@@ -152,9 +153,7 @@ class ApiService {
       if (response.statusCode == 200) {
         debugPrint('Connection test successful!');
       } else {
-        debugPrint(
-          '${response.statusCode}',
-        );
+        debugPrint('${response.statusCode}');
         throw Exception('Server responded with status: ${response.statusCode}');
       }
     } catch (e) {
@@ -422,9 +421,7 @@ Network connection error. Please check:
           return false;
         }
       } else {
-        debugPrint(
-          '${response.statusCode}',
-        );
+        debugPrint('${response.statusCode}');
         debugPrint('Response: ${response.body}');
 
         // If refresh fails, clear all tokens and notify session expiry
@@ -529,9 +526,7 @@ Network connection error. Please check:
             response = await client.delete(uri, headers: retryHeaders);
             break;
         }
-        debugPrint(
-          '${response.statusCode}',
-        );
+        debugPrint('${response.statusCode}');
       } else {
         debugPrint('Token refresh failed, user needs to log in again');
 
@@ -613,9 +608,7 @@ Network connection error. Please check:
         'auth_token exists after = ${prefs.containsKey('auth_token')}',
       );
 
-      debugPrint(
-        'User successfully logged out - all auth data cleared',
-      );
+      debugPrint('User successfully logged out - all auth data cleared');
     } catch (e) {
       debugPrint('Error during logout: $e');
       // Simple fallback in case of error
@@ -1023,9 +1016,7 @@ Network connection error. Please check:
   Future<List<Map<String, dynamic>>> getMessages(int userId) async {
     final apiUrl = '$baseUrl/api/users/$userId/messages';
     debugPrint('API URL for messages: $apiUrl');
-    debugPrint(
-      'userId type: ${userId.runtimeType}, value: $userId',
-    );
+    debugPrint('userId type: ${userId.runtimeType}, value: $userId');
 
     final response = await _makeAuthenticatedRequest(
       'GET',
@@ -1166,9 +1157,7 @@ Network connection error. Please check:
       if ((response.statusCode == 401 || response.statusCode == 403) &&
           _refreshToken != null &&
           _refreshToken!.isNotEmpty) {
-        debugPrint(
-          'Token expired, attempting refresh for message posting...',
-        );
+        debugPrint('Token expired, attempting refresh for message posting...');
 
         final refreshSuccess = await _refreshAccessToken();
         if (refreshSuccess) {
@@ -1338,9 +1327,7 @@ Network connection error. Please check:
       if ((response.statusCode == 401 || response.statusCode == 403) &&
           _refreshToken != null &&
           _refreshToken!.isNotEmpty) {
-        debugPrint(
-          'Token expired, attempting refresh for comment posting...',
-        );
+        debugPrint('Token expired, attempting refresh for comment posting...');
 
         final refreshSuccess = await _refreshAccessToken();
         if (refreshSuccess) {
@@ -1569,14 +1556,10 @@ Network connection error. Please check:
             (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
         return result;
       } else if (response.statusCode == 400) {
-        debugPrint(
-          'New endpoint returned 400 - returning empty list',
-        );
+        debugPrint('New endpoint returned 400 - returning empty list');
         return [];
       } else {
-        debugPrint(
-          'New endpoint failed with status ${response.statusCode}',
-        );
+        debugPrint('New endpoint failed with status ${response.statusCode}');
         throw Exception('Failed to get all family members: ${response.body}');
       }
     } catch (e) {
@@ -1613,9 +1596,7 @@ Network connection error. Please check:
         debugPrint('No user families found');
       }
     } catch (e) {
-      debugPrint(
-        'Family endpoint failed, falling back to old endpoint: $e',
-      );
+      debugPrint('Family endpoint failed, falling back to old endpoint: $e');
     }
 
     // Fallback to the old user-based endpoint
@@ -1628,12 +1609,8 @@ Network connection error. Please check:
       headers: {'Content-Type': 'application/json'},
     );
 
-    debugPrint(
-      'Fallback endpoint response status: ${response.statusCode}',
-    );
-    debugPrint(
-      'Fallback endpoint response body: ${response.body}',
-    );
+    debugPrint('Fallback endpoint response status: ${response.statusCode}');
+    debugPrint('Fallback endpoint response body: ${response.body}');
 
     if (response.statusCode == 200) {
       final result =
@@ -1643,14 +1620,10 @@ Network connection error. Please check:
       );
       return result;
     } else if (response.statusCode == 400) {
-      debugPrint(
-        'Fallback endpoint returned 400 - returning empty list',
-      );
+      debugPrint('Fallback endpoint returned 400 - returning empty list');
       return [];
     } else {
-      debugPrint(
-        'Fallback endpoint failed with status ${response.statusCode}',
-      );
+      debugPrint('Fallback endpoint failed with status ${response.statusCode}');
       throw Exception('Failed to get family members: ${response.body}');
     }
   }
@@ -1684,9 +1657,7 @@ Network connection error. Please check:
     int invitationId,
     bool accept,
   ) async {
-    debugPrint(
-      'Responding to invitation $invitationId with accept=$accept',
-    );
+    debugPrint('Responding to invitation $invitationId with accept=$accept');
     debugPrint(
       'Using endpoint: $baseUrl/api/invitations/$invitationId/respond',
     );
@@ -1793,9 +1764,7 @@ Network connection error. Please check:
         debugPrint(
           'Retry invitation response status: ${retryResponse.statusCode}',
         );
-        debugPrint(
-          'Retry invitation response body: ${retryResponse.body}',
-        );
+        debugPrint('Retry invitation response body: ${retryResponse.body}');
 
         if (retryResponse.statusCode == 200 ||
             retryResponse.statusCode == 201) {
@@ -1935,9 +1904,7 @@ Network connection error. Please check:
       if (response.statusCode == 200) {
         final invitations =
             (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
-        debugPrint(
-          'Retrieved ${invitations.length} invitations',
-        );
+        debugPrint('Retrieved ${invitations.length} invitations');
         for (var inv in invitations) {
           debugPrint(
             '${inv['id']} - ${inv['status']} - ${inv['familyName']} - ${inv['email']}',
@@ -2860,9 +2827,7 @@ Network connection error. Please check:
                 .cast<DMConversation>()
                 .toList();
 
-        debugPrint(
-          'Final result count: ${dmConversations.length}',
-        );
+        debugPrint('Final result count: ${dmConversations.length}');
         return dmConversations;
       } catch (e) {
         debugPrint('Error mapping conversations: $e');
@@ -3099,9 +3064,7 @@ Network connection error. Please check:
         debugPrint('FCM token registered successfully');
         return true;
       } else {
-        debugPrint(
-          '${response.statusCode} ${response.body}',
-        );
+        debugPrint('${response.statusCode} ${response.body}');
         return false;
       }
     } catch (e) {
@@ -3151,9 +3114,7 @@ Network connection error. Please check:
     int size = 20,
   }) async {
     try {
-      debugPrint(
-        '"$query", familyId: $familyId, page: $page',
-      );
+      debugPrint('"$query", familyId: $familyId, page: $page');
 
       final queryParams = <String, String>{
         'q': query,
@@ -3205,9 +3166,7 @@ Network connection error. Please check:
             return results;
           }
         }
-        debugPrint(
-          '${response.body}',
-        );
+        debugPrint('${response.body}');
         return [];
       } else {
         debugPrint('${response.body}');
@@ -3256,15 +3215,11 @@ Network connection error. Please check:
             final families =
                 (jsonDecode(retryResponse.body) as List)
                     .cast<Map<String, dynamic>>();
-            debugPrint(
-              'Found ${families.length} families after token refresh',
-            );
+            debugPrint('Found ${families.length} families after token refresh');
             return families;
           }
         }
-        debugPrint(
-          '${response.body}',
-        );
+        debugPrint('${response.body}');
         return [];
       } else {
         debugPrint('${response.body}');
@@ -3289,9 +3244,7 @@ Network connection error. Please check:
         },
       );
 
-      debugPrint(
-        'status=${response.statusCode}, body=${response.body}',
-      );
+      debugPrint('status=${response.statusCode}, body=${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -3539,9 +3492,7 @@ Network connection error. Please check:
         debugPrint('All notification preferences enabled for user $userId');
         return true;
       } else {
-        debugPrint(
-          '${response.statusCode}',
-        );
+        debugPrint('${response.statusCode}');
         debugPrint('Response body: ${response.body}');
         return false;
       }
@@ -3575,9 +3526,7 @@ Network connection error. Please check:
         debugPrint('Device permission status synced for user $userId');
         return true;
       } else {
-        debugPrint(
-          '${response.statusCode}',
-        );
+        debugPrint('${response.statusCode}');
         debugPrint('Response body: ${response.body}');
         return false;
       }
@@ -3721,13 +3670,9 @@ Network connection error. Please check:
               .toList();
 
       if (authKeys.isEmpty) {
-        debugPrint(
-          'Verification successful - no auth keys remain',
-        );
+        debugPrint('Verification successful - no auth keys remain');
       } else {
-        debugPrint(
-          'Warning - some auth keys still exist: $authKeys',
-        );
+        debugPrint('Warning - some auth keys still exist: $authKeys');
       }
     } catch (e) {
       debugPrint('Error: $e');
@@ -3762,9 +3707,7 @@ Network connection error. Please check:
 
       final requestBody = json.encode({'fcmToken': fcmToken});
       debugPrint('Request body: $requestBody');
-      debugPrint(
-        'Sending to URL: $baseUrl/api/users/$userId/fcm-token-debug',
-      );
+      debugPrint('Sending to URL: $baseUrl/api/users/$userId/fcm-token-debug');
 
       final response = await client.post(
         Uri.parse('$baseUrl/api/users/$userId/fcm-token-debug'),
@@ -3997,9 +3940,7 @@ Network connection error. Please check:
         );
         return responseData;
       } else {
-        debugPrint(
-          'Failed to create group chat: ${response.statusCode}',
-        );
+        debugPrint('Failed to create group chat: ${response.statusCode}');
         debugPrint('Response body: ${response.body}');
         return null;
       }
