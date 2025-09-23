@@ -10,6 +10,7 @@ import '../services/websocket_service.dart';
 import '../utils/auth_utils.dart';
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 
 import '../services/ios_media_picker.dart';
@@ -87,17 +88,79 @@ class _MessageScreenState extends State<MessageScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _cachedMessageProvider != null) {
-      // Only reload if we don't have messages already
-      if (_cachedMessageProvider!.messages.isEmpty) {
-        debugPrint(
-          'App resumed with no messages, reloading...',
+      // Check if we need to force refresh due to notification
+      _checkForceRefresh();
+    }
+  }
+
+  /// Check if we need to force refresh due to notification
+  Future<void> _checkForceRefresh() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final shouldForceRefresh =
+          prefs.getBool('force_refresh_on_resume') ?? false;
+
+      if (shouldForceRefresh) {
+        debugPrint('🔄 Force refreshing feed due to notification');
+
+        // Clear the flag
+        await prefs.setBool('force_refresh_on_resume', false);
+
+        // Check for simulated WebSocket message from notification
+        final simulatedMessageJson = prefs.getString(
+          'simulated_websocket_message',
         );
+        if (simulatedMessageJson != null && _familyMessageHandler != null) {
+          debugPrint('📱 Found simulated WebSocket message from notification');
+
+          try {
+            // Parse the simulated message
+            final simulatedMessage =
+                jsonDecode(simulatedMessageJson) as Map<String, dynamic>;
+
+            // Process it as if it came from WebSocket
+            if (simulatedMessage['type'] == 'FAMILY_MESSAGE') {
+              // Process using existing WebSocket handler
+              _familyMessageHandler!(simulatedMessage);
+
+              // Check if we need to scroll to a specific message
+              final messageId = simulatedMessage['message_id'];
+              if (messageId != null) {
+                // Convert to int if needed
+                final msgId =
+                    messageId is int
+                        ? messageId
+                        : int.tryParse(messageId.toString());
+                if (msgId != null) {
+                  _scrollToMessage(msgId);
+                }
+              }
+
+              // Clear the simulated message
+              await prefs.remove('simulated_websocket_message');
+            }
+          } catch (e) {
+            debugPrint('Error processing simulated message: $e');
+          }
+        }
+
+        // Always reload messages to get the latest
         _loadMessages(showLoading: false);
       } else {
-        debugPrint(
-          'App resumed with ${_cachedMessageProvider!.messages.length} messages, skipping reload',
-        );
+        // Only reload if we don't have messages already
+        if (_cachedMessageProvider!.messages.isEmpty) {
+          debugPrint('App resumed with no messages, reloading...');
+          _loadMessages(showLoading: false);
+        } else {
+          debugPrint(
+            'App resumed with ${_cachedMessageProvider!.messages.length} messages, skipping reload',
+          );
+        }
       }
+    } catch (e) {
+      debugPrint('Error checking force refresh: $e');
+      // Fall back to normal refresh
+      _loadMessages(showLoading: false);
     }
   }
 
@@ -170,9 +233,7 @@ class _MessageScreenState extends State<MessageScreen>
     }
     final apiService = Provider.of<ApiService>(context, listen: false);
     try {
-      debugPrint(
-        'Loading messages for user ${widget.userId}',
-      );
+      debugPrint('Loading messages for user ${widget.userId}');
       final messages = await apiService.getUserMessages(widget.userId);
       if (mounted) {
         debugPrint('Loaded ${messages.length} messages');
@@ -545,9 +606,7 @@ class _MessageScreenState extends State<MessageScreen>
           commentCount,
           hasUnreadComments: hasUnreadComments,
         );
-        debugPrint(
-          'Updated message $messageId comment count and read status',
-        );
+        debugPrint('Updated message $messageId comment count and read status');
       } else {
         debugPrint('MessageProvider is null!');
       }
@@ -730,9 +789,7 @@ class _MessageScreenState extends State<MessageScreen>
 
         if (mediaType == 'video') {
           // For videos: Copy to persistent storage for instant playback
-          debugPrint(
-            'Copying to persistent storage for local playback',
-          );
+          debugPrint('Copying to persistent storage for local playback');
           final String? persistentPath = await _copyVideoToPersistentStorage(
             mediaFile.path,
           );
@@ -1043,9 +1100,7 @@ class _MessageScreenState extends State<MessageScreen>
             debugPrint('Temporary video file cleaned up: ${videoFile.path}');
           }
         } catch (cleanupError) {
-          debugPrint(
-            '$cleanupError',
-          );
+          debugPrint('$cleanupError');
         }
       }
     } catch (e) {
@@ -1080,10 +1135,10 @@ class _MessageScreenState extends State<MessageScreen>
 
       if (match != null) {
         timestamp = match.group(1)!;
-        debugPrint('$timestamp');
+        debugPrint(timestamp.toString());
       } else {
         timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-        debugPrint('$timestamp');
+        debugPrint(timestamp.toString());
       }
 
       final String fileName = 'video_$timestamp.mp4';

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 import '../services/api_service.dart';
 import '../widgets/user_avatar.dart';
@@ -74,6 +75,9 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     // Delay WebSocket initialization until after first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initWebSocket();
+
+      // Check if we were opened from a notification with a target conversation
+      _checkForTargetConversation();
     });
   }
 
@@ -103,9 +107,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
     super.didChangeDependencies();
     // If we've navigated away and come back, refresh the conversations
     if (_hasNavigatedAway && !_isLoading) {
-      debugPrint(
-        'Returned to MessagesHomeScreen, refreshing conversations...',
-      );
+      debugPrint('Returned to MessagesHomeScreen, refreshing conversations...');
       _hasNavigatedAway = false;
       _loadConversations();
     }
@@ -122,9 +124,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       // Ensure WebSocket is connected and subscriptions are active
       if (_webSocketService != null) {
         if (!_webSocketService!.isConnected) {
-          debugPrint(
-            'WebSocket not connected, reconnecting...',
-          );
+          debugPrint('WebSocket not connected, reconnecting...');
           _webSocketService!.initialize().then((_) {
             // Re-establish subscription after connection
             _ensureWebSocketSubscription();
@@ -135,7 +135,150 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         }
       }
 
+      // Check if we need to force refresh due to notification
+      _checkForceRefresh();
+    }
+  }
+
+  /// Check if we need to force refresh due to notification
+  Future<void> _checkForceRefresh() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final shouldForceRefresh =
+          prefs.getBool('force_refresh_on_resume') ?? false;
+
+      if (shouldForceRefresh) {
+        debugPrint('🔄 Force refreshing conversations due to notification');
+
+        // Clear the flag
+        await prefs.setBool('force_refresh_on_resume', false);
+
+        // Check for simulated WebSocket message from notification
+        final simulatedMessageJson = prefs.getString(
+          'simulated_websocket_message',
+        );
+        if (simulatedMessageJson != null) {
+          debugPrint('📱 Found simulated WebSocket message from notification');
+
+          try {
+            // Parse the simulated message
+            final simulatedMessage =
+                jsonDecode(simulatedMessageJson) as Map<String, dynamic>;
+
+            // Process it as if it came from WebSocket
+            if (simulatedMessage['type'] == 'DM_MESSAGE') {
+              // We don't need to create a DMMessage object here
+              // since we're passing the raw message to _handleIncomingDMMessage
+
+              // Process using existing WebSocket handler
+              _handleIncomingDMMessage(simulatedMessage);
+
+              // Clear the simulated message
+              await prefs.remove('simulated_websocket_message');
+            }
+          } catch (e) {
+            debugPrint('Error processing simulated message: $e');
+          }
+        }
+
+        // Load conversations with force refresh
+        _loadConversations();
+      } else {
+        // Normal refresh
+        _loadConversations();
+      }
+    } catch (e) {
+      debugPrint('Error checking force refresh: $e');
+      // Fall back to normal refresh
       _loadConversations();
+    }
+  }
+
+  // This method is no longer used since we're using the simulated WebSocket approach
+  // It's kept for reference in case we need to revert to the direct navigation approach
+
+  /// Check if we were opened from a notification with a target conversation
+  void _checkForTargetConversation() {
+    try {
+      // Check if we have route arguments with a target conversation
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Map<String, dynamic>) {
+        final targetConversationId = args['targetConversationId'];
+        if (targetConversationId != null) {
+          debugPrint(
+            '🎯 Target conversation ID from notification: $targetConversationId',
+          );
+
+          // Navigate to this conversation
+          _navigateToConversation(targetConversationId.toString());
+        }
+      }
+    } catch (e) {
+      debugPrint('Error checking for target conversation: $e');
+    }
+  }
+
+  /// Navigate to conversation detail screen
+  void _navigateToConversationDetail(DMConversation conversation) {
+    // Navigate to the DM thread screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (context) => DMThreadScreen(
+              currentUserId: widget.userId,
+              otherUserId: conversation.user2Id ?? 0,
+              otherUserName: conversation.getOtherUserDisplayName(),
+              otherUserPhoto: conversation.otherUserPhoto,
+              conversationId: conversation.id,
+              isGroup: conversation.isGroup,
+              participantCount: conversation.participantCount,
+              participants: conversation.participants,
+              onMarkAsRead: () => _markConversationAsRead(conversation.id),
+            ),
+      ),
+    );
+  }
+
+  /// Navigate to a specific conversation by ID
+  void _navigateToConversation(String conversationId) {
+    try {
+      // Find the conversation in our list
+      final convoId = int.tryParse(conversationId);
+      if (convoId == null) return;
+
+      // Find the conversation
+      DMConversation? conversation;
+      try {
+        conversation = _conversations.firstWhere((c) => c.id == convoId);
+      } catch (e) {
+        conversation = null;
+      }
+
+      if (conversation != null) {
+        debugPrint('🧭 Navigating to conversation: ${conversation.id}');
+        _navigateToConversationDetail(conversation);
+      } else {
+        // If conversation not found, force a refresh and try again
+        debugPrint('⚠️ Conversation not found, refreshing data...');
+        _loadConversations().then((_) {
+          // Try again after refresh
+          DMConversation? refreshedConversation;
+          try {
+            refreshedConversation = _conversations.firstWhere(
+              (c) => c.id == convoId,
+            );
+          } catch (e) {
+            refreshedConversation = null;
+          }
+
+          if (refreshedConversation != null) {
+            _navigateToConversationDetail(refreshedConversation);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error navigating to conversation: $e');
     }
   }
 
@@ -150,9 +293,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       final conversations = await apiService.getDMConversations();
 
       // Debug logging to see what we're getting
-      debugPrint(
-        'Loaded ${conversations.length} conversations',
-      );
+      debugPrint('Loaded ${conversations.length} conversations');
       for (int i = 0; i < conversations.length; i++) {
         final conv = conversations[i];
         debugPrint(
@@ -225,9 +366,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         _filteredConversations = searchResults;
       });
 
-      debugPrint(
-        'found ${searchResults.length} results for "$query"',
-      );
+      debugPrint('found ${searchResults.length} results for "$query"');
     } catch (e) {
       debugPrint('$e');
       // Fallback to local search if backend search fails
@@ -489,9 +628,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       }
     });
 
-    debugPrint(
-      'Marked conversation $conversationId as read locally',
-    );
+    debugPrint('Marked conversation $conversationId as read locally');
   }
 
   @override
@@ -739,7 +876,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       displayName = conversation.name ?? 'Group Chat';
 
       // 🐛 DEBUG: Check participant data for group avatars
-      debugPrint('GROUP AVATAR DEBUG for "${displayName}":');
+      debugPrint('GROUP AVATAR DEBUG for "$displayName":');
       debugPrint(
         '  - Participants count: ${conversation.participants?.length ?? 0}',
       );
@@ -792,6 +929,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: leadingWidget,
+        // onTap is handled at the end of this ListTile
         title: Row(
           children: [
             // Group icon for group chats
@@ -950,9 +1088,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
   void _ensureWebSocketSubscription() {
     if (_webSocketService == null || _dmMessageHandler == null) return;
 
-    debugPrint(
-      'Ensuring WebSocket subscription for user ${widget.userId}',
-    );
+    debugPrint('Ensuring WebSocket subscription for user ${widget.userId}');
 
     // Subscribe to DM messages for this user (WebSocketService handles duplicates)
     _webSocketService!.subscribe(
@@ -977,9 +1113,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
         _loadConversations();
         return;
       } else if (messageType != null && messageType != 'DM_MESSAGE') {
-        debugPrint(
-          'Unknown message type: $messageType, ignoring',
-        );
+        debugPrint('Unknown message type: $messageType, ignoring');
         return;
       }
 
@@ -1045,9 +1179,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       _filteredConversations = List.from(_conversations);
     });
 
-    debugPrint(
-      'Cleared unread count for conversation $conversationId',
-    );
+    debugPrint('Cleared unread count for conversation $conversationId');
   }
 
   // Update conversation list when new message arrives

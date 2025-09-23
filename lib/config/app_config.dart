@@ -16,8 +16,7 @@ class AppConfig {
   // App environment
   Environment _environment = Environment.development;
 
-  // Cache the platform URL to avoid repeated calculations and prints
-  String? _cachedPlatformUrl;
+  // No longer needed - removing unused variable
 
   // API URLs for different environments
   String get _devBaseUrl {
@@ -38,9 +37,7 @@ class AppConfig {
       debugPrint('$url (run.sh mode)');
       return url;
     } catch (e) {
-      debugPrint(
-        '$e',
-      );
+      debugPrint('$e');
       return _getPlatformDefaultUrl();
     }
   }
@@ -54,9 +51,7 @@ class AppConfig {
 
       // For now, always try localhost first (works for physical devices with port forwarding)
       // If that fails, the app will handle the error gracefully
-      debugPrint(
-        'http://localhost:8080',
-      );
+      debugPrint('http://localhost:8080');
       debugPrint(
         '💡 Make sure adb reverse tcp:8080 tcp:8080 is set up for physical devices',
       );
@@ -65,9 +60,9 @@ class AppConfig {
       );
       return 'http://localhost:8080';
     } else if (Platform.isIOS) {
-      // iOS - use network IP for real devices, localhost for simulator
-      debugPrint('http://10.0.0.9:8080');
-      return 'http://10.0.0.9:8080';
+      // iOS - use localhost for simulator (127.0.0.1 is more reliable than 'localhost')
+      debugPrint('http://127.0.0.1:8080');
+      return 'http://127.0.0.1:8080';
     } else {
       // Web/Desktop default
       debugPrint('💻 Web/Desktop detected - using localhost:8080');
@@ -75,7 +70,7 @@ class AppConfig {
     }
   }
 
-  final String _localDevBaseUrl = 'http://localhost:8080'; // Desktop/iOS
+  // Removed unused variable
   final String _awsStagingBaseUrl = 'http://54.189.190.245:8080'; // AWS EC2
   final String _prodBaseUrl = 'https://familynest-api.example.com';
 
@@ -118,9 +113,7 @@ class AppConfig {
 
   /// Get the base URL for API requests based on platform and environment
   String get baseUrl {
-    debugPrint(
-      '$_environment',
-    );
+    debugPrint('$_environment');
 
     // If a custom URL was provided, use it
     if (_customBaseUrl != null) {
@@ -139,18 +132,14 @@ class AppConfig {
           // Auto-detect environment based on the URL
           if (apiUrl.contains('54.189.190.245')) {
             if (_environment != Environment.staging) {
-              debugPrint(
-                '$apiUrl',
-              );
+              debugPrint('$apiUrl');
               _environment = Environment.staging;
             }
           } else if (apiUrl.contains('localhost') ||
               apiUrl.contains('127.0.0.1') ||
               apiUrl.contains('10.0.2.2')) {
             if (_environment != Environment.development) {
-              debugPrint(
-                '$apiUrl',
-              );
+              debugPrint('$apiUrl');
               _environment = Environment.development;
             }
           }
@@ -170,7 +159,6 @@ class AppConfig {
         return _awsStagingBaseUrl;
 
       case Environment.development:
-      default:
         // For development, always use platform-specific defaults to avoid iOS/Android URL conflicts
         return _devBaseUrl; // Use the cached version
     }
@@ -188,7 +176,6 @@ class AppConfig {
         return 'https://familynest-staging-media.s3.us-west-2.amazonaws.com';
 
       case Environment.development:
-      default:
         // For development, try to use MEDIA_URL from .env first (for ngrok), then fall back to API base URL
         try {
           if (dotenv.isInitialized) {
@@ -224,9 +211,7 @@ class AppConfig {
       }
       return url;
     } catch (e) {
-      debugPrint(
-        '$e',
-      );
+      debugPrint('$e');
       return _getPlatformDefaultUrl();
     }
   }

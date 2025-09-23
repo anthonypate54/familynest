@@ -1,12 +1,14 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
 import 'dart:math';
+import 'dart:convert';
 import 'api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+// These imports would be needed for direct navigation
+// For now, we'll use a different approach with stored navigation intent
 
 class NotificationService {
   static final FirebaseMessaging _firebaseMessaging =
@@ -66,8 +68,12 @@ class NotificationService {
     return granted;
   }
 
-  /// Initialize the notification service (DEPRECATED - use initializeBasic + requestPermissionsAndEnable)
-  @deprecated
+  /// Initialize the notification service
+  ///
+  /// @deprecated Use initializeBasic + requestPermissionsAndEnable instead
+  @Deprecated(
+    'Use initializeBasic() followed by requestPermissionsAndEnable() instead',
+  )
   static Future<void> initialize() async {
     await initializeBasic();
     await requestPermissionsAndEnable();
@@ -80,13 +86,13 @@ class NotificationService {
     try {
       NotificationSettings settings =
           await _firebaseMessaging.getNotificationSettings();
-      debugPrint('${settings.authorizationStatus}');
-      debugPrint('${settings.alert}');
-      debugPrint('${settings.badge}');
-      debugPrint('${settings.sound}');
-      debugPrint('${settings.announcement}');
-      debugPrint('${settings.carPlay}');
-      debugPrint('${settings.criticalAlert}');
+      debugPrint(settings.authorizationStatus.toString());
+      debugPrint(settings.alert.toString());
+      debugPrint(settings.badge.toString());
+      debugPrint(settings.sound.toString());
+      debugPrint(settings.announcement.toString());
+      debugPrint(settings.carPlay.toString());
+      debugPrint(settings.criticalAlert.toString());
 
       // Friendly explanation
       switch (settings.authorizationStatus) {
@@ -104,32 +110,28 @@ class NotificationService {
           break;
       }
     } catch (e) {
-      debugPrint('$e');
+      debugPrint(e.toString());
     }
   }
 
   /// Request notification permissions from the user
   static Future<bool> _requestPermissions() async {
     debugPrint('Requesting notification permissions...');
-    debugPrint('${Platform.operatingSystem}');
+    debugPrint(Platform.operatingSystem);
 
     try {
       // Check current status before requesting
       NotificationSettings currentSettings =
           await _firebaseMessaging.getNotificationSettings();
-      debugPrint(
-        '${currentSettings.authorizationStatus}',
-      );
-      debugPrint('${currentSettings.alert}');
-      debugPrint('${currentSettings.badge}');
-      debugPrint('${currentSettings.sound}');
+      debugPrint(currentSettings.authorizationStatus.toString());
+      debugPrint(currentSettings.alert.toString());
+      debugPrint(currentSettings.badge.toString());
+      debugPrint(currentSettings.sound.toString());
 
       // Special check for iOS - if already determined, explain why no dialog shows
       if (Platform.isIOS) {
         if (currentSettings.authorizationStatus == AuthorizationStatus.denied) {
-          debugPrint(
-            'Permissions previously denied - no dialog will show',
-          );
+          debugPrint('Permissions previously denied - no dialog will show');
           debugPrint(
             'User must enable manually in Settings > Notifications > FamilyNest',
           );
@@ -158,12 +160,10 @@ class NotificationService {
             sound: true,
           );
       debugPrint('Firebase requestPermission() completed');
-      debugPrint(
-        '${settings.authorizationStatus}',
-      );
-      debugPrint('${settings.alert}');
-      debugPrint('${settings.badge}');
-      debugPrint('${settings.sound}');
+      debugPrint(settings.authorizationStatus.toString());
+      debugPrint(settings.alert.toString());
+      debugPrint(settings.badge.toString());
+      debugPrint(settings.sound.toString());
 
       // iOS Simulator warning
       if (Platform.isIOS) {
@@ -190,7 +190,7 @@ class NotificationService {
           return false;
       }
     } catch (e) {
-      debugPrint('$e');
+      debugPrint(e.toString());
       return false;
     }
   }
@@ -235,23 +235,21 @@ class NotificationService {
         try {
           final deviceInfo = DeviceInfoPlugin();
           final iosInfo = await deviceInfo.iosInfo;
-          debugPrint('${iosInfo.name}');
-          debugPrint('${iosInfo.model}');
+          debugPrint(iosInfo.name);
+          debugPrint(iosInfo.model);
           debugPrint(
-            '${iosInfo.isPhysicalDevice ? "NO (Real Device)" : "YES (Simulator)"}',
+            iosInfo.isPhysicalDevice ? "NO (Real Device)" : "YES (Simulator)",
           );
 
           if (!iosInfo.isPhysicalDevice) {
-            debugPrint(
-              'APNS tokens do NOT work on iOS Simulator!',
-            );
+            debugPrint('APNS tokens do NOT work on iOS Simulator!');
             debugPrint(
               'You must use a real physical iPhone for push notifications to work.',
             );
             return;
           }
         } catch (e) {
-          debugPrint('$e');
+          debugPrint(e.toString());
         }
 
         // Step 1: Request permissions
@@ -264,14 +262,12 @@ class NotificationService {
               provisional: true,
             );
 
-        debugPrint('${settings.authorizationStatus}');
+        debugPrint(settings.authorizationStatus.toString());
 
         if (settings.authorizationStatus != AuthorizationStatus.authorized) {
           debugPrint('Permissions denied. User needs to enable in Settings.');
           if (settings.authorizationStatus == AuthorizationStatus.denied) {
-            debugPrint(
-              'User denied permissions - notifications will not work',
-            );
+            debugPrint('User denied permissions - notifications will not work');
           } else if (settings.authorizationStatus ==
               AuthorizationStatus.notDetermined) {
             debugPrint('Permissions not determined - retry needed');
@@ -302,9 +298,7 @@ class NotificationService {
         for (int i = 0; i < 5; i++) {
           apnsToken = await _firebaseMessaging.getAPNSToken();
           if (apnsToken != null) {
-            debugPrint(
-              '${apnsToken.substring(0, 10)}...',
-            );
+            debugPrint('${apnsToken.substring(0, 10)}...');
             try {
               final apiService = ApiService();
               await apiService.backendDebugPrint(
@@ -342,9 +336,7 @@ class NotificationService {
           }
 
           // Still try to get FCM token - sometimes it works despite APNS issues
-          debugPrint(
-            'Attempting FCM token generation despite APNS failure...',
-          );
+          debugPrint('Attempting FCM token generation despite APNS failure...');
         } else {
           debugPrint(
             'APNS token successfully obtained, proceeding with FCM token...',
@@ -387,10 +379,8 @@ class NotificationService {
           }
         }
       } catch (e) {
-        debugPrint('$e');
-        debugPrint(
-          'FCM token generation failed - notifications will not work',
-        );
+        debugPrint(e.toString());
+        debugPrint('FCM token generation failed - notifications will not work');
 
         // DEBUG: Send the error to backend logs for real device debugging
         try {
@@ -431,11 +421,11 @@ class NotificationService {
             debugPrint('No current user ID available for token update');
           }
         } catch (e) {
-          debugPrint('$e');
+          debugPrint(e.toString());
         }
       });
     } catch (e) {
-      debugPrint('$e');
+      debugPrint(e.toString());
     }
   }
 
@@ -468,17 +458,15 @@ class NotificationService {
     final title = message.notification?.title ?? message.data['title'];
     final body = message.notification?.body ?? message.data['body'];
 
-    debugPrint('$title');
+    debugPrint(title);
     debugPrint('📝 Body: $body');
-    debugPrint('${message.data}');
+    debugPrint(message.data.toString());
 
     // Check if current user is the sender - don't show notification to sender
     final senderId = message.data['senderId'];
     final currentUserId = await _getCurrentUserIdFromAPI();
 
-    debugPrint(
-      'senderId from message: "$senderId" (${senderId.runtimeType})',
-    );
+    debugPrint('senderId from message: "$senderId" (${senderId.runtimeType})');
     debugPrint(
       'currentUserId from API: "$currentUserId" (${currentUserId.runtimeType})',
     );
@@ -493,20 +481,14 @@ class NotificationService {
       return;
     }
 
-    // App is in foreground - don't show notification bubbles
-    // WebSocket handles real-time UI updates when app is active
-    debugPrint(
-      '🔕 App in foreground - skipping notification bubble (WebSocket handles UI updates)',
-    );
-
     // Optional: Handle any silent data processing here if needed
     // For now, we rely on WebSocket for all foreground updates
   }
 
   /// Handle messages when app is opened from background/terminated
   static void _handleMessageOpenedApp(RemoteMessage message) {
-    debugPrint('${message.messageId}');
-    debugPrint('${message.data}');
+    debugPrint(message.messageId);
+    debugPrint(message.data.toString());
 
     // TODO: Navigate to specific screen based on message data
     // For example, if it's a family message, navigate to that family's thread
@@ -556,58 +538,144 @@ class NotificationService {
         payload: data.toString(),
       );
 
-      debugPrint('$title');
+      debugPrint(title);
     } catch (e) {
-      debugPrint('$e');
+      debugPrint(e.toString());
     }
   }
 
-  /// Show local notification for foreground messages
-  static Future<void> _showLocalNotification(RemoteMessage message) async {
-    try {
-      const AndroidNotificationDetails androidDetails =
-          AndroidNotificationDetails(
-            'familynest_channel',
-            'FamilyNest Notifications',
-            channelDescription: 'Notifications for family messages and updates',
-            importance: Importance.high,
-            priority: Priority.high,
-            showWhen: true,
-          );
-
-      const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
-        presentAlert: true,
-        presentBadge: true,
-        presentSound: true,
-      );
-
-      const NotificationDetails notificationDetails = NotificationDetails(
-        android: androidDetails,
-        iOS: iosDetails,
-      );
-
-      await _localNotifications.show(
-        message.hashCode, // Use message hash as unique ID
-        message.notification?.title ?? 'FamilyNest',
-        message.notification?.body ?? 'You have a new message',
-        notificationDetails,
-        payload: message.data.toString(),
-      );
-
-      debugPrint('Local notification shown');
-    } catch (e) {
-      debugPrint('$e');
-    }
-  }
+  // This method was previously used for showing local notifications from FCM messages
+  // We're now using the onMessage handler directly with _displayNotification
+  // Keeping the method signature for reference in case we need to revert
 
   /// Handle notification tap events
   static void _onNotificationTapped(NotificationResponse response) {
     debugPrint('👆 Notification tapped: ${response.payload}');
 
-    // TODO: Parse payload and navigate to appropriate screen
     if (response.payload != null) {
-      // Parse the data and navigate accordingly
-      debugPrint('${response.payload}');
+      try {
+        // Convert string payload to Map
+        final payloadStr = response.payload!;
+        final Map<String, dynamic> data = {};
+
+        // Parse simple key-value pairs from payload string
+        final pairs = payloadStr
+            .replaceAll('{', '')
+            .replaceAll('}', '')
+            .split(', ');
+        for (var pair in pairs) {
+          final parts = pair.split(': ');
+          if (parts.length == 2) {
+            data[parts[0].trim()] = parts[1].trim();
+          }
+        }
+
+        // Handle navigation with parsed data
+        _handleNotificationNavigation(data);
+      } catch (e) {
+        debugPrint('Error parsing notification payload: $e');
+      }
+    }
+  }
+
+  /// Get the global navigator key from the main app
+  static GlobalKey<NavigatorState>? _getGlobalNavigatorKey() {
+    // This is a placeholder - in a real implementation, you'd have a way
+    // to access the navigator key from your main app
+    // For now, we'll return null and rely on the stored navigation intent
+    return null;
+  }
+
+  /// Store navigation intent for later use when app is fully initialized
+  static void _storeNavigationIntent(String? type, Map<String, dynamic> data) {
+    debugPrint('Storing navigation intent for type: $type');
+
+    // Extract the important information from the notification
+    final conversationId = data['conversationId'];
+    final messageId = data['messageId'];
+    final senderId = data['senderId'];
+
+    debugPrint(
+      '📱 Notification data: conversationId=$conversationId, messageId=$messageId, senderId=$senderId',
+    );
+
+    // Store the navigation data in shared preferences for later use
+    SharedPreferences.getInstance().then((prefs) {
+      // Store basic notification info
+      prefs.setString('pending_notification_type', type ?? '');
+      prefs.setString('pending_notification_data', data.toString());
+      prefs.setBool('has_pending_notification', true);
+
+      // Store specific fields for easier access
+      if (conversationId != null) {
+        prefs.setString(
+          'notification_conversation_id',
+          conversationId.toString(),
+        );
+      }
+      if (messageId != null) {
+        prefs.setString('notification_message_id', messageId.toString());
+      }
+      if (senderId != null) {
+        prefs.setString('notification_sender_id', senderId.toString());
+      }
+
+      // Set a flag to force refresh when app opens
+      prefs.setBool('force_refresh_on_resume', true);
+
+      // Store timestamp of when notification was received
+      prefs.setInt(
+        'last_notification_timestamp',
+        DateTime.now().millisecondsSinceEpoch,
+      );
+
+      // Create a simulated WebSocket message to trigger the existing refresh mechanism
+      _simulateWebSocketMessageOnNextResume(type, data);
+    });
+  }
+
+  /// Create a simulated WebSocket message to trigger the existing refresh mechanism
+  static void _simulateWebSocketMessageOnNextResume(
+    String? type,
+    Map<String, dynamic> data,
+  ) {
+    if (type == 'dm') {
+      // Store the DM message data in a format similar to WebSocket messages
+      SharedPreferences.getInstance().then((prefs) {
+        final simulatedMessage = {
+          'type': 'DM_MESSAGE',
+          'conversation_id': data['conversationId'],
+          'sender_id': data['senderId'],
+          'content': data['content'] ?? 'New message',
+          'created_at': DateTime.now().toIso8601String(),
+          'from_notification': true,
+        };
+
+        // Store as JSON string
+        prefs.setString(
+          'simulated_websocket_message',
+          jsonEncode(simulatedMessage),
+        );
+      });
+    } else if (type == 'family_message') {
+      // Store the family message data
+      SharedPreferences.getInstance().then((prefs) {
+        final simulatedMessage = {
+          'type': 'FAMILY_MESSAGE',
+          'family_id': data['familyId'],
+          'message_id': data['messageId'],
+          'sender_id': data['senderId'],
+          'content': data['content'] ?? 'New message',
+          'created_at': DateTime.now().toIso8601String(),
+          'from_notification': true,
+        };
+
+        // Store as JSON string
+        prefs.setString(
+          'simulated_websocket_message',
+          jsonEncode(simulatedMessage),
+        );
+      });
     }
   }
 
@@ -615,19 +683,108 @@ class NotificationService {
   static void _handleNotificationNavigation(Map<String, dynamic> data) {
     debugPrint('🧭 Handling notification navigation with data: $data');
 
-    // TODO: Implement navigation logic based on notification type
-    // Examples:
-    // - Family message -> Navigate to family thread
-    // - DM message -> Navigate to DM conversation
-    // - Member joined -> Navigate to family management
-
+    // Extract common fields from notification data
     String? notificationType = data['type'];
     String? familyId = data['familyId'];
     String? messageId = data['messageId'];
+    String? senderId = data['senderId'];
+    // String? senderName = data['senderName']; // Not currently used
+    String? conversationId = data['conversationId'];
+    // String? recipientId = data['recipientId']; // Not currently used
 
     debugPrint(
-      '🏷️ Type: $notificationType, Family: $familyId, Message: $messageId',
+      '🏷️ Type: $notificationType, Family: $familyId, Message: $messageId, Conversation: $conversationId',
     );
+
+    // We can't directly navigate here since we don't have a BuildContext
+    // Instead, we'll store the navigation info and use it in the main app
+    try {
+      // Get the navigator key from the main app
+      final GlobalKey<NavigatorState>? navigatorKey = _getGlobalNavigatorKey();
+
+      if (navigatorKey?.currentContext == null) {
+        debugPrint('⚠️ No valid context available for navigation');
+        _storeNavigationIntent(notificationType, data);
+        return;
+      }
+
+      final context = navigatorKey!.currentContext!;
+
+      // Since we have a valid context, we can navigate directly
+      // But we'll use a simpler approach that doesn't require importing screen classes
+      switch (notificationType) {
+        case 'dm':
+          if (conversationId != null && senderId != null) {
+            debugPrint('🧭 Navigating to DM conversation: $conversationId');
+
+            // Store the navigation data for the main app to handle
+            _storeNavigationIntent('dm', data);
+
+            // Navigate to messages tab
+            Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+              '/main',
+              (route) => false,
+              arguments: {
+                'initialTabIndex': 1,
+                'targetConversationId': conversationId,
+              }, // Messages tab with conversation ID
+            );
+          }
+          break;
+
+        case 'family_message':
+          if (familyId != null) {
+            debugPrint('🧭 Navigating to family thread: $familyId');
+
+            // Store the navigation data for the main app to handle
+            _storeNavigationIntent('family_message', data);
+
+            // Navigate to messages tab
+            Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+              '/main',
+              (route) => false,
+              arguments: {
+                'initialTabIndex': 1,
+                'targetConversationId': conversationId,
+              }, // Messages tab with conversation ID
+            );
+          }
+          break;
+
+        case 'invitation':
+          debugPrint('🧭 Navigating to invitations screen');
+
+          // Store the navigation data for the main app to handle
+          _storeNavigationIntent('invitation', data);
+
+          // Navigate to messages tab (which has invitations)
+          Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+            '/main',
+            (route) => false,
+            arguments: {
+              'initialTabIndex': 1,
+              'targetConversationId': conversationId,
+            }, // Messages tab with conversation ID
+          );
+          break;
+
+        default:
+          debugPrint('⚠️ Unknown notification type: $notificationType');
+
+          // Default to main app container
+          Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+            '/main',
+            (route) => false,
+            arguments: {
+              'initialTabIndex': 1,
+              'targetType': notificationType,
+            }, // Messages tab
+          );
+          break;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error navigating from notification: $e');
+    }
   }
 
   /// Send FCM token to backend (to be called after user login)
@@ -635,28 +792,14 @@ class NotificationService {
     String userId,
     ApiService apiService,
   ) async {
-    debugPrint('🚀 SEND_TOKEN_TO_BACKEND: Starting for user: $userId');
-    debugPrint('🚀 SEND_TOKEN_TO_BACKEND: Current FCM token: $_fcmToken');
-    debugPrint('🚀 SEND_TOKEN_TO_BACKEND: Token is null: ${_fcmToken == null}');
-    debugPrint(
-      '🚀 SEND_TOKEN_TO_BACKEND: Token length: ${_fcmToken?.length ?? 0}',
-    );
     await apiService.backendDebugPrint(
       '### FROM FRONT Made it to sendTokenBackend',
     );
 
     if (_fcmToken == null) {
-      debugPrint(
-        'No FCM token available to send to backend',
-      );
-      debugPrint('Attempting to get fresh token...');
-
       // Try to get token again
       try {
         _fcmToken = await _firebaseMessaging.getToken();
-        debugPrint(
-          'SEND_TOKEN_TO_BACKEND: Fresh token obtained: $_fcmToken',
-        );
       } catch (e) {
         debugPrint('Failed to get fresh token: $e');
         await apiService.backendDebugPrint('###EXCEPTION $e');
@@ -665,9 +808,7 @@ class NotificationService {
       }
 
       if (_fcmToken == null) {
-        debugPrint(
-          'Still no token after refresh attempt',
-        );
+        debugPrint('Still no token after refresh attempt');
         await apiService.backendDebugPrint(
           '###SEND_TOKEN_TO_BACKEND:_fcmToken is null returning',
         );
@@ -701,27 +842,19 @@ class NotificationService {
       // Then call the real registration endpoint
       final success = await apiService.registerFcmToken(userId, _fcmToken!);
       if (success) {
-        debugPrint(
-          'FCM token sent to backend successfully',
-        );
+        debugPrint('FCM token sent to backend successfully');
       } else {
-        debugPrint(
-          'Failed to send FCM token to backend',
-        );
+        debugPrint('Failed to send FCM token to backend');
       }
     } catch (e) {
-      debugPrint(
-        'Error sending FCM token to backend: $e',
-      );
+      debugPrint('Error sending FCM token to backend: $e');
       rethrow; // Let caller handle the error
     }
   }
 
   /// Check current notification permission status
   static Future<bool> hasNotificationPermission() async {
-    debugPrint(
-      'Checking current notification permission status...',
-    );
+    debugPrint('Checking current notification permission status...');
 
     // Add platform-specific debugging
     debugPrint('Platform: ${Platform.operatingSystem}');
@@ -729,12 +862,8 @@ class NotificationService {
       try {
         final deviceInfo = DeviceInfoPlugin();
         final androidInfo = await deviceInfo.androidInfo;
-        debugPrint(
-          'Android API Level: ${androidInfo.version.sdkInt}',
-        );
-        debugPrint(
-          'Android Version: ${androidInfo.version.release}',
-        );
+        debugPrint('Android API Level: ${androidInfo.version.sdkInt}');
+        debugPrint('Android Version: ${androidInfo.version.release}');
       } catch (e) {
         debugPrint('Could not get Android info: $e');
       }
@@ -744,18 +873,12 @@ class NotificationService {
         await _firebaseMessaging.getNotificationSettings();
 
     debugPrint('Raw settings object: $settings');
-    debugPrint(
-      'Authorization status: ${settings.authorizationStatus}',
-    );
+    debugPrint('Authorization status: ${settings.authorizationStatus}');
     debugPrint('Alert setting: ${settings.alert}');
     debugPrint('Badge setting: ${settings.badge}');
     debugPrint('Sound setting: ${settings.sound}');
-    debugPrint(
-      'Announcement setting: ${settings.announcement}',
-    );
-    debugPrint(
-      'Critical alert setting: ${settings.criticalAlert}',
-    );
+    debugPrint('Announcement setting: ${settings.announcement}');
+    debugPrint('Critical alert setting: ${settings.criticalAlert}');
 
     final bool hasPermission =
         settings.authorizationStatus == AuthorizationStatus.authorized ||
@@ -793,37 +916,18 @@ class NotificationService {
     );
   }
 
-  /// Get current user ID to check against sender
-  static Future<String?> _getCurrentUserId() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getString('user_id');
-
-      // Debug: Print all auth-related SharedPreferences
-      final allKeys = prefs.getKeys();
-      debugPrint('All SharedPreferences keys: $allKeys');
-      debugPrint('user_id = "${prefs.getString('user_id')}"');
-      debugPrint(
-        'auth_token exists = ${prefs.containsKey('auth_token')}',
-      );
-      debugPrint('is_logged_in = ${prefs.getBool('is_logged_in')}');
-
-      return userId;
-    } catch (e) {
-      debugPrint('$e');
-      return null;
-    }
-  }
+  // This method was previously used to check if a notification was for the current user
+  // We're now handling this differently with the simulated WebSocket approach
+  // Keeping the method signature for reference in case we need to revert
 
   /// Get current user ID from API (to be called when app is in foreground)
   static Future<String?> _getCurrentUserIdFromAPI() async {
     try {
       final apiService = ApiService();
       final userId = await apiService.getCurrentUserId();
-      debugPrint('FCM Token: $_fcmToken, Current User ID from API: $userId');
       return userId;
     } catch (e) {
-      debugPrint('$e');
+      debugPrint(e.toString());
       return null;
     }
   }
@@ -841,22 +945,20 @@ class NotificationService {
         try {
           final deviceInfo = DeviceInfoPlugin();
           final iosInfo = await deviceInfo.iosInfo;
-          debugPrint('${iosInfo.name}');
-          debugPrint('${iosInfo.model}');
+          debugPrint(iosInfo.name);
+          debugPrint(iosInfo.model);
           debugPrint(
-            '${iosInfo.isPhysicalDevice ? "NO (Real Device)" : "YES (Simulator)"}',
+            iosInfo.isPhysicalDevice ? "NO (Real Device)" : "YES (Simulator)",
           );
 
           if (!iosInfo.isPhysicalDevice) {
-            debugPrint(
-              'APNS tokens do NOT work on iOS Simulator!',
-            );
+            debugPrint('APNS tokens do NOT work on iOS Simulator!');
             debugPrint(
               'You must use a real physical iPhone for push notifications to work.',
             );
           }
         } catch (e) {
-          debugPrint('$e');
+          debugPrint(e.toString());
         }
 
         try {
@@ -875,17 +977,12 @@ class NotificationService {
 
       // Delete the current token to force Firebase to generate a new one
       await _firebaseMessaging.deleteToken();
-      debugPrint('Deleted old FCM token');
 
       // Use our improved FCM token generation logic
       await _getFcmToken();
 
       // Check if we got a new token
       if (_fcmToken != null) {
-        debugPrint(
-          'New FCM Token obtained: ${_fcmToken!.substring(0, 20)}...',
-        );
-
         // Send to backend
         final currentUserId = await _getCurrentUserIdFromAPI();
         if (currentUserId != null) {
@@ -895,14 +992,9 @@ class NotificationService {
             _fcmToken!,
           );
           if (success) {
-            debugPrint(
-              'Force refreshed FCM token sent to backend successfully',
-            );
             return true;
           } else {
-            debugPrint(
-              'Failed to send force refreshed FCM token to backend',
-            );
+            debugPrint('Failed to send force refreshed FCM token to backend');
             return false;
           }
         } else {
@@ -914,7 +1006,7 @@ class NotificationService {
         return false;
       }
     } catch (e) {
-      debugPrint('$e');
+      debugPrint(e.toString());
       return false;
     }
   }

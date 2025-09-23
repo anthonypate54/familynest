@@ -130,14 +130,46 @@ echo "✅ Updated .env.development with platform-specific API_URL: $API_URL"
 
 # Run the Flutter app
 if [ "$BUILD_MODE" = "release" ]; then
+  # Build APK
   echo "Building Flutter release APK for staging..."
   flutter build apk --release --dart-define=ENVIRONMENT=staging
   echo "✅ Release APK built successfully!"
-  echo "📱 APK location: build/app/outputs/flutter-apk/app-release.apk"
   
-  # Create a friendlier copy of the APK
-  cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/familynest-staging.apk
-  echo "📱 Friendly copy: build/app/outputs/flutter-apk/familynest-staging.apk"
+  # Check multiple possible locations for the release APK (Flutter version differences)
+  if [ -f "build/app/outputs/apk/release/app-release.apk" ]; then
+    APK_LOCATION="build/app/outputs/apk/release/app-release.apk"
+    echo "📱 APK location: $APK_LOCATION"
+    cp "$APK_LOCATION" build/app/outputs/flutter-apk/familynest-staging.apk
+    echo "📱 Friendly copy: build/app/outputs/flutter-apk/familynest-staging.apk"
+  elif [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+    APK_LOCATION="build/app/outputs/flutter-apk/app-release.apk"
+    echo "📱 APK location: $APK_LOCATION"
+    cp "$APK_LOCATION" build/app/outputs/flutter-apk/familynest-staging.apk
+    echo "📱 Friendly copy: build/app/outputs/flutter-apk/familynest-staging.apk"
+  else
+    echo "❌ Release APK not found! Checking build output..."
+    find build -name "*release*.apk" -type f
+    echo "❌ Build may have failed despite success message"
+  fi
+  
+  # Build App Bundle (for Google Play)
+  echo "Building Flutter App Bundle for Google Play..."
+  flutter build appbundle --release --dart-define=ENVIRONMENT=staging
+  echo "✅ App Bundle built successfully!"
+  
+  # Check for the App Bundle
+  if [ -f "build/app/outputs/bundle/release/app-release.aab" ]; then
+    AAB_LOCATION="build/app/outputs/bundle/release/app-release.aab"
+    echo "📱 App Bundle location: $AAB_LOCATION"
+    # Create a directory if it doesn't exist
+    mkdir -p build/app/outputs/bundle/release/copy
+    cp "$AAB_LOCATION" build/app/outputs/bundle/release/copy/familynest-staging.aab
+    echo "📱 Friendly copy: build/app/outputs/bundle/release/copy/familynest-staging.aab"
+  else
+    echo "❌ App Bundle not found! Checking build output..."
+    find build -name "*release*.aab" -type f
+    echo "❌ App Bundle build may have failed despite success message"
+  fi
 elif [ "$BUILD_MODE" = "ios_release" ]; then
   echo "Building Flutter iOS archive for staging..."
   flutter build ios --release --dart-define=ENVIRONMENT=staging
@@ -157,4 +189,6 @@ echo "Restoring default .env file..."
 cat > .env << 'EOF'
 # Default .env file for iOS builds
 # App will use platform detection when this is empty
-EOF 
+EOF
+
+echo "Script completed successfully." 

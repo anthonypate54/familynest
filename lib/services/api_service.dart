@@ -661,7 +661,11 @@ Network connection error. Please check:
   // Login method to authenticate a user
   Future<Map<String, dynamic>?> login(String username, String password) async {
     try {
-      debugPrint('Attempting login for username: $username');
+      // Trim whitespace from username and password
+      final trimmedUsername = username.trim();
+      final trimmedPassword = password.trim();
+
+      debugPrint('Attempting login for username: $trimmedUsername');
 
       // Get SharedPreferences instance
       final prefs = await SharedPreferences.getInstance();
@@ -673,7 +677,10 @@ Network connection error. Please check:
       final response = await http.post(
         Uri.parse('$baseUrl/api/users/login'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({'username': username, 'password': password}),
+        body: json.encode({
+          'username': trimmedUsername,
+          'password': trimmedPassword,
+        }),
       );
 
       if (response.statusCode == 200) {
@@ -830,15 +837,24 @@ Network connection error. Please check:
     Map<String, dynamic>? demographics,
   }) async {
     try {
-      debugPrint('Registering user with username: $username, email: $email');
+      // Trim whitespace from all input fields
+      final trimmedUsername = username.trim();
+      final trimmedEmail = email.trim();
+      final trimmedPassword = password.trim();
+      final trimmedFirstName = firstName.trim();
+      final trimmedLastName = lastName.trim();
+
+      debugPrint(
+        'Registering user with username: $trimmedUsername, email: $trimmedEmail',
+      );
 
       // Prepare the form data
       final Map<String, String> userData = {
-        'username': username,
-        'email': email,
-        'password': password,
-        'firstName': firstName,
-        'lastName': lastName,
+        'username': trimmedUsername,
+        'email': trimmedEmail,
+        'password': trimmedPassword,
+        'firstName': trimmedFirstName,
+        'lastName': trimmedLastName,
         'role': userRole,
       };
 
@@ -1198,7 +1214,7 @@ Network connection error. Please check:
         final Map<String, dynamic> responseData = json.decode(responseString);
         return Message.fromJson(responseData);
       } else {
-        debugPrint('$responseString');
+        debugPrint(responseString.toString());
         throw Exception('Failed to post message: $responseString');
       }
     } catch (e) {
@@ -1370,9 +1386,21 @@ Network connection error. Please check:
       if (response.statusCode == 201) {
         debugPrint('Comment posted successfully');
         final Map<String, dynamic> responseData = json.decode(responseString);
+        debugPrint('Comment response data: $responseData');
+
+        // The backend is already returning 'commentCount' in camelCase
+        // Just log it for debugging
+        if (responseData.containsKey('commentCount')) {
+          debugPrint(
+            'Server returned commentCount: ${responseData['commentCount']}',
+          );
+        } else {
+          debugPrint('Server did not return commentCount field');
+        }
+
         return Message.fromJson(responseData);
       } else {
-        debugPrint('$responseString');
+        debugPrint(responseString.toString());
         throw Exception('Failed to post comment: ${response.statusCode}');
       }
     } catch (e) {
@@ -2762,7 +2790,7 @@ Network connection error. Please check:
         debugPrint('🎉 Returning ${result.length} DM conversations');
         return result;
       } else {
-        debugPrint('${response.body}');
+        debugPrint(response.body.toString());
         return [];
       }
     } catch (e) {
@@ -2892,7 +2920,7 @@ Network connection error. Please check:
           }
           debugPrint('📎 Added media file: $mediaPath (type: $mediaType)');
         } else {
-          debugPrint('$mediaPath');
+          debugPrint(mediaPath.toString());
         }
       }
 
@@ -3096,7 +3124,7 @@ Network connection error. Please check:
 
         return data;
       } else {
-        debugPrint('${response.body}');
+        debugPrint(response.body.toString());
         return null;
       }
     } catch (e) {
@@ -3166,10 +3194,10 @@ Network connection error. Please check:
             return results;
           }
         }
-        debugPrint('${response.body}');
+        debugPrint(response.body.toString());
         return [];
       } else {
-        debugPrint('${response.body}');
+        debugPrint(response.body.toString());
         return [];
       }
     } catch (e) {
@@ -3219,10 +3247,10 @@ Network connection error. Please check:
             return families;
           }
         }
-        debugPrint('${response.body}');
+        debugPrint(response.body.toString());
         return [];
       } else {
-        debugPrint('${response.body}');
+        debugPrint(response.body.toString());
         return [];
       }
     } catch (e) {
@@ -3251,7 +3279,7 @@ Network connection error. Please check:
         debugPrint('${data['message']}');
         return data;
       } else {
-        debugPrint('${response.body}');
+        debugPrint(response.body.toString());
         return null;
       }
     } catch (e) {
@@ -3574,6 +3602,37 @@ Network connection error. Please check:
     } catch (e) {
       debugPrint('Error in forgotPassword: $e');
       return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> resetPassword(
+    String email,
+    String resetCode,
+    String newPassword,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/users/password-reset/confirm'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'token': resetCode,
+          'newPassword': newPassword,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return {'success': true, ...jsonDecode(response.body)};
+      } else {
+        final Map<String, dynamic> errorData = jsonDecode(response.body);
+        return {
+          'success': false,
+          'error': errorData['error'] ?? 'Failed to reset password',
+        };
+      }
+    } catch (e) {
+      debugPrint('Error in resetPassword: $e');
+      return {'success': false, 'error': 'An error occurred'};
     }
   }
 

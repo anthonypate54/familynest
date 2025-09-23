@@ -1063,16 +1063,20 @@ class _MessageCardState extends State<MessageCard> {
                 page: ThreadScreen(
                   userId: currentUserId,
                   message: threadMessage,
+                  onCommentAdded: () {
+                    // This callback is kept for backwards compatibility
+                    // The thread screen now handles updating the comment count directly
+                  },
                 ),
               ),
             ).then((_) {
               // Update the specific message's unread status when returning from thread
-              debugPrint(
-                'Returned from ThreadScreen, marking message as read',
-              );
+              debugPrint('Returned from ThreadScreen, marking message as read');
               if (context.mounted) {
                 final messageId =
                     message.parentMessageId?.toString() ?? message.id;
+
+                // Mark the message as read
                 Provider.of<MessageProvider>(
                   context,
                   listen: false,

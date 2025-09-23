@@ -883,7 +883,7 @@ class LoginScreenState extends State<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  'Enter your email to receive a password reset link.',
+                  'Enter your email to receive a password reset code.',
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -914,7 +914,7 @@ class LoginScreenState extends State<LoginScreen> {
                   Navigator.pop(context);
                   await _sendPasswordResetRequest(email);
                 },
-                child: const Text('Send Reset Link'),
+                child: const Text('Send Reset Code'),
               ),
             ],
           ),
@@ -929,13 +929,8 @@ class LoginScreenState extends State<LoginScreen> {
       final apiService = Provider.of<ApiService>(context, listen: false);
       final response = await apiService.forgotPassword(email);
       if (response != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'If an account exists with this email, a password reset link has been sent.',
-            ),
-          ),
-        );
+        // Show the code entry dialog
+        _showResetCodeEntryDialog(email);
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -947,6 +942,152 @@ class LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       debugPrint('Error sending password reset request: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('An error occurred. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showResetCodeEntryDialog(String email) {
+    final TextEditingController _resetCodeController = TextEditingController();
+    final TextEditingController _newPasswordController =
+        TextEditingController();
+    final TextEditingController _confirmPasswordController =
+        TextEditingController();
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Enter Reset Code'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Enter the reset code sent to your email and your new password.',
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _resetCodeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Reset Code *',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _newPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'New Password *',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _confirmPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm Password *',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final resetCode = _resetCodeController.text.trim();
+                  final newPassword = _newPasswordController.text;
+                  final confirmPassword = _confirmPasswordController.text;
+
+                  if (resetCode.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter the reset code'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (newPassword.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter a new password'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (newPassword != confirmPassword) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Passwords do not match')),
+                    );
+                    return;
+                  }
+
+                  Navigator.pop(context);
+                  await _resetPassword(email, resetCode, newPassword);
+                },
+                child: const Text('Reset Password'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _resetPassword(
+    String email,
+    String resetCode,
+    String newPassword,
+  ) async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final response = await apiService.resetPassword(
+        email,
+        resetCode,
+        newPassword,
+      );
+
+      if (response != null && response['success'] == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Password reset successful. You can now login with your new password.',
+            ),
+          ),
+        );
+      } else {
+        String errorMessage = 'Failed to reset password. Please try again.';
+        if (response != null && response['error'] != null) {
+          errorMessage = response['error'];
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(errorMessage)));
+        }
+      }
+    } catch (e) {
+      debugPrint('Error resetting password: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('An error occurred. Please try again.')),

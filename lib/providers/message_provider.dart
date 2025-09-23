@@ -24,9 +24,7 @@ class MessageProvider extends ChangeNotifier {
     if (existingIndex == -1) {
       // Message doesn't exist, add it
       _messages.insert(0, message);
-      debugPrint(
-        'Added new message ${message.id} at position 0',
-      );
+      debugPrint('Added new message ${message.id} at position 0');
       debugPrint(
         '📝 MessageProvider.addMessage: New message count: ${_messages.length}',
       );
@@ -99,7 +97,8 @@ class MessageProvider extends ChangeNotifier {
     });
     if (idx != -1) {
       final msg = _messages[idx];
-      _messages[idx] = msg.copyWith(commentCount: (msg.commentCount ?? 0) + 1);
+      final newCount = (msg.commentCount ?? 0) + 1;
+      _messages[idx] = msg.copyWith(commentCount: newCount);
       notifyListeners();
     }
   }
@@ -118,18 +117,17 @@ class MessageProvider extends ChangeNotifier {
     final idx = _messages.indexWhere((m) => m.id == messageId);
     if (idx != -1) {
       final msg = _messages[idx];
-      // Debug: Uncomment for notification debugging
-      // debugPrint('Updating message $messageId commentCount: ${msg.commentCount} → $commentCount, hasUnreadComments: ${msg.hasUnreadComments} → $hasUnreadComments');
+
+      // Make sure we're not getting a lower count than what we already have
+      if (commentCount < (msg.commentCount ?? 0)) {
+        commentCount = msg.commentCount ?? commentCount;
+      }
+
       _messages[idx] = msg.copyWith(
         commentCount: commentCount,
         hasUnreadComments: hasUnreadComments,
       );
       notifyListeners();
-      // Debug: Uncomment for notification debugging
-      // debugPrint('Message $messageId updated and listeners notified');
-    } else {
-      // Debug: Uncomment for notification debugging
-      // debugPrint('Message $messageId not found in provider');
     }
   }
 

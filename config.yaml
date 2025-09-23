@@ -39,13 +39,15 @@ platforms:
     
   ios_simulator:
     device_id: "25F24A23-120B-4E9F-8C48-3B2A9FD873AB"
-    api_url: "http://localhost:8080"
+    api_url: "http://127.0.0.1:8080"
     description: "iOS Simulator (Local)"
+    media_url: "https://familynesngrok.ngrok.io"
     
   ios_simulator_aws:
     device_id: "32EE6B99-A19F-4328-9082-A32C6F6F08E5"
     api_url: "http://54.189.190.245:8080"
     description: "iOS Simulator (AWS Staging)"
+    media_url: "https://familynest-staging-media.s3.amazonaws.com"
     
   ios_physical:
     device_id: "00008120-001C031A0EB8201E"

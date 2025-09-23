@@ -27,12 +27,14 @@ import '../utils/camera_utils.dart';
 
 class ThreadScreen extends StatefulWidget {
   final int userId;
-  final Map<String, dynamic> message; // Add this
+  final Map<String, dynamic> message;
+  final VoidCallback? onCommentAdded; // Callback when a comment is added
 
   const ThreadScreen({
     Key? key,
     required this.userId,
-    required this.message, // Add this
+    required this.message,
+    this.onCommentAdded,
   }) : super(key: key);
 
   @override
@@ -394,10 +396,6 @@ class _ThreadScreenState extends State<ThreadScreen>
       context,
       listen: false,
     );
-    final messageProvider = Provider.of<MessageProvider>(
-      context,
-      listen: false,
-    ); // Add this line
 
     final userMessage = _messageController.text.trim();
     if (userMessage.isEmpty && _compositionService?.selectedMediaFile == null) {
@@ -422,9 +420,7 @@ class _ThreadScreenState extends State<ThreadScreen>
           );
         } else if (_compositionService?.selectedMediaType == 'video') {
           // For videos: Copy to persistent storage for instant playback
-          debugPrint(
-            'Copying to persistent storage for local playback',
-          );
+          debugPrint('Copying to persistent storage for local playback');
           final String? persistentPath = await _copyVideoToPersistentStorage(
             _compositionService!.selectedMediaFile!.path,
           );
@@ -444,12 +440,10 @@ class _ThreadScreenState extends State<ThreadScreen>
           );
 
           // Upload video in background (don't await)
-          if (newComment != null) {
-            _uploadVideoInBackground(
-              newComment,
-              _compositionService!.selectedMediaFile!,
-            );
-          }
+          _uploadVideoInBackground(
+            newComment,
+            _compositionService!.selectedMediaFile!,
+          );
         }
       } else {
         newComment = await apiService.postComment(
@@ -462,7 +456,52 @@ class _ThreadScreenState extends State<ThreadScreen>
 
       if (newComment != null && mounted) {
         commentProvider.addComment(newComment);
-        messageProvider.incrementCommentCount(widget.message['id'].toString());
+
+        final messageId = widget.message['id'].toString();
+        debugPrint('📝 Thread screen: Adding comment to message $messageId');
+        debugPrint('📝 Thread screen: Current message data: ${widget.message}');
+        debugPrint(
+          '📝 Thread screen: New comment data: ${newComment.toJson()}',
+        );
+
+        // The server should have returned the updated comment count in the response
+        // Get the MessageProvider to update the count with the server's value
+        final messageProvider = Provider.of<MessageProvider>(
+          context,
+          listen: false,
+        );
+
+        // Get the server comment count from the response
+        final commentJson = newComment.toJson();
+        final serverCommentCount = commentJson['commentCount'];
+        bool countUpdatedFromServer = false;
+
+        if (serverCommentCount != null) {
+          // Force it to be an integer
+          final countValue =
+              serverCommentCount is int
+                  ? serverCommentCount
+                  : int.tryParse(serverCommentCount.toString()) ?? 0;
+
+          // Update the message provider with the server's count
+          messageProvider.updateMessageCommentCount(
+            messageId,
+            countValue,
+            hasUnreadComments: false,
+          );
+
+          // Mark that we've updated from the server
+          countUpdatedFromServer = true;
+        } else {
+          // Fallback to local increment if server doesn't provide a count
+          messageProvider.incrementCommentCount(messageId);
+        }
+
+        // Only call the callback if we didn't already update from server
+        // This prevents double-counting
+        if (!countUpdatedFromServer) {
+          widget.onCommentAdded?.call();
+        }
 
         _messageController.clear();
         await _compositionService?.clearComposition();
@@ -812,9 +851,7 @@ class _ThreadScreenState extends State<ThreadScreen>
             debugPrint('Temporary video file cleaned up: ${videoFile.path}');
           }
         } catch (cleanupError) {
-          debugPrint(
-            '$cleanupError',
-          );
+          debugPrint('$cleanupError');
         }
       }
     } catch (e) {
