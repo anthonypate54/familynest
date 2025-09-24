@@ -306,8 +306,12 @@ class LoginScreenState extends State<LoginScreen> {
 
     if (value.isEmpty) {
       error = 'Please enter your password';
-    } else if (value.length < 6) {
-      error = 'Password must be at least 6 characters long';
+    } else if (value.length < 8) {
+      error = 'Password must be at least 8 characters long';
+    } else if (!value.contains(RegExp(r'[A-Z]'))) {
+      error = 'Password must contain at least one uppercase letter';
+    } else if (!value.contains(RegExp(r'[0-9]'))) {
+      error = 'Password must contain at least one number';
     }
 
     setState(() {
@@ -776,6 +780,9 @@ class LoginScreenState extends State<LoginScreen> {
                 focusNode: _passwordFocusNode,
                 decoration: InputDecoration(
                   labelText: 'Password *',
+                  helperText:
+                      'At least 8 characters with 1 uppercase and 1 number',
+                  helperMaxLines: 2,
                   suffixIcon: ExcludeFocus(
                     child: IconButton(
                       onPressed: () {
