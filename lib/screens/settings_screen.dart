@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../services/api_service.dart';
 
 import '../theme/app_theme.dart';
@@ -528,23 +529,30 @@ class SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  void _showAboutDialog() {
+  void _showAboutDialog() async {
+    // Get package info
+    final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+    final String version = packageInfo.version;
+    final String buildNumber = packageInfo.buildNumber;
+
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder:
           (BuildContext dialogContext) => AlertDialog(
             title: const Text('About FamilyNest'),
-            content: const Column(
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Version: 1.0.0'),
-                SizedBox(height: 8),
-                Text(
+                Text('Version: $version (Build $buildNumber)'),
+                const SizedBox(height: 8),
+                const Text(
                   'FamilyNest is an app designed to connect families through sharing messages, photos, and videos.',
                 ),
-                SizedBox(height: 16),
-                Text('© 2023 FamilyNest Inc.'),
+                const SizedBox(height: 16),
+                const Text('© 2023-2025 FamilyNest Inc.'),
               ],
             ),
             actions: [

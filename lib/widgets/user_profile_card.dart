@@ -53,33 +53,38 @@ class UserProfileCard extends StatelessWidget {
       children: [
         Stack(
           children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 3),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: ClipOval(
-                child:
-                    photoUrl != null
-                        ? Image.network(
-                          photoUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder:
-                              (context, error, stackTrace) =>
-                                  _buildDefaultAvatar(),
-                        )
-                        : _buildDefaultAvatar(),
+            // Make the entire avatar area tappable
+            GestureDetector(
+              onTap: onEditPhoto,
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 3),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child:
+                      photoUrl != null
+                          ? Image.network(
+                            photoUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder:
+                                (context, error, stackTrace) =>
+                                    _buildDefaultAvatar(),
+                          )
+                          : _buildDefaultAvatar(),
+                ),
               ),
             ),
+            // Keep the camera icon for visual indication
             Positioned(
               bottom: 0,
               right: 0,
@@ -91,15 +96,7 @@ class UserProfileCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: onEditPhoto,
-                  icon: const Icon(
-                    Icons.camera_alt,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                ),
+                child: Icon(Icons.camera_alt, color: Colors.white, size: 16),
               ),
             ),
           ],
