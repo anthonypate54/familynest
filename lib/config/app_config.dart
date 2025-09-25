@@ -71,8 +71,10 @@ class AppConfig {
   }
 
   // Removed unused variable
-  final String _awsStagingBaseUrl = 'http://54.189.190.245:8080'; // AWS EC2
-  final String _prodBaseUrl = 'https://familynest-api.example.com';
+  final String _awsStagingBaseUrl =
+      'https://infamilynest.com'; // AWS Load Balancer with Route 53
+  final String _prodBaseUrl =
+      'https://infamilynest.com'; // Same as staging for now
 
   // Custom URL (set via settings)
   String? _customBaseUrl;
@@ -130,16 +132,17 @@ class AppConfig {
           apiUrl = envUrl;
 
           // Auto-detect environment based on the URL
-          if (apiUrl.contains('54.189.190.245')) {
+          if (apiUrl.contains('54.189.190.245') ||
+              apiUrl.contains('infamilynest.com')) {
             if (_environment != Environment.staging) {
-              debugPrint('$apiUrl');
+              debugPrint(apiUrl.toString());
               _environment = Environment.staging;
             }
           } else if (apiUrl.contains('localhost') ||
               apiUrl.contains('127.0.0.1') ||
               apiUrl.contains('10.0.2.2')) {
             if (_environment != Environment.development) {
-              debugPrint('$apiUrl');
+              debugPrint(apiUrl.toString());
               _environment = Environment.development;
             }
           }
@@ -169,11 +172,11 @@ class AppConfig {
     switch (_environment) {
       case Environment.production:
         return dotenv.env['MEDIA_URL'] ??
-            'https://media.familynest.example.com';
+            'https://familynest-staging-media.s3.amazonaws.com';
 
       case Environment.staging:
         // For staging, media is served from S3, not the backend server
-        return 'https://familynest-staging-media.s3.us-west-2.amazonaws.com';
+        return 'https://familynest-staging-media.s3.amazonaws.com';
 
       case Environment.development:
         // For development, try to use MEDIA_URL from .env first (for ngrok), then fall back to API base URL

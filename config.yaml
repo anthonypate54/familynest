@@ -16,8 +16,9 @@ platforms:
     
   android_emulator_aws:
     device_id: ""
-    api_url: "http://54.189.190.245:8080"
+    api_url: "https://infamilynest.com"
     description: "Android Emulator (AWS Staging)"
+    media_url: "https://familynest-staging-media.s3.amazonaws.com"
     
   android_physical:
     device_id: ""
@@ -27,7 +28,7 @@ platforms:
     
   android_physical_wifi:
     device_id: "10.0.0.245:46607"
-    api_url: "http://54.189.190.245:8080"
+    api_url: "https://infamilynest.com"
     description: "Physical Android Device (WiFi ADB - AWS)"
     media_url: "https://familynest-staging-media.s3.amazonaws.com"
     
@@ -45,7 +46,7 @@ platforms:
     
   ios_simulator_aws:
     device_id: "32EE6B99-A19F-4328-9082-A32C6F6F08E5"
-    api_url: "http://54.189.190.245:8080"
+    api_url: "https://infamilynest.com"
     description: "iOS Simulator (AWS Staging)"
     media_url: "https://familynest-staging-media.s3.amazonaws.com"
     
@@ -56,8 +57,9 @@ platforms:
     
   ios_physical_aws:
     device_id: ""
-    api_url: "http://54.189.190.245:8080"
+    api_url: "https://infamilynest.com"
     description: "Physical iPhone (AWS Staging)"
+    media_url: "https://familynest-staging-media.s3.amazonaws.com"
     
   # Staging platforms for release builds
   android_staging_aws:

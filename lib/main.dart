@@ -117,7 +117,7 @@ void main() async {
   // 🚀 ENVIRONMENT AUTO-DETECTION - Let run.sh control via .env files
   // Environment is automatically detected from API_URL in .env file:
   // - android_emulator: http://10.0.2.2:8080 → Environment.development
-  // - android_emulator_aws: http://54.189.190.245:8080 → Environment.staging
+  // - android_emulator_aws: https://infamilynest.com → Environment.staging
   // No manual setEnvironment() call needed - AppConfig detects automatically
 
   await config.initialize();
@@ -130,7 +130,7 @@ void main() async {
         ? "production"
         : "staging"}',
   );
-  debugPrint('${Platform.operatingSystem}');
+  debugPrint(Platform.operatingSystem.toString());
 
   // Use shorter polling interval in development for faster testing
   if (config.isDevelopment) {
@@ -239,9 +239,7 @@ class MyAppState extends State<MyApp> {
         final userRole = prefs.getString('user_role') ?? 'USER';
 
         if (userId != null) {
-          debugPrint(
-            'Found user data - userId: $userId, role: $userRole',
-          );
+          debugPrint('Found user data - userId: $userId, role: $userRole');
           // No splash delay for logged in users - they should go straight to the app
           return {'userId': int.parse(userId), 'role': userRole};
         }
@@ -429,7 +427,7 @@ class MainAppContainerState extends State<MainAppContainer>
       debugPrint(
         'MAIN: Using provided initial tab index: ${widget.initialTabIndex}',
       );
-      
+
       setState(() {
         _currentIndex = widget.initialTabIndex!;
         _isCheckingInitialScreen = false;
@@ -596,9 +594,7 @@ class MainAppContainerState extends State<MainAppContainer>
       if (e.toString().contains('401') ||
           e.toString().contains('403') ||
           e.toString().contains('Not authenticated')) {
-        debugPrint(
-          'Authentication error detected, redirecting to login',
-        );
+        debugPrint('Authentication error detected, redirecting to login');
         if (mounted) {
           _redirectToLogin();
         }
@@ -629,9 +625,7 @@ class MainAppContainerState extends State<MainAppContainer>
       if (e.toString().contains('401') ||
           e.toString().contains('403') ||
           e.toString().contains('Invalid token')) {
-        debugPrint(
-          'Auth error during proactive refresh, redirecting to login',
-        );
+        debugPrint('Auth error during proactive refresh, redirecting to login');
         _redirectToLogin();
       }
     }
@@ -850,14 +844,10 @@ class MainAppContainerState extends State<MainAppContainer>
                           ),
                         );
                       } else {
-                        debugPrint(
-                          'Failed to enable notification preferences',
-                        );
+                        debugPrint('Failed to enable notification preferences');
                       }
                     } catch (e) {
-                      debugPrint(
-                        'Error enabling notification preferences: $e',
-                      );
+                      debugPrint('Error enabling notification preferences: $e');
                     }
                   } else {
                     debugPrint('iOS permission was denied');
