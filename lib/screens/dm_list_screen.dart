@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:familynest/widgets/safe_text_field.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../widgets/gradient_background.dart';
@@ -24,7 +25,6 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
   // Search state
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _filteredMembers = [];
-  bool _loadingMembers = false;
 
   @override
   void initState() {
@@ -182,25 +182,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
     });
   }
 
-  String _formatTimestamp(int? timestamp) {
-    if (timestamp == null) return '';
-
-    final messageTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    final now = DateTime.now();
-    final difference = now.difference(messageTime);
-
-    if (difference.inMinutes < 1) {
-      return 'now';
-    } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes}m ago';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
-    } else {
-      return '${(difference.inDays / 7).floor()}w ago';
-    }
-  }
+  // Removed unused _formatTimestamp method
 
   String _getInitials(String? firstName, String? lastName, String? username) {
     if (firstName != null && firstName.isNotEmpty) {
@@ -230,9 +212,10 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
             // Search bar
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: TextField(
+              child: SafeTextField(
                 controller: _searchController,
                 onChanged: _filterMembers,
+                maxLength: 50, // Search queries are typically short
                 decoration: InputDecoration(
                   hintText: 'Search family members...',
                   prefixIcon: const Icon(Icons.search),

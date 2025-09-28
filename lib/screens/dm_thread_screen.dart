@@ -28,6 +28,8 @@ import '../services/video_composition_service.dart';
 import '../widgets/video_composition_preview.dart';
 import '../widgets/unified_send_button.dart';
 import '../utils/camera_utils.dart';
+import '../services/link_preview_service.dart';
+import '../widgets/link_preview_composition.dart';
 import '../utils/video_thumbnail_util.dart';
 
 class DMThreadScreen extends StatefulWidget {
@@ -73,6 +75,9 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   // Unified video composition service (replaces all individual media state)
   VideoCompositionService? _compositionService;
 
+  // Link preview service
+  late LinkPreviewService _linkPreviewService;
+
   // Video playback tracking for DM messages
   int? _currentlyPlayingVideoId;
 
@@ -92,6 +97,9 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
     // Initialize unified composition service
     _compositionService = VideoCompositionService();
+
+    // Initialize link preview service
+    _linkPreviewService = LinkPreviewService();
 
     // Add lifecycle observer
     WidgetsBinding.instance.addObserver(this);
@@ -116,16 +124,11 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed && mounted) {
-      debugPrint(
-        'App resumed, checking WebSocket and reloading messages...',
-      );
+      debugPrint('App resumed, checking WebSocket and reloading messages...');
 
       // Ensure WebSocket is connected and subscriptions are active
       if (_webSocketService != null) {
         if (!_webSocketService!.isConnected) {
-          debugPrint(
-            'WebSocket not connected, reconnecting...',
-          );
           _webSocketService!.initialize().then((_) {
             // Re-establish subscription after connection
             _ensureWebSocketSubscription();
@@ -271,18 +274,14 @@ class _DMThreadScreenState extends State<DMThreadScreen>
 
         if (mediaType == 'video') {
           // For videos: Copy to persistent storage for instant playback
-          debugPrint(
-            'Copying to persistent storage for local playback',
-          );
+          debugPrint('Copying to persistent storage for local playback');
           final String? persistentPath = await _copyVideoToPersistentStorage(
             _compositionService!.selectedMediaFile!.path,
           );
 
           // Check what persistentPath we're sending
           debugPrint('$persistentPath');
-          debugPrint(
-            '${_compositionService!.selectedMediaFile!.path}',
-          );
+          debugPrint('${_compositionService!.selectedMediaFile!.path}');
 
           result = await apiService.sendDMMessage(
             conversationId: widget.conversationId,
@@ -327,9 +326,10 @@ class _DMThreadScreenState extends State<DMThreadScreen>
       }
 
       if (result != null && mounted) {
-        // Clear input and media composition
+        // Clear input, media composition, and link preview
         _messageController.clear();
         await _compositionService?.clearComposition();
+        _linkPreviewService.clearLinkPreview();
 
         // Additional memory cleanup after posting video
         if (_compositionService?.selectedMediaType == 'video') {
@@ -453,6 +453,27 @@ class _DMThreadScreenState extends State<DMThreadScreen>
           duration: const Duration(seconds: 3),
         ),
       );
+    }
+  }
+
+  // Process pasted text for URL detection
+  void _processPastedText(String text) {
+    // Simple regex to detect URLs
+    final urlRegex = RegExp(
+      r'https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)',
+    );
+    final match = urlRegex.firstMatch(text);
+
+    if (match != null) {
+      final url = match.group(0);
+      // Process the URL with the link preview service
+      if (url != null) {
+        // Schedule the URL processing to happen after the current frame
+        // to avoid any potential issues with the text controller
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _linkPreviewService.processUrl(url);
+        });
+      }
     }
   }
 
@@ -840,6 +861,14 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                       await _compositionService?.clearComposition();
                     },
                   ),
+
+                  // Link preview composition
+                  LinkPreviewComposition(
+                    linkPreviewService: _linkPreviewService,
+                    onClose: () {
+                      _linkPreviewService.clearLinkPreview();
+                    },
+                  ),
                   // Message input (using reusable component)
                   EmojiMessageInput(
                     controller: _messageController,
@@ -849,6 +878,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                     enabled: !_isSending,
                     mediaEnabled: !(_compositionService?.hasMedia ?? false),
                     isDarkMode: Theme.of(context).brightness == Brightness.dark,
+                    maxLength: 500, // Limit message length to 500 characters
                     sendButton: UnifiedSendButton(
                       compositionService: _compositionService!,
                       messageController: _messageController,
@@ -859,6 +889,10 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                       setState(() {
                         _emojiPickerState = state;
                       });
+                    },
+                    onPaste: (text) {
+                      // Process pasted text for URL detection
+                      _processPastedText(text);
                     },
                   ),
 
@@ -1138,53 +1172,68 @@ class _DMThreadScreenState extends State<DMThreadScreen>
                   ],
                   // Display text content if present
                   if (content.isNotEmpty)
-                    Linkify(
-                      onOpen: (link) async {
-                        try {
-                          await launchUrl(
-                            Uri.parse(link.url),
-                            mode: LaunchMode.externalApplication,
-                          );
-                        } catch (e) {
-                          debugPrint('Could not launch URL: ${link.url}');
-                        }
-                      },
-                      text: content,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight:
-                            (!isMe && !message.isRead)
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                        color:
-                            isMe
-                                ? (Theme.of(context).brightness ==
-                                        Brightness.dark
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Linkify(
+                          onOpen: (link) async {
+                            try {
+                              await launchUrl(
+                                Uri.parse(link.url),
+                                mode: LaunchMode.externalApplication,
+                              );
+                            } catch (e) {
+                              debugPrint('Could not launch URL: ${link.url}');
+                            }
+                          },
+                          options: const LinkifyOptions(
+                            humanize: false, // Prevents stripping of protocol
+                            removeWww: false, // Prevents stripping of 'www'
+                          ),
+                          text: content,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight:
+                                (!isMe && !message.isRead)
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                            color:
+                                isMe
+                                    ? (Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors
+                                            .white // White text on grey background in dark mode
+                                        : Colors
+                                            .white) // White text on primary color in light mode
+                                    : (Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white
+                                        : Colors.black87),
+                          ),
+                          linkStyle: TextStyle(
+                            fontSize: 16,
+                            fontWeight:
+                                (!isMe && !message.isRead)
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                            color:
+                                isMe
                                     ? Colors
-                                        .white // White text on grey background in dark mode
+                                        .lightBlue[100] // Very light blue for your messages
                                     : Colors
-                                        .white) // White text on primary color in light mode
-                                : (Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Colors.white
-                                    : Colors.black87),
-                      ),
-                      linkStyle: TextStyle(
-                        fontSize: 16,
-                        fontWeight:
-                            (!isMe && !message.isRead)
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                        color:
-                            isMe
-                                ? Colors
-                                    .lightBlue[100] // Very light blue for your messages
-                                : Colors
-                                    .blue[600], // Brighter blue for received messages
-                        decoration: TextDecoration.underline,
-                        decorationColor:
-                            isMe ? Colors.lightBlue[100] : Colors.blue[600],
-                      ),
+                                        .blue[600], // Brighter blue for received messages
+                            decoration: TextDecoration.underline,
+                            decorationColor:
+                                isMe ? Colors.lightBlue[100] : Colors.blue[600],
+                          ),
+                        ),
+                        // Add link preview
+                        LinkPreviewService().buildLinkPreviewForMessage(
+                              context,
+                              content,
+                            ) ??
+                            const SizedBox.shrink(),
+                      ],
                     ),
                   if (timeString.isNotEmpty) ...[
                     const SizedBox(height: 4),
@@ -1221,10 +1270,6 @@ class _DMThreadScreenState extends State<DMThreadScreen>
   // Upload video in background and update DM message when complete
   void _uploadVideoInBackground(DMMessage dmMessage, File videoFile) async {
     try {
-      debugPrint(
-        'Background upload starting for DM message ${dmMessage.id}',
-      );
-
       final apiService = context.read<ApiService>();
       final videoData = await apiService.uploadVideoWithThumbnail(videoFile);
 
@@ -1253,9 +1298,7 @@ class _DMThreadScreenState extends State<DMThreadScreen>
             debugPrint('Temporary video file cleaned up: ${videoFile.path}');
           }
         } catch (cleanupError) {
-          debugPrint(
-            '$cleanupError',
-          );
+          debugPrint('$cleanupError');
         }
       }
     } catch (e) {

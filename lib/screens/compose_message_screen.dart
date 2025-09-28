@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:familynest/widgets/safe_text_field.dart';
 import '../config/ui_config.dart';
 
 class ComposeMessageScreen extends StatelessWidget {
@@ -49,8 +50,11 @@ class ComposeMessageScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: TextField(
-                    maxLines: null,
+                  child: SafeTextField(
+                    scrollable: true,
+                    minLines: 1,
+                    maxLines: 5, // Limit visible lines to 5
+                    maxLength: 1000, // Allow longer posts for main messages
                     style: const TextStyle(color: Colors.white, fontSize: 18),
                     decoration: const InputDecoration(
                       hintText: "What's happening?",

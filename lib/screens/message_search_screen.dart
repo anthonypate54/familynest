@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:familynest/widgets/safe_text_field.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../utils/page_transitions.dart';
@@ -168,9 +169,7 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
       debugPrint('$messageId, senderId: $senderId');
 
       if (messageId != null && senderId != null) {
-        debugPrint(
-          '$messageId, senderId: $senderId',
-        );
+        debugPrint('$messageId, senderId: $senderId');
         _navigateToDMThread(message);
       } else {
         debugPrint('Cannot navigate - messageId or senderId is null');
@@ -418,8 +417,9 @@ class _MessageSearchScreenState extends State<MessageSearchScreen> {
               child: Column(
                 children: [
                   // Search text field
-                  TextField(
+                  SafeTextField(
                     controller: _searchController,
+                    maxLength: 50, // Search queries are typically short
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText:

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // For MaxLengthEnforcement
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:familynest/widgets/safe_text_field.dart';
 
 /// Data class to hold emoji picker state
 class EmojiPickerState {
@@ -24,6 +26,8 @@ class EmojiMessageInput extends StatefulWidget {
   final Widget? sendButton;
   final EdgeInsets? padding;
   final ValueChanged<EmojiPickerState>? onEmojiPickerStateChanged;
+  final Function(String)? onPaste; // New callback for paste detection
+  final int maxLength; // Maximum character length for messages
 
   const EmojiMessageInput({
     super.key,
@@ -39,6 +43,8 @@ class EmojiMessageInput extends StatefulWidget {
     this.sendButton,
     this.padding,
     this.onEmojiPickerStateChanged,
+    this.onPaste, // Add to constructor
+    this.maxLength = 500, // Default to 500 characters
   });
 
   @override
@@ -49,10 +55,10 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
   late FocusNode _focusNode;
   bool _showEmojiPicker = false;
   bool _ownsFocusNode = false;
+  String _previousText = ''; // Store previous text to detect paste
 
   // Cache theme values to avoid unsafe lookups during state changes
   bool? _isDarkMode;
-  Color? _primaryColor;
   Color? _surfaceColor;
 
   @override
@@ -65,6 +71,28 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
       _focusNode = FocusNode();
       _ownsFocusNode = true;
     }
+
+    // Setup listener to detect paste events
+    widget.controller.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() {
+    final currentText = widget.controller.text;
+
+    // A paste event might have occurred if:
+    // 1. Text length increased significantly (more than just typing one character)
+    // 2. Contains a URL
+    if (currentText.length > _previousText.length + 3) {
+      // Check if the new text contains a URL
+      if (currentText.contains('http://') || currentText.contains('https://')) {
+        // Notify listener that a paste with URL has occurred
+        if (widget.onPaste != null) {
+          widget.onPaste!(currentText);
+        }
+      }
+    }
+
+    _previousText = currentText;
   }
 
   @override
@@ -73,12 +101,14 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
     // Cache theme values safely to avoid unsafe lookups during state changes
     final theme = Theme.of(context);
     _isDarkMode = widget.isDarkMode || theme.brightness == Brightness.dark;
-    _primaryColor = theme.colorScheme.primary;
     _surfaceColor = theme.colorScheme.surface;
   }
 
   @override
   void dispose() {
+    // Remove listener to prevent memory leaks
+    widget.controller.removeListener(_onTextChanged);
+
     if (_ownsFocusNode) {
       _focusNode.dispose();
     }
@@ -130,6 +160,11 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
         );
       }
     });
+  }
+
+  // Helper to check if text contains a URL
+  bool _hasUrl(String text) {
+    return text.contains('http://') || text.contains('https://');
   }
 
   void _notifyEmojiPickerStateChanged() {
@@ -242,10 +277,14 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
 
             // Text input
             Expanded(
-              child: TextField(
+              child: SafeTextField(
                 controller: widget.controller,
                 focusNode: _focusNode,
                 enabled: widget.enabled,
+                maxLength: widget.maxLength,
+                scrollable: true, // Enable scrolling for longer messages
+                minLines: 1,
+                maxLines: 5, // Limit visible lines to 5
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                 decoration: InputDecoration(
                   hintText: widget.hintText,
@@ -255,17 +294,24 @@ class _EmojiMessageInputState extends State<EmojiMessageInput> {
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
-                  fillColor: isDark ? Colors.grey[800] : Colors.white,
+                  fillColor:
+                      _hasUrl(widget.controller.text)
+                          ? (isDark
+                              ? Colors.blue[900]
+                              : Colors.blue[50]) // Highlight when URL detected
+                          : (isDark ? Colors.grey[800] : Colors.white),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 10,
                   ),
                 ),
-                maxLines: null,
-                textCapitalization: TextCapitalization.sentences,
                 onSubmitted: widget.enabled ? (_) => widget.onSend() : null,
                 onTap:
                     _onTextFieldTap, // Google Messages style: tap to show keyboard
+                onChanged:
+                    (_) => setState(
+                      () {},
+                    ), // Refresh UI when text changes to update URL highlighting
               ),
             ),
 
