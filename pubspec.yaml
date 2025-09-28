@@ -79,6 +79,7 @@ dependencies:
   web_socket_channel: ^2.4.0
   stomp_dart_client: ^0.4.4
   visibility_detector: ^0.4.0  # For tracking message visibility/read status
+  any_link_preview: ^3.0.3
   
 dev_dependencies:
   flutter_test:

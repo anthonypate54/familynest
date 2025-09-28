@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/api_service.dart';
+import '../services/link_preview_service.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/app_styles.dart';
@@ -299,6 +301,9 @@ class SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildAboutSettings() {
+    // Always show debug options in debug builds
+    const bool isDebugMode = kDebugMode;
+
     return Column(
       children: [
         ListTile(
@@ -325,6 +330,21 @@ class SettingsScreenState extends State<SettingsScreen>
             _showRateAppDialog();
           },
         ),
+        // Debug-only option to clear link preview cache
+        if (isDebugMode)
+          ListTile(
+            leading: const Icon(Icons.cleaning_services, color: Colors.orange),
+            title: const Text(
+              'Clear Link Preview Cache',
+              style: TextStyle(color: Colors.orange),
+            ),
+            subtitle: const Text(
+              'Debug only: Removes all cached link previews',
+            ),
+            onTap: () {
+              _showClearLinkPreviewCacheDialog();
+            },
+          ),
       ],
     );
   }
@@ -834,6 +854,53 @@ class SettingsScreenState extends State<SettingsScreen>
                 ],
               );
             },
+          ),
+    );
+  }
+
+  // Dialog to confirm clearing link preview cache
+  void _showClearLinkPreviewCacheDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Clear Link Preview Cache'),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.warning, color: Colors.orange, size: 48),
+                SizedBox(height: 16),
+                Text(
+                  'This will clear all cached link previews. You will need to reload previews for all links.',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  // Clear the cache
+                  LinkPreviewService.clearAllCache();
+
+                  // Close the dialog
+                  Navigator.pop(dialogContext);
+
+                  // Show confirmation
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Link preview cache cleared'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                },
+                child: const Text('Clear Cache'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              ),
+            ],
           ),
     );
   }

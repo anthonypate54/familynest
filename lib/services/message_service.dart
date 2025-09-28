@@ -14,6 +14,7 @@ import '../widgets/external_video_message_card.dart';
 import '../screens/thread_screen.dart';
 import '../utils/page_transitions.dart';
 import '../services/share_service.dart';
+import '../services/link_preview_service.dart';
 
 import '../widgets/photo_viewer.dart';
 // Removed view tracking imports
@@ -732,19 +733,24 @@ class _MessageCardState extends State<MessageCard> {
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color:
-                                (widget.message.mediaUrl != null &&
-                                        (widget.message.mediaType == 'video' ||
-                                            widget.message.mediaType ==
-                                                'image' ||
-                                            widget.message.mediaType ==
-                                                'photo' ||
-                                            widget.message.mediaType ==
-                                                'cloud_video') &&
+                                // Green background for media messages or messages with links
+                                ((widget.message.mediaUrl != null &&
+                                                (widget.message.mediaType ==
+                                                        'video' ||
+                                                    widget.message.mediaType ==
+                                                        'image' ||
+                                                    widget.message.mediaType ==
+                                                        'photo' ||
+                                                    widget.message.mediaType ==
+                                                        'cloud_video')) ||
+                                            widget.message.content.contains(
+                                              'http',
+                                            )) &&
                                         Theme.of(context).brightness ==
-                                            Brightness.light)
+                                            Brightness.light
                                     ? Colors
                                         .green
-                                        .shade400 // Rich green for media messages in light mode
+                                        .shade400 // Rich green for media/link messages in light mode
                                     : Theme.of(
                                       context,
                                     ).colorScheme.surface.withAlpha(220),
@@ -776,6 +782,10 @@ class _MessageCardState extends State<MessageCard> {
                                   }
                                 },
                                 text: widget.message.content,
+                                options: const LinkifyOptions(
+                                  humanize: false,
+                                  removeWww: false,
+                                ),
                                 style: Theme.of(
                                   context,
                                 ).textTheme.bodyMedium?.copyWith(
@@ -790,18 +800,24 @@ class _MessageCardState extends State<MessageCard> {
                                       Theme.of(context).brightness ==
                                               Brightness.dark
                                           ? Colors
-                                              .lightBlue[200] // Light blue for dark mode
+                                              .lightBlue[100] // Darker blue for dark mode
                                           : Colors
-                                              .blue[600], // Brighter blue for light mode
+                                              .blue[800], // Darker blue for light mode
                                   fontWeight: FontWeight.normal,
                                   decoration: TextDecoration.underline,
                                   decorationColor:
                                       Theme.of(context).brightness ==
                                               Brightness.dark
-                                          ? Colors.lightBlue[200]
-                                          : Colors.blue[600],
+                                          ? Colors.lightBlue[100]
+                                          : Colors.blue[800],
                                 ),
                               ),
+                              // Use LinkPreviewService to build link preview widget
+                              LinkPreviewService().buildLinkPreviewForMessage(
+                                    context,
+                                    widget.message.content,
+                                  ) ??
+                                  const SizedBox.shrink(),
                               if (mediaUrl != null && mediaUrl.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 8.0),

@@ -3,6 +3,7 @@ import 'package:familynest/providers/dm_message_provider.dart';
 import 'package:flutter/material.dart';
 import 'services/api_service.dart';
 import 'services/service_provider.dart';
+import 'services/link_preview_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/family_management_screen.dart';
@@ -63,6 +64,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
+// Function to clear specific URL from link preview cache
+Future<void> clearLinkPreviewCache(String url) async {
+  LinkPreviewService.clearCacheForUrl(url);
+}
+
 // Function to get device model name
 Future<String?> getDeviceModel() async {
   DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
@@ -75,6 +81,7 @@ Future<String?> getDeviceModel() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Initialize app dependencies
 
   // Initialize Firebase (without requesting permissions yet)
   await Firebase.initializeApp();
