@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/safe_text_field.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -177,7 +178,7 @@ class SettingsScreenState extends State<SettingsScreen>
           subtitle: const Text('Change app appearance'),
           secondary: const Icon(Icons.dark_mode),
           value: Provider.of<ThemeProvider>(context).isDarkMode,
-          activeColor: Colors.white,
+          activeThumbColor: Colors.white,
           activeTrackColor: AppTheme.getSwitchColor(context),
           onChanged: (value) {
             Provider.of<ThemeProvider>(context, listen: false).toggleTheme();
@@ -238,7 +239,7 @@ class SettingsScreenState extends State<SettingsScreen>
             color: devicePermissionGranted ? null : Colors.grey,
           ),
           value: devicePermissionGranted ? pushEnabled : false,
-          activeColor: Colors.white,
+          activeThumbColor: Colors.white,
           activeTrackColor: AppTheme.getSwitchColor(context),
           onChanged:
               devicePermissionGranted
@@ -274,7 +275,7 @@ class SettingsScreenState extends State<SettingsScreen>
           subtitle: const Text('Receive email notifications'),
           secondary: const Icon(Icons.email),
           value: emailEnabled,
-          activeColor: Colors.white,
+          activeThumbColor: Colors.white,
           activeTrackColor: AppTheme.getSwitchColor(context),
           onChanged: (value) async {
             await _updateNotificationSetting(
@@ -742,9 +743,12 @@ class SettingsScreenState extends State<SettingsScreen>
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    TextField(
+                    SafeTextField(
                       controller: currentPasswordController,
                       obscureText: obscureCurrentPassword,
+                      maxLength: 50, // Reasonable limit for passwords
+                      maxLines: 1,
+                      scrollable: false,
                       decoration: InputDecoration(
                         labelText: 'Current Password',
                         prefixIcon: const Icon(Icons.lock),
@@ -764,9 +768,12 @@ class SettingsScreenState extends State<SettingsScreen>
                       ),
                     ),
                     const SizedBox(height: 16),
-                    TextField(
+                    SafeTextField(
                       controller: newPasswordController,
                       obscureText: obscureNewPassword,
+                      maxLength: 50, // Reasonable limit for passwords
+                      maxLines: 1,
+                      scrollable: false,
                       decoration: InputDecoration(
                         labelText: 'New Password',
                         prefixIcon: const Icon(Icons.lock_outline),
@@ -786,9 +793,12 @@ class SettingsScreenState extends State<SettingsScreen>
                       ),
                     ),
                     const SizedBox(height: 16),
-                    TextField(
+                    SafeTextField(
                       controller: confirmPasswordController,
                       obscureText: obscureConfirmPassword,
+                      maxLength: 50, // Reasonable limit for passwords
+                      maxLines: 1,
+                      scrollable: false,
                       decoration: InputDecoration(
                         labelText: 'Confirm New Password',
                         prefixIcon: const Icon(Icons.lock_outline),

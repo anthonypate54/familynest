@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../widgets/gradient_background.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/safe_text_field.dart';
 import 'dm_thread_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -181,8 +182,12 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
               const SizedBox(height: 40),
 
               // Group name input
-              TextField(
+              SafeTextField(
                 controller: _groupNameController,
+                maxLength: 50, // Reasonable limit for group names
+                maxLines: 1,
+                scrollable: false,
+                textCapitalization: TextCapitalization.words,
                 style: TextStyle(
                   color:
                       Theme.of(context).brightness == Brightness.dark
@@ -190,10 +195,6 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
                           : Colors.black87,
                   fontSize: 18,
                 ),
-                cursorColor:
-                    Theme.of(context).brightness == Brightness.dark
-                        ? Colors.white
-                        : Colors.black87,
                 decoration: InputDecoration(
                   labelText: 'Group name (optional)',
                   labelStyle: TextStyle(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/safe_text_field.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/clean_onboarding_service.dart'; // Use clean service
@@ -893,11 +894,12 @@ class LoginScreenState extends State<LoginScreen> {
                   'Enter your email to receive a password reset code.',
                 ),
                 const SizedBox(height: 16),
-                TextField(
+                SafeTextField(
                   controller: _forgotEmailController,
                   keyboardType: TextInputType.emailAddress,
-                  textCapitalization: TextCapitalization.none,
-                  autocorrect: false,
+                  maxLength: 100, // Reasonable limit for email addresses
+                  maxLines: 1,
+                  scrollable: false,
                   decoration: const InputDecoration(labelText: 'Email *'),
                 ),
               ],
@@ -984,24 +986,33 @@ class LoginScreenState extends State<LoginScreen> {
                     'Enter the reset code sent to your email and your new password.',
                   ),
                   const SizedBox(height: 16),
-                  TextField(
+                  SafeTextField(
                     controller: _resetCodeController,
+                    maxLength: 20, // Reasonable limit for a reset code
+                    maxLines: 1,
+                    scrollable: false,
                     decoration: const InputDecoration(
                       labelText: 'Reset Code *',
                     ),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
+                  SafeTextField(
                     controller: _newPasswordController,
                     obscureText: true,
+                    maxLength: 50, // Reasonable limit for passwords
+                    maxLines: 1,
+                    scrollable: false,
                     decoration: const InputDecoration(
                       labelText: 'New Password *',
                     ),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
+                  SafeTextField(
                     controller: _confirmPasswordController,
                     obscureText: true,
+                    maxLength: 50, // Reasonable limit for passwords
+                    maxLines: 1,
+                    scrollable: false,
                     decoration: const InputDecoration(
                       labelText: 'Confirm Password *',
                     ),
@@ -1122,11 +1133,12 @@ class LoginScreenState extends State<LoginScreen> {
               children: [
                 const Text('Enter your email to receive a username reminder.'),
                 const SizedBox(height: 16),
-                TextField(
+                SafeTextField(
                   controller: _forgotEmailController,
                   keyboardType: TextInputType.emailAddress,
-                  textCapitalization: TextCapitalization.none,
-                  autocorrect: false,
+                  maxLength: 100, // Reasonable limit for email addresses
+                  maxLines: 1,
+                  scrollable: false,
                   decoration: const InputDecoration(labelText: 'Email *'),
                 ),
               ],

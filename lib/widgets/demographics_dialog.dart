@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/safe_text_field.dart';
 import 'package:intl/intl.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import '../services/api_service.dart';
@@ -86,190 +87,230 @@ class DemographicsDialog {
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext dialogContext) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: const Text('Edit Profile Information'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // First Name
-                    TextField(
-                      controller: firstNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'First Name',
-                        prefixIcon: Icon(Icons.person),
-                      ),
-                      textCapitalization: TextCapitalization.words,
+      builder:
+          (BuildContext dialogContext) => StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Edit Profile Information'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // First Name
+                        SafeTextField(
+                          controller: firstNameController,
+                          maxLength: 50, // Reasonable limit for first names
+                          maxLines: 1,
+                          scrollable: false,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: const InputDecoration(
+                            labelText: 'First Name',
+                            prefixIcon: Icon(Icons.person),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Last Name
+                        SafeTextField(
+                          controller: lastNameController,
+                          maxLength: 50, // Reasonable limit for last names
+                          maxLines: 1,
+                          scrollable: false,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: const InputDecoration(
+                            labelText: 'Last Name',
+                            prefixIcon: Icon(Icons.person_outline),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Phone Number
+                        SafeTextField(
+                          controller: phoneController,
+                          maxLength: 20, // Reasonable limit for phone numbers
+                          maxLines: 1,
+                          scrollable: false,
+                          decoration: const InputDecoration(
+                            labelText: 'Phone Number',
+                            prefixIcon: Icon(Icons.phone),
+                            hintText: '+1 (555) 123-4567',
+                          ),
+                          keyboardType: TextInputType.phone,
+                          inputFormatters: [phoneFormatter],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Address
+                        SafeTextField(
+                          controller: addressController,
+                          maxLength: 200, // Reasonable limit for addresses
+                          maxLines: 2,
+                          scrollable: true,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: const InputDecoration(
+                            labelText: 'Address',
+                            prefixIcon: Icon(Icons.home),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // City
+                        SafeTextField(
+                          controller: cityController,
+                          maxLength: 50, // Reasonable limit for city names
+                          maxLines: 1,
+                          scrollable: false,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: const InputDecoration(
+                            labelText: 'City',
+                            prefixIcon: Icon(Icons.location_city),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // State
+                        SafeTextField(
+                          controller: stateController,
+                          maxLength:
+                              30, // Reasonable limit for state/province names
+                          maxLines: 1,
+                          scrollable: false,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: const InputDecoration(
+                            labelText: 'State/Province',
+                            prefixIcon: Icon(Icons.map),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // ZIP Code
+                        SafeTextField(
+                          controller: zipController,
+                          maxLength: 10, // Reasonable limit for postal codes
+                          maxLines: 1,
+                          scrollable: false,
+                          decoration: const InputDecoration(
+                            labelText: 'ZIP/Postal Code',
+                            prefixIcon: Icon(Icons.local_post_office),
+                          ),
+                          keyboardType: TextInputType.text,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Country
+                        SafeTextField(
+                          controller: countryController,
+                          maxLength: 50, // Reasonable limit for country names
+                          maxLines: 1,
+                          scrollable: false,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: const InputDecoration(
+                            labelText: 'Country',
+                            prefixIcon: Icon(Icons.public),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Birth Date
+                        SafeTextField(
+                          controller: birthDateController,
+                          maxLength: 10, // Exact length for YYYY-MM-DD format
+                          maxLines: 1,
+                          scrollable: false,
+                          decoration: const InputDecoration(
+                            labelText: 'Birth Date (YYYY-MM-DD)',
+                            prefixIcon: Icon(Icons.cake),
+                            hintText: '1990-01-15',
+                          ),
+                          keyboardType: TextInputType.datetime,
+                          onTap: () async {
+                            DateTime? pickedDate = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now().subtract(
+                                const Duration(days: 365 * 25),
+                              ),
+                              firstDate: DateTime(1900),
+                              lastDate: DateTime.now(),
+                            );
+                            if (pickedDate != null) {
+                              birthDateController.text = DateFormat(
+                                'yyyy-MM-dd',
+                              ).format(pickedDate);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Bio
+                        SafeTextField(
+                          controller: bioController,
+                          maxLength: 500, // Reasonable limit for bio text
+                          maxLines: 5,
+                          scrollable: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Bio',
+                            prefixIcon: Icon(Icons.edit),
+                            hintText: 'Tell us about yourself...',
+                          ),
+                          textCapitalization: TextCapitalization.sentences,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
-                    
-                    // Last Name
-                    TextField(
-                      controller: lastNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Last Name',
-                        prefixIcon: Icon(Icons.person_outline),
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Phone Number
-                    TextField(
-                      controller: phoneController,
-                      decoration: const InputDecoration(
-                        labelText: 'Phone Number',
-                        prefixIcon: Icon(Icons.phone),
-                        hintText: '+1 (555) 123-4567',
-                      ),
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [phoneFormatter],
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Address
-                    TextField(
-                      controller: addressController,
-                      decoration: const InputDecoration(
-                        labelText: 'Address',
-                        prefixIcon: Icon(Icons.home),
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // City
-                    TextField(
-                      controller: cityController,
-                      decoration: const InputDecoration(
-                        labelText: 'City',
-                        prefixIcon: Icon(Icons.location_city),
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // State
-                    TextField(
-                      controller: stateController,
-                      decoration: const InputDecoration(
-                        labelText: 'State/Province',
-                        prefixIcon: Icon(Icons.map),
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // ZIP Code
-                    TextField(
-                      controller: zipController,
-                      decoration: const InputDecoration(
-                        labelText: 'ZIP/Postal Code',
-                        prefixIcon: Icon(Icons.local_post_office),
-                      ),
-                      keyboardType: TextInputType.text,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Country
-                    TextField(
-                      controller: countryController,
-                      decoration: const InputDecoration(
-                        labelText: 'Country',
-                        prefixIcon: Icon(Icons.public),
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Birth Date
-                    TextField(
-                      controller: birthDateController,
-                      decoration: const InputDecoration(
-                        labelText: 'Birth Date (YYYY-MM-DD)',
-                        prefixIcon: Icon(Icons.cake),
-                        hintText: '1990-01-15',
-                      ),
-                      keyboardType: TextInputType.datetime,
-                      onTap: () async {
-                        DateTime? pickedDate = await showDatePicker(
-                          context: context,
-                          initialDate: DateTime.now().subtract(const Duration(days: 365 * 25)),
-                          firstDate: DateTime(1900),
-                          lastDate: DateTime.now(),
-                        );
-                        if (pickedDate != null) {
-                          birthDateController.text = DateFormat('yyyy-MM-dd').format(pickedDate);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Bio
-                    TextField(
-                      controller: bioController,
-                      decoration: const InputDecoration(
-                        labelText: 'Bio',
-                        prefixIcon: Icon(Icons.edit),
-                        hintText: 'Tell us about yourself...',
-                      ),
-                      maxLines: 3,
-                      textCapitalization: TextCapitalization.sentences,
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: isLoading ? null : () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: isLoading ? null : () async {
-                  setState(() {
-                    isLoading = true;
-                  });
+                actions: [
+                  TextButton(
+                    onPressed:
+                        isLoading ? null : () => Navigator.pop(dialogContext),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    onPressed:
+                        isLoading
+                            ? null
+                            : () async {
+                              setState(() {
+                                isLoading = true;
+                              });
 
-                  await _saveDemographics(
-                    context: context,
-                    dialogContext: dialogContext,
-                    userId: userId,
-                    apiService: apiService,
-                    firstNameController: firstNameController,
-                    lastNameController: lastNameController,
-                    phoneController: phoneController,
-                    addressController: addressController,
-                    cityController: cityController,
-                    stateController: stateController,
-                    zipController: zipController,
-                    countryController: countryController,
-                    birthDateController: birthDateController,
-                    bioController: bioController,
-                  );
+                              await _saveDemographics(
+                                context: context,
+                                dialogContext: dialogContext,
+                                userId: userId,
+                                apiService: apiService,
+                                firstNameController: firstNameController,
+                                lastNameController: lastNameController,
+                                phoneController: phoneController,
+                                addressController: addressController,
+                                cityController: cityController,
+                                stateController: stateController,
+                                zipController: zipController,
+                                countryController: countryController,
+                                birthDateController: birthDateController,
+                                bioController: bioController,
+                              );
 
-                  if (context.mounted) {
-                    setState(() {
-                      isLoading = false;
-                    });
-                  }
-                },
-                child: isLoading 
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Save'),
-              ),
-            ],
-          );
-        },
-      ),
+                              if (context.mounted) {
+                                setState(() {
+                                  isLoading = false;
+                                });
+                              }
+                            },
+                    child:
+                        isLoading
+                            ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : const Text('Save'),
+                  ),
+                ],
+              );
+            },
+          ),
     );
   }
 
@@ -347,30 +388,38 @@ class DemographicsDialog {
       final data = {
         'firstName': firstNameController.text.trim(),
         'lastName': lastNameController.text.trim(),
-        'phoneNumber': phoneController.text.trim().isEmpty 
-            ? null 
-            : phoneController.text.trim(),
-        'address': addressController.text.trim().isEmpty 
-            ? null 
-            : addressController.text.trim(),
-        'city': cityController.text.trim().isEmpty 
-            ? null 
-            : cityController.text.trim(),
-        'state': stateController.text.trim().isEmpty 
-            ? null 
-            : stateController.text.trim(),
-        'zipCode': zipController.text.trim().isEmpty 
-            ? null 
-            : zipController.text.trim(),
-        'country': countryController.text.trim().isEmpty 
-            ? null 
-            : countryController.text.trim(),
-        'birthDate': birthDateController.text.trim().isEmpty 
-            ? null 
-            : birthDateController.text.trim(),
-        'bio': bioController.text.trim().isEmpty 
-            ? null 
-            : bioController.text.trim(),
+        'phoneNumber':
+            phoneController.text.trim().isEmpty
+                ? null
+                : phoneController.text.trim(),
+        'address':
+            addressController.text.trim().isEmpty
+                ? null
+                : addressController.text.trim(),
+        'city':
+            cityController.text.trim().isEmpty
+                ? null
+                : cityController.text.trim(),
+        'state':
+            stateController.text.trim().isEmpty
+                ? null
+                : stateController.text.trim(),
+        'zipCode':
+            zipController.text.trim().isEmpty
+                ? null
+                : zipController.text.trim(),
+        'country':
+            countryController.text.trim().isEmpty
+                ? null
+                : countryController.text.trim(),
+        'birthDate':
+            birthDateController.text.trim().isEmpty
+                ? null
+                : birthDateController.text.trim(),
+        'bio':
+            bioController.text.trim().isEmpty
+                ? null
+                : bioController.text.trim(),
       };
 
       // Update demographics
@@ -392,7 +441,7 @@ class DemographicsDialog {
       }
     } catch (e) {
       if (!context.mounted) return;
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error updating profile: $e'),
@@ -403,14 +452,3 @@ class DemographicsDialog {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-

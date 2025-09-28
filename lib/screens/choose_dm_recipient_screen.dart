@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/safe_text_field.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 
@@ -39,7 +40,7 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
 
   // Group chat state
   bool _isGroupMode = false;
-  Set<Map<String, dynamic>> _selectedMembers = {};
+  final Set<Map<String, dynamic>> _selectedMembers = {};
 
   @override
   void initState() {
@@ -226,11 +227,14 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
   // Helper method to build selected members chips
   Widget _buildSelectedMembersChips() {
     if (_selectedMembers.isEmpty) {
-      return TextField(
+      return SafeTextField(
         controller: _searchController,
+        maxLength: 50, // Reasonable limit for search queries
+        maxLines: 1,
+        scrollable: false,
+        showCounter: false, // Hide the character counter
         onChanged: _filterMembers,
         style: const TextStyle(color: Colors.white),
-        cursorColor: Colors.white,
         decoration: const InputDecoration(
           hintText: 'Add participants...',
           hintStyle: TextStyle(color: Colors.white70),
@@ -290,12 +294,15 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
             width: 100,
             height: 32, // Match chip height
             child: Center(
-              child: TextField(
+              child: SafeTextField(
                 controller: _searchController,
+                maxLength: 50, // Reasonable limit for search queries
+                maxLines: 1,
+                scrollable: false,
+                showCounter: false, // Hide the character counter
                 onChanged: _filterMembers,
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white),
-                cursorColor: Colors.white,
                 decoration: const InputDecoration(
                   hintText: 'Add more...',
                   hintStyle: TextStyle(color: Colors.white70),
@@ -314,11 +321,14 @@ class _ChooseDMRecipientScreenState extends State<ChooseDMRecipientScreen> {
 
   // Helper method to build search field for normal mode
   Widget _buildSearchField() {
-    return TextField(
+    return SafeTextField(
       controller: _searchController,
+      maxLength: 50, // Reasonable limit for search queries
+      maxLines: 1,
+      scrollable: false,
+      showCounter: false, // Hide the character counter
       onChanged: _filterMembers,
       style: const TextStyle(color: Colors.white),
-      cursorColor: Colors.white,
       decoration: const InputDecoration(
         hintText: 'Type name, phone number, or email',
         hintStyle: TextStyle(color: Colors.white70),

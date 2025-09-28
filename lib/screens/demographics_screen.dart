@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/safe_text_field.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -302,7 +303,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
               secondary: const Icon(Icons.visibility, size: 20),
               contentPadding: EdgeInsets.zero,
               value: _showDemographics,
-              activeColor: Colors.white,
+              activeThumbColor: Colors.white,
               activeTrackColor: AppTheme.getSwitchColor(context),
               onChanged: (value) {
                 setState(() {
@@ -384,7 +385,11 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
     required Function(String) onChanged,
     TextInputType? keyboardType,
   }) {
-    return TextField(
+    return SafeTextField(
+      maxLength: 100, // Reasonable default limit
+      maxLines: 1,
+      scrollable: false,
+      showCounter: false, // Hide the character counter for compact UI
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(fontSize: 12),

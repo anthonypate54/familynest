@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import '../widgets/safe_text_field.dart';
 
 class ShareService {
   /// Share a message with external apps
@@ -204,13 +205,15 @@ class ShareService {
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 8),
-              TextField(
+              SafeTextField(
                 controller: messageController,
                 decoration: const InputDecoration(
                   hintText: 'What would you like to say about this video?',
                   border: OutlineInputBorder(),
                 ),
+                maxLength: 200, // Reasonable limit for message text
                 maxLines: 2,
+                scrollable: true,
                 textCapitalization: TextCapitalization.sentences,
                 autofocus: true,
               ),
@@ -220,14 +223,18 @@ class ShareService {
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 8),
-              TextField(
+              SafeTextField(
                 controller: urlController,
                 decoration: const InputDecoration(
                   hintText: 'https://drive.google.com/file/d/...',
                   border: OutlineInputBorder(),
                   helperText: 'Long press to paste',
                 ),
+                maxLength: 500, // Reasonable limit for URLs
+                maxLines: 1,
+                scrollable: false,
                 keyboardType: TextInputType.url,
+                textCapitalization: TextCapitalization.none,
                 enableSuggestions: true,
                 autocorrect: false,
                 textInputAction: TextInputAction.done,

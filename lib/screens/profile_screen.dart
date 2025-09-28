@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../widgets/safe_text_field.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/api_service.dart';
@@ -120,16 +121,15 @@ class ProfileScreenState extends State<ProfileScreen>
 
   Future<User?> _loadUser() async {
     try {
-      final userMap = await Provider.of<ApiService>(
-        context,
-        listen: false,
-      ).getUserById(widget.userId);
+      // Capture the ApiService before the async gap
+      final apiService = Provider.of<ApiService>(context, listen: false);
+
+      final userMap = await apiService.getUserById(widget.userId);
       debugPrint('User data loaded: $userMap');
 
       final user = User.fromJson(userMap);
 
-      // Fetch real subscription data from backend
-      final apiService = Provider.of<ApiService>(context, listen: false);
+      // Use the already captured apiService instance
       debugPrint('🔧 PROFILE: Creating SubscriptionApiService...');
       final subscriptionApi = SubscriptionApiService(apiService);
       debugPrint('🔧 PROFILE: Calling getSubscriptionStatus...');
@@ -139,12 +139,6 @@ class ProfileScreenState extends State<ProfileScreen>
       Subscription? subscription;
       if (subscriptionData != null) {
         subscription = Subscription.fromJson(subscriptionData);
-        debugPrint('✅ Loaded subscription from backend:');
-        debugPrint('   Status: ${subscription.statusDisplayText}');
-        debugPrint('   Is Trial: ${subscription.isInTrial}');
-        debugPrint('   Price: \$${subscription.monthlyPrice}');
-        debugPrint('   Platform: ${subscription.platform}');
-        debugPrint('   Raw data: $subscriptionData');
       } else {
         // Fallback to mock trial if backend fails
         subscription = Subscription.createTrial(user.id);
@@ -246,10 +240,13 @@ class ProfileScreenState extends State<ProfileScreen>
         builder: (context) {
           return AlertDialog(
             title: const Text('Send Invitation'),
-            content: TextField(
+            content: SafeTextField(
               controller: emailController,
               decoration: const InputDecoration(labelText: 'Email'),
               keyboardType: TextInputType.emailAddress,
+              maxLength: 100, // Reasonable limit for email addresses
+              maxLines: 1,
+              scrollable: false,
               autofocus: true,
             ),
             actions: [
@@ -334,6 +331,7 @@ class ProfileScreenState extends State<ProfileScreen>
                       final suggestedEmails = result['suggestedEmails'];
 
                       // Handle specific error cases with better UI
+
                       if (error.contains('already a member of this family')) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -675,7 +673,7 @@ class ProfileScreenState extends State<ProfileScreen>
     final DateFormat dateFormat = DateFormat('yyyy-MM-dd');
 
     // ignore: unused_element
-    Future<void> _selectDate(BuildContext context) async {
+    Future<void> selectDate(BuildContext context) async {
       // Parse existing date or use current date
       DateTime initialDate;
       try {
@@ -705,7 +703,8 @@ class ProfileScreenState extends State<ProfileScreen>
                 surface: Colors.white,
                 onSurface: Colors.black,
               ),
-              dialogBackgroundColor: Colors.white,
+              // Use DialogTheme instead of deprecated dialogBackgroundColor
+              dialogTheme: const DialogThemeData(backgroundColor: Colors.white),
             ),
             child: child!,
           );
@@ -733,7 +732,7 @@ class ProfileScreenState extends State<ProfileScreen>
                 Row(
                   children: [
                     Expanded(
-                      child: TextField(
+                      child: SafeTextField(
                         controller: firstNameController,
                         decoration: const InputDecoration(
                           labelText: 'First Name',
@@ -744,7 +743,7 @@ class ProfileScreenState extends State<ProfileScreen>
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: TextField(
+                      child: SafeTextField(
                         controller: lastNameController,
                         decoration: const InputDecoration(
                           labelText: 'Last Name',
@@ -765,8 +764,11 @@ class ProfileScreenState extends State<ProfileScreen>
                   isPhoneField: true,
                 ),
                 const SizedBox(height: 8),
-                TextField(
+                SafeTextField(
                   controller: addressController,
+                  maxLength: 200, // Reasonable limit for addresses
+                  maxLines: 2,
+                  scrollable: true,
                   decoration: const InputDecoration(
                     labelText: 'Address',
                     icon: Icon(Icons.home),
@@ -774,8 +776,11 @@ class ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
                 const SizedBox(height: 8),
-                TextField(
+                SafeTextField(
                   controller: cityController,
+                  maxLength: 50, // Reasonable limit for city names
+                  maxLines: 1,
+                  scrollable: false,
                   decoration: const InputDecoration(
                     labelText: 'City',
                     icon: Icon(Icons.location_city),
@@ -783,8 +788,11 @@ class ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
                 const SizedBox(height: 8),
-                TextField(
+                SafeTextField(
                   controller: stateController,
+                  maxLength: 30, // Reasonable limit for state/province names
+                  maxLines: 1,
+                  scrollable: false,
                   decoration: const InputDecoration(
                     labelText: 'State/Province',
                     icon: Icon(Icons.map),
@@ -792,8 +800,11 @@ class ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
                 const SizedBox(height: 8),
-                TextField(
+                SafeTextField(
                   controller: zipController,
+                  maxLength: 10, // Reasonable limit for postal codes
+                  maxLines: 1,
+                  scrollable: false,
                   decoration: const InputDecoration(
                     labelText: 'Zip/Postal Code',
                     icon: Icon(Icons.pin),
@@ -801,8 +812,11 @@ class ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
                 const SizedBox(height: 8),
-                TextField(
+                SafeTextField(
                   controller: countryController,
+                  maxLength: 50, // Reasonable limit for country names
+                  maxLines: 1,
+                  scrollable: false,
                   decoration: const InputDecoration(
                     labelText: 'Country',
                     icon: Icon(Icons.public),
@@ -812,14 +826,16 @@ class ProfileScreenState extends State<ProfileScreen>
                 const SizedBox(height: 8),
 
                 const SizedBox(height: 8),
-                TextField(
+                SafeTextField(
                   controller: bioController,
+                  maxLength: 500, // Reasonable limit for bio text
+                  maxLines: 5,
+                  scrollable: true,
                   decoration: const InputDecoration(
                     labelText: 'Bio',
                     icon: Icon(Icons.info),
                     helperText: 'Tell us about yourself in a few sentences',
                   ),
-                  maxLines: 3,
                 ),
               ],
             ),

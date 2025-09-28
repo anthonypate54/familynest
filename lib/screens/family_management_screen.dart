@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/safe_text_field.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/family_service.dart';
@@ -740,8 +741,11 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
           child: Column(
             children: [
               // Search text field
-              TextField(
+              SafeTextField(
                 controller: _searchController,
+                maxLength: 50, // Reasonable limit for search queries
+                maxLines: 1,
+                scrollable: false,
                 onChanged: (value) {
                   _filterMembers(); // Use the filtering method
                 },
@@ -894,7 +898,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: _demographicsSettings?['showAddress'] ?? true,
-                  activeColor: Colors.white,
+                  activeThumbColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged:
                       _loadingDemographics
@@ -913,7 +917,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: _demographicsSettings?['showPhoneNumber'] ?? true,
-                  activeColor: Colors.white,
+                  activeThumbColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged:
                       _loadingDemographics
@@ -935,7 +939,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: _demographicsSettings?['showBirthday'] ?? true,
-                  activeColor: Colors.white,
+                  activeThumbColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged:
                       _loadingDemographics
@@ -984,7 +988,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: _notificationPreferences?['familyMessages'] ?? true,
-                  activeColor: Colors.white,
+                  activeThumbColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged:
                       _loadingNotifications
@@ -1006,7 +1010,7 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
                     style: TextStyle(color: Colors.white70),
                   ),
                   value: _notificationPreferences?['newMemberAlerts'] ?? true,
-                  activeColor: Colors.white,
+                  activeThumbColor: Colors.white,
                   activeTrackColor: AppTheme.getSwitchColor(context),
                   onChanged:
                       _loadingNotifications
@@ -2373,8 +2377,11 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       builder:
           (context) => AlertDialog(
             title: const Text('Create Family'),
-            content: TextField(
+            content: SafeTextField(
               controller: _familyNameController,
+              maxLength: 50, // Reasonable limit for family names
+              maxLines: 1,
+              scrollable: false,
               decoration: const InputDecoration(
                 labelText: 'Family Name',
                 hintText: 'Enter your family name',
@@ -2400,9 +2407,12 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
       builder:
           (context) => AlertDialog(
             title: const Text('Invite Member'),
-            content: TextField(
+            content: SafeTextField(
               controller: _inviteEmailController,
               keyboardType: TextInputType.emailAddress,
+              maxLength: 100, // Reasonable limit for email addresses
+              maxLines: 1,
+              scrollable: false,
               autofocus: true,
               decoration: const InputDecoration(
                 labelText: 'Email Address',
@@ -2540,7 +2550,6 @@ class _FamilyManagementScreenState extends State<FamilyManagementScreen>
         } else {
           errorMessage = e.toString();
         }
-        debugPrint('$errorMessage');
         if (errorMessage.contains('already a member of this family')) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

@@ -19,6 +19,12 @@ class SafeTextField extends StatelessWidget {
   final bool autofocus;
   final bool obscureText;
   final bool enabled;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextCapitalization textCapitalization;
+  final Color? cursorColor;
+  final bool? enableSuggestions;
+  final bool? autocorrect;
+  final TextInputAction? textInputAction;
 
   // SafeTextField specific properties
   final int maxLength;
@@ -43,6 +49,12 @@ class SafeTextField extends StatelessWidget {
     this.autofocus = false,
     this.obscureText = false,
     this.enabled = true,
+    this.inputFormatters,
+    this.textCapitalization = TextCapitalization.sentences,
+    this.cursorColor,
+    this.enableSuggestions = true,
+    this.autocorrect = true,
+    this.textInputAction,
     this.maxLength = 500, // Default to 500 characters
     this.showCounter = false, // Hide counter by default
     this.scrollable = false, // Not scrollable by default
@@ -88,7 +100,11 @@ class SafeTextField extends StatelessWidget {
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       onTap: onTap,
-      textCapitalization: TextCapitalization.sentences,
+      textCapitalization: textCapitalization,
+      cursorColor: cursorColor,
+      enableSuggestions: enableSuggestions,
+      autocorrect: autocorrect,
+      textInputAction: textInputAction,
     );
   }
 }

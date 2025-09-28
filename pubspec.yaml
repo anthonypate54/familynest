@@ -45,6 +45,7 @@ dependencies:
   intl: ^0.18.1
   mask_text_input_formatter: ^2.5.0
   device_info_plus: ^11.5.0  # For detecting device type (emulator vs real device)
+  package_info_plus: ^8.3.1  # For app version information
   flutter_dotenv: ^5.1.0  # For reading .env configuration files
   provider: ^6.1.1
   just_audio: ^0.9.36
