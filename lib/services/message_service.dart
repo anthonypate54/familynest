@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/message.dart';
 import '../services/api_service.dart';
 import '../providers/message_provider.dart';
-import '../widgets/user_avatar.dart';
+import '../widgets/interactive_avatar.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/app_theme.dart';
@@ -915,7 +915,10 @@ class _MessageCardState extends State<MessageCard> {
           final lastName = widget.message.senderLastName ?? '';
           final senderUserName = widget.message.senderUserName ?? '';
 
-          return UserAvatar(
+          // No special handling needed, just use the first name and last name directly
+
+          // Simply use the first name and last name as they are
+          return InteractiveAvatar(
             photoUrl: senderPhoto,
             firstName: firstName,
             lastName: lastName,
@@ -954,7 +957,12 @@ class _MessageCardState extends State<MessageCard> {
               context: context,
               imageUrl: displayUrl,
               heroTag: 'family_message_image_${widget.message.id}',
-              title: 'Photo from ${widget.message.senderUserName ?? 'Unknown'}',
+              title:
+                  widget.message.senderFirstName != null ||
+                          widget.message.senderLastName != null
+                      ? 'Photo from ${widget.message.senderFirstName ?? ''} ${widget.message.senderLastName ?? ''}'
+                          .trim()
+                      : 'Photo from ${widget.message.senderUserName ?? 'Unknown'}',
             );
           },
           child: Hero(
@@ -1048,6 +1056,7 @@ class _MessageCardState extends State<MessageCard> {
 
             if (message.parentMessageId != null) {
               // This is a comment - we need to create a thread message for the parent
+              // Make sure we include first and last name fields
               threadMessage = {
                 'id': message.parentMessageId,
                 'content':
@@ -1056,6 +1065,8 @@ class _MessageCardState extends State<MessageCard> {
                 // Add other required fields with defaults
                 'senderId': message.senderId,
                 'senderUserName': message.senderUserName,
+                'sender_first_name': message.senderFirstName, // Add first name
+                'sender_last_name': message.senderLastName, // Add last name
                 'timestamp': message.createdAt?.toIso8601String(),
                 'mediaType': message.mediaType,
                 'mediaUrl': message.mediaUrl,
@@ -1070,7 +1081,14 @@ class _MessageCardState extends State<MessageCard> {
             } else {
               // This is a root message - convert to map for ThreadScreen
               threadMessage = message.toJson();
-              debugPrint('Navigating to root message thread ${message.id}');
+
+              // Ensure first_name and last_name are explicitly included for all messages
+              if (message.senderFirstName != null) {
+                threadMessage['sender_first_name'] = message.senderFirstName;
+              }
+              if (message.senderLastName != null) {
+                threadMessage['sender_last_name'] = message.senderLastName;
+              }
             }
 
             Navigator.push(

@@ -154,6 +154,14 @@ class Message {
       'createdAt': createdAt?.toIso8601String(),
       'senderId': senderId,
       'senderUserName': senderUserName,
+      'sender_first_name':
+          senderFirstName, // Add with snake_case key for backend compatibility
+      'sender_last_name':
+          senderLastName, // Add with snake_case key for backend compatibility
+      'senderFirstName':
+          senderFirstName, // Add with camelCase for frontend compatibility
+      'senderLastName':
+          senderLastName, // Add with camelCase for frontend compatibility
       'thumbnailUrl': thumbnailUrl,
       'senderPhoto': senderPhoto,
       'likeCount': likeCount,

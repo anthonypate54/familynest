@@ -195,6 +195,10 @@ class _GroupNameScreenState extends State<GroupNameScreen> {
                           : Colors.black87,
                   fontSize: 18,
                 ),
+                cursorColor:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Colors.black87,
                 decoration: InputDecoration(
                   labelText: 'Group name (optional)',
                   labelStyle: TextStyle(

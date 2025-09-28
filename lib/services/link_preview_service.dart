@@ -37,22 +37,17 @@ class LinkPreviewService extends ChangeNotifier {
 
   // Get metadata for a specific URL from cache
   Map<String, dynamic>? getMetadataForUrl(String url) {
-    debugPrint('Checking cache for URL: $url');
-
     // Try with the original URL
     if (_metadataCache.containsKey(url)) {
-      debugPrint('Found metadata in cache for original URL: $url');
       return _metadataCache[url];
     }
 
     // Try with normalized URL
     final normalizedUrl = normalizeUrl(url);
     if (_metadataCache.containsKey(normalizedUrl)) {
-      debugPrint('Found metadata in cache for normalized URL: $normalizedUrl');
       return _metadataCache[normalizedUrl];
     }
 
-    debugPrint('No metadata found in cache for URL: $url');
     return null;
   }
 
@@ -90,14 +85,12 @@ class LinkPreviewService extends ChangeNotifier {
 
     // Check if we already have metadata in the cache
     if (_metadataCache.containsKey(normalizedUrl)) {
-      debugPrint('Using cached metadata for $normalizedUrl');
       _detectedUrl = normalizedUrl;
       _metadata = _metadataCache[normalizedUrl];
 
       // For Google Drive links, ensure we have a thumbnail URL
       if (driveFileId != null &&
           (_metadata == null || _metadata!['image'] == null)) {
-        debugPrint('Enhancing Google Drive metadata with thumbnail');
         final thumbnailUrl = _getGoogleDriveThumbnailUrl(driveFileId);
 
         if (_metadata != null) {
@@ -106,14 +99,6 @@ class LinkPreviewService extends ChangeNotifier {
           _metadataCache[normalizedUrl] = _metadata!;
         }
       }
-
-      // Debug the image URL in the cached metadata
-      if (_metadata != null && _metadata!['image'] != null) {
-        debugPrint('Image URL in cached metadata: ${_metadata!['image']}');
-      } else {
-        debugPrint('No image URL in cached metadata');
-      }
-
       _isProcessingLink = false;
       _hasError = false;
       _errorMessage = null;
@@ -292,16 +277,12 @@ class LinkPreviewService extends ChangeNotifier {
     String messageContent,
   ) {
     // Debug print to see when this method is called
-    debugPrint(
-      'LinkPreviewService.buildLinkPreviewForMessage called with: $messageContent',
-    );
 
     // Extract URLs from message content
     final urls = extractUrls(messageContent);
 
     // If no URLs found, return null
     if (urls.isEmpty) {
-      debugPrint('No URLs found in message content');
       return null;
     }
 
@@ -313,13 +294,10 @@ class LinkPreviewService extends ChangeNotifier {
     // If we have cached metadata, use it
     if (urlMetadata != null) {
       _metadata = urlMetadata;
-      debugPrint('Using cached metadata for URL: ${urls.first}');
-      debugPrint('Image URL in metadata: ${urlMetadata['image']}');
     }
     // If no metadata available yet, start fetching it asynchronously
     else {
       // Start fetching after the build phase completes to avoid setState during build
-      debugPrint('No metadata found for URL: ${urls.first}, scheduling fetch');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (urls.isNotEmpty) {
           processUrl(urls.first);
@@ -382,10 +360,8 @@ class LinkPreviewService extends ChangeNotifier {
                 builder: (context) {
                   // Debug the image URL before trying to load it
                   if (metadata != null) {
-                    debugPrint('Metadata in preview: $metadata');
                     if (metadata!['image'] != null) {
                       final imageUrl = metadata!['image'] as String;
-                      debugPrint('Attempting to load image from: $imageUrl');
 
                       return Image.network(
                         imageUrl,
@@ -394,7 +370,6 @@ class LinkPreviewService extends ChangeNotifier {
                         height: 150.0,
                         errorBuilder: (context, error, stackTrace) {
                           // Log error when image fails to load
-                          debugPrint('Error loading image: $error');
                           return Center(
                             child: Icon(
                               Icons.broken_image,

@@ -22,8 +22,8 @@ class SafeTextField extends StatelessWidget {
   final List<TextInputFormatter>? inputFormatters;
   final TextCapitalization textCapitalization;
   final Color? cursorColor;
-  final bool? enableSuggestions;
-  final bool? autocorrect;
+  final bool enableSuggestions;
+  final bool autocorrect;
   final TextInputAction? textInputAction;
 
   // SafeTextField specific properties

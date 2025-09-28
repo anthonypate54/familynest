@@ -2446,16 +2446,6 @@ Network connection error. Please check:
 
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(response.body);
-
-        // DEBUG: Log the raw JSON response to see if sender_first_name is present
-        debugPrint('🧵 getComments API Response (first 2 items):');
-        for (int i = 0; i < jsonList.length && i < 2; i++) {
-          final item = jsonList[i];
-          debugPrint(
-            '  Comment ${item['id']}: senderId=${item['senderId']}, sender_first_name=${item['sender_first_name']}, sender_last_name=${item['sender_last_name']}',
-          );
-        }
-
         return jsonList.map((json) => Message.fromJson(json)).toList();
       } else {
         throw Exception('Failed to load messages: ${response.statusCode}');

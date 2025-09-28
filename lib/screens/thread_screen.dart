@@ -245,8 +245,32 @@ class _ThreadScreenState extends State<ThreadScreen>
         widget.message['id'].toString(),
       );
       if (mounted) {
+        // We need to add first name and last name fields directly from the API response
+        final Map<String, dynamic> messageWithCorrectFields =
+            Map<String, dynamic>.from(widget.message);
+
+        // Get the first comment to extract the sender information
+        if (comments.isNotEmpty) {
+          final firstComment = comments.first;
+
+          // Get the sender first name and last name from the first comment
+          final senderFirstName = firstComment.senderFirstName;
+          final senderLastName = firstComment.senderLastName;
+
+          // Add these fields to the parent message
+          if (senderFirstName != null) {
+            messageWithCorrectFields['sender_first_name'] = senderFirstName;
+          }
+
+          if (senderLastName != null) {
+            messageWithCorrectFields['sender_last_name'] = senderLastName;
+          }
+        }
+
         commentProvider.setComments([
-          Message.fromJson(widget.message), // Add parent message at the start
+          Message.fromJson(
+            messageWithCorrectFields,
+          ), // Add parent message with correct fields
           ...comments,
         ]);
         // Removed comment notification tracking (performance optimization)
