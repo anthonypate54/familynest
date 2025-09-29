@@ -698,29 +698,14 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
                     }
                   }
 
-                  return GestureDetector(
-                    onTap: () {
-                      // Navigate to user profile/settings
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (context) => ProfileScreen(
-                                userId: widget.userId,
-                                userRole: userRole,
-                              ),
-                        ),
-                      );
-                    },
-                    child: UserAvatar(
-                      photoUrl: photo,
-                      firstName: firstName,
-                      lastName: lastName,
-                      displayName: initials,
-                      radius: 18,
-                      fontSize: 14,
-                      useFirstInitialOnly: true,
-                    ),
+                  return UserAvatar(
+                    photoUrl: photo,
+                    firstName: firstName,
+                    lastName: lastName,
+                    displayName: initials,
+                    radius: 18,
+                    fontSize: 14,
+                    useFirstInitialOnly: true,
                   );
                 }
 
@@ -900,7 +885,7 @@ class _MessagesHomeScreenState extends State<MessagesHomeScreen>
       // 1:1 chat display (existing logic)
       final otherUserPhoto = conversation.otherUserPhoto;
       displayName = conversation.getOtherUserDisplayName();
-
+      debugPrint('###Other User Photo: $otherUserPhoto');
       leadingWidget = _buildAvatar(
         otherUserPhoto,
         conversation.otherUserFirstName,
